@@ -1,0 +1,303 @@
+"use client";
+
+import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
+import { fetchCurrentUser } from "@/lib/auth-client";
+import {
+  addPaymentMethod,
+  getNotificationPreferences,
+  getPaymentMethods,
+  removePaymentMethod,
+  updateNotificationPreferences,
+  updatePassword,
+} from "@/lib/api";
+import { useAuthStore } from "@/stores/auth-store";
+import type { NotificationPreference, UserPaymentMethod, UserPaymentType } from "@/types/marketplace";
+
+const defaultNotifications: Omit<NotificationPreference, "id" | "userId"> = {
+  orderUpdates: true,
+  promoEmails: false,
+  securityAlerts: true,
+  wishlistAlerts: true,
+};
+
+export default function AccountPage() {
+  const user = useAuthStore((state) => state.user);
+  const setUser = useAuthStore((state) => state.setUser);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+  const [passwordFeedback, setPasswordFeedback] = useState<string | null>(null);
+  const [feedbackTone, setFeedbackTone] = useState<"error" | "success">("success");
+  const [paymentMethods, setPaymentMethods] = useState<UserPaymentMethod[]>([]);
+  const [paymentType, setPaymentType] = useState<UserPaymentType>("CARD");
+  const [paymentLabel, setPaymentLabel] = useState("");
+  const [paymentLast4, setPaymentLast4] = useState("");
+  const [paymentExpiryMonth, setPaymentExpiryMonth] = useState("");
+  const [paymentExpiryYear, setPaymentExpiryYear] = useState("");
+  const [paymentIsDefault, setPaymentIsDefault] = useState(false);
+  const [isSavingPayment, setIsSavingPayment] = useState(false);
+  const [paymentFeedback, setPaymentFeedback] = useState<string | null>(null);
+  const [notificationPrefs, setNotificationPrefs] = useState(defaultNotifications);
+  const [isSavingNotifications, setIsSavingNotifications] = useState(false);
+  const [notificationFeedback, setNotificationFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchCurrentUser().then(async (currentUser) => {
+      setUser(currentUser);
+      if (!currentUser) return;
+
+      try {
+        const [methods, preferences] = await Promise.all([getPaymentMethods(), getNotificationPreferences()]);
+        setPaymentMethods(methods);
+        setNotificationPrefs({
+          orderUpdates: preferences.orderUpdates,
+          promoEmails: preferences.promoEmails,
+          securityAlerts: preferences.securityAlerts,
+          wishlistAlerts: preferences.wishlistAlerts,
+        });
+      } catch {
+        // Keep UI usable even if API fetch fails temporarily.
+      }
+    });
+  }, [setUser]);
+
+  const onChangePassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!newPassword || !confirmPassword) {
+      setFeedbackTone("error");
+      setPasswordFeedback("Please complete all password fields.");
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setFeedbackTone("error");
+      setPasswordFeedback("New password must be at least 8 characters.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setFeedbackTone("error");
+      setPasswordFeedback("New password and confirmation do not match.");
+      return;
+    }
+
+    try {
+      setIsUpdatingPassword(true);
+      await updatePassword({ currentPassword: currentPassword || undefined, newPassword });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setFeedbackTone("success");
+      setPasswordFeedback("Password updated successfully.");
+    } catch (error) {
+      setFeedbackTone("error");
+      setPasswordFeedback(error instanceof Error ? error.message : "Unable to update password.");
+    } finally {
+      setIsUpdatingPassword(false);
+    }
+  };
+
+  const onAddPaymentMethod = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setPaymentFeedback(null);
+
+    if (!/^\d{4}$/.test(paymentLast4.trim())) {
+      setPaymentFeedback("Last 4 digits must be exactly 4 numbers.");
+      return;
+    }
+
+    try {
+      setIsSavingPayment(true);
+      await addPaymentMethod({
+        type: paymentType,
+        label: paymentLabel.trim(),
+        last4: paymentLast4.trim(),
+        expiresMonth: paymentExpiryMonth ? Number(paymentExpiryMonth) : undefined,
+        expiresYear: paymentExpiryYear ? Number(paymentExpiryYear) : undefined,
+        isDefault: paymentIsDefault,
+      });
+      const methods = await getPaymentMethods();
+      setPaymentMethods(methods);
+      setPaymentLabel("");
+      setPaymentLast4("");
+      setPaymentExpiryMonth("");
+      setPaymentExpiryYear("");
+      setPaymentIsDefault(false);
+      setPaymentFeedback("Payment method saved.");
+    } catch (error) {
+      setPaymentFeedback(error instanceof Error ? error.message : "Unable to save payment method.");
+    } finally {
+      setIsSavingPayment(false);
+    }
+  };
+
+  const onRemovePaymentMethod = async (methodId: string) => {
+    try {
+      await removePaymentMethod(methodId);
+      const methods = await getPaymentMethods();
+      setPaymentMethods(methods);
+      setPaymentFeedback("Payment method removed.");
+    } catch (error) {
+      setPaymentFeedback(error instanceof Error ? error.message : "Unable to remove payment method.");
+    }
+  };
+
+  const onSaveNotifications = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    try {
+      setIsSavingNotifications(true);
+      const updated = await updateNotificationPreferences(notificationPrefs);
+      setNotificationPrefs({
+        orderUpdates: updated.orderUpdates,
+        promoEmails: updated.promoEmails,
+        securityAlerts: updated.securityAlerts,
+        wishlistAlerts: updated.wishlistAlerts,
+      });
+      setNotificationFeedback("Notification preferences saved.");
+    } catch (error) {
+      setNotificationFeedback(error instanceof Error ? error.message : "Unable to save notification preferences.");
+    } finally {
+      setIsSavingNotifications(false);
+    }
+  };
+
+  return (
+    <main className="mx-auto w-full max-w-4xl space-y-8 px-4 py-10 lg:px-10">
+      <header className="space-y-3 border-b border-zinc-300 pb-5">
+        <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Profile</p>
+        <h1 className="font-heading text-5xl uppercase">My Account</h1>
+      </header>
+
+      {user ? (
+        <section className="grid gap-4 md:grid-cols-2">
+          <article className="space-y-4 border border-zinc-300 p-6">
+            <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Name</p>
+            <p className="text-lg">{user.fullName}</p>
+            <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Email</p>
+            <p className="text-lg">{user.email}</p>
+            <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Role</p>
+            <p className="text-lg">{user.role}</p>
+            <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Quick Access</p>
+            <div className="mt-2 flex gap-3">
+              <Link href="/wishlist" className="border border-black px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em]">
+                Wishlist
+              </Link>
+              <Link href="/cart" className="border border-black px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em]">
+                Cart
+              </Link>
+            </div>
+          </article>
+
+          <article className="space-y-4 border border-zinc-300 p-6">
+            <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Security</p>
+            <h2 className="font-heading text-3xl uppercase">Change Password</h2>
+            <form className="space-y-2" onSubmit={onChangePassword}>
+              <input
+                type="password"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+                placeholder="Current password"
+                className="h-11 w-full border border-zinc-300 px-3 text-sm"
+              />
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                placeholder="New password"
+                className="h-11 w-full border border-zinc-300 px-3 text-sm"
+              />
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                placeholder="Confirm new password"
+                className="h-11 w-full border border-zinc-300 px-3 text-sm"
+                required
+              />
+              <button type="submit" disabled={isUpdatingPassword} className="h-11 border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-50">
+                {isUpdatingPassword ? "Updating" : "Update Password"}
+              </button>
+            </form>
+            {passwordFeedback ? (
+              <p className={`text-xs ${feedbackTone === "error" ? "text-red-600" : "text-emerald-700"}`}>{passwordFeedback}</p>
+            ) : null}
+          </article>
+
+          <article className="space-y-4 border border-zinc-300 p-6 md:col-span-2">
+            <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Payments & Credits</p>
+            <form className="grid gap-3 md:grid-cols-2" onSubmit={onAddPaymentMethod}>
+              <select className="h-11 border border-zinc-300 px-3 text-sm" value={paymentType} onChange={(event) => setPaymentType(event.target.value as UserPaymentType)}>
+                <option value="CARD">Card</option>
+                <option value="JAZZCASH">JazzCash</option>
+                <option value="EASYPAISA">Easypaisa</option>
+                <option value="BANK">Bank</option>
+              </select>
+              <input className="h-11 border border-zinc-300 px-3 text-sm" value={paymentLabel} onChange={(event) => setPaymentLabel(event.target.value)} placeholder="Label (e.g. Personal Visa)" required />
+              <input className="h-11 border border-zinc-300 px-3 text-sm" value={paymentLast4} onChange={(event) => setPaymentLast4(event.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="Last 4 digits" required />
+              <div className="grid grid-cols-2 gap-3">
+                <input className="h-11 border border-zinc-300 px-3 text-sm" value={paymentExpiryMonth} onChange={(event) => setPaymentExpiryMonth(event.target.value.replace(/\D/g, "").slice(0, 2))} placeholder="MM" />
+                <input className="h-11 border border-zinc-300 px-3 text-sm" value={paymentExpiryYear} onChange={(event) => setPaymentExpiryYear(event.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="YYYY" />
+              </div>
+              <label className="flex items-center gap-2 text-sm md:col-span-2">
+                <input type="checkbox" checked={paymentIsDefault} onChange={(event) => setPaymentIsDefault(event.target.checked)} />
+                Set as default payment method
+              </label>
+              <button type="submit" disabled={isSavingPayment} className="h-11 border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-50 md:col-span-2">
+                {isSavingPayment ? "Saving" : "Add Payment Method"}
+              </button>
+            </form>
+
+            <div className="space-y-2 border border-zinc-200 p-4">
+              <p className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Saved Methods</p>
+              {paymentMethods.length === 0 ? (
+                <p className="text-sm text-zinc-700">No saved methods yet.</p>
+              ) : (
+                paymentMethods.map((method) => (
+                  <div key={method.id} className="flex items-center justify-between border-b border-zinc-200 py-2 text-sm">
+                    <p>
+                      {method.label} ({method.type}) •••• {method.last4} {method.isDefault ? "(Default)" : ""}
+                    </p>
+                    <button type="button" className="border border-zinc-300 px-3 py-1 text-xs uppercase tracking-[0.12em]" onClick={() => void onRemovePaymentMethod(method.id)}>
+                      Remove
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+            {paymentFeedback ? <p className="text-xs text-zinc-700">{paymentFeedback}</p> : null}
+          </article>
+
+          <article className="space-y-3 border border-zinc-300 p-6 md:col-span-2">
+            <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Account Management</p>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              <Link href="/wishlist" className="border border-zinc-300 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em]">Wishlist</Link>
+              <Link href="/cart" className="border border-zinc-300 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em]">Cart</Link>
+              <Link href="/offers" className="border border-zinc-300 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em]">Offers</Link>
+              <span className="border border-zinc-300 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em]">Notification Preferences</span>
+            </div>
+            <form className="space-y-2 border border-zinc-200 p-4" onSubmit={onSaveNotifications}>
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={notificationPrefs.orderUpdates} onChange={(event) => setNotificationPrefs((current) => ({ ...current, orderUpdates: event.target.checked }))} /> Order updates</label>
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={notificationPrefs.promoEmails} onChange={(event) => setNotificationPrefs((current) => ({ ...current, promoEmails: event.target.checked }))} /> Promotional emails</label>
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={notificationPrefs.securityAlerts} onChange={(event) => setNotificationPrefs((current) => ({ ...current, securityAlerts: event.target.checked }))} /> Security alerts</label>
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={notificationPrefs.wishlistAlerts} onChange={(event) => setNotificationPrefs((current) => ({ ...current, wishlistAlerts: event.target.checked }))} /> Wishlist alerts</label>
+              <button type="submit" disabled={isSavingNotifications} className="h-10 border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-50">
+                {isSavingNotifications ? "Saving" : "Save Preferences"}
+              </button>
+            </form>
+            {notificationFeedback ? <p className="text-xs text-zinc-700">{notificationFeedback}</p> : null}
+          </article>
+        </section>
+      ) : (
+        <section className="border border-zinc-300 p-6">
+          <p className="text-sm text-zinc-700">Unable to load your account session. Please sign in again.</p>
+          <Link href="/login" className="mt-4 inline-flex border border-black bg-black px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-white">
+            Go to Login
+          </Link>
+        </section>
+      )}
+    </main>
+  );
+}
