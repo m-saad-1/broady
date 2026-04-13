@@ -79,7 +79,12 @@ async function main() {
       items: {
         create: [
           {
-            productId: product.id,
+            product: {
+              connect: { id: product.id },
+            },
+            brand: {
+              connect: { id: brand.id },
+            },
             quantity: cartItem.quantity,
             unitPricePkr: product.pricePkr,
           },

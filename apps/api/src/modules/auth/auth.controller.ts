@@ -1,6 +1,14 @@
 import type { Request, Response } from "express";
+import { z } from "zod";
 import { googleAuthSchema, loginSchema, registerSchema } from "./auth.schemas.js";
-import { getSafeUserById, loginUser, loginWithGoogle, registerUser, revokeSessionFromToken } from "./auth.service.js";
+import {
+  completeBrandInvite,
+  getSafeUserById,
+  loginUser,
+  loginWithGoogle,
+  registerUser,
+  revokeSessionFromToken,
+} from "./auth.service.js";
 
 export const tokenCookieOptions = {
   httpOnly: true,
@@ -67,10 +75,31 @@ export async function googleAuthController(req: Request, res: Response) {
   return res.json({ token: result.token, user: result.user });
 }
 
+export async function completeBrandInviteController(req: Request, res: Response) {
+  const parsed = z
+    .object({
+      token: z.string().min(20),
+      password: registerSchema.shape.password,
+    })
+    .safeParse(req.body);
+
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid input", issues: parsed.error.flatten() });
+  }
+
+  const result = await completeBrandInvite({ token: parsed.data.token, password: parsed.data.password });
+  if (hasError(result)) {
+    return res.status(result.error.status).json({ message: result.error.message });
+  }
+
+  res.cookie("broady_token", result.token, tokenCookieOptions);
+  return res.json({ token: result.token, user: result.user });
+}
+
 export async function logoutController(req: Request, res: Response) {
   const bearerToken = req.headers.authorization?.replace("Bearer ", "");
   const cookieToken = req.cookies?.broady_token as string | undefined;
-  const token = bearerToken || cookieToken;
+  const token = cookieToken || bearerToken;
 
   await revokeSessionFromToken(token);
 

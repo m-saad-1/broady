@@ -17,6 +17,7 @@
     "lint": "npm run lint -w @broady/web && npm run lint -w @broady/api"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "pm2": "^6.0.14"
   }
 }

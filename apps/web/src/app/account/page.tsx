@@ -2,7 +2,8 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
-import { fetchCurrentUser } from "@/lib/auth-client";
+import { useRouter } from "next/navigation";
+import { fetchCurrentUser, logoutUser } from "@/lib/auth-client";
 import {
   addPaymentMethod,
   getNotificationPreferences,
@@ -11,7 +12,10 @@ import {
   updateNotificationPreferences,
   updatePassword,
 } from "@/lib/api";
+import { OrderTrackerClient } from "./order-tracker-client";
 import { useAuthStore } from "@/stores/auth-store";
+import { useCartStore } from "@/stores/cart-store";
+import { useWishlistStore } from "@/stores/wishlist-store";
 import type { NotificationPreference, UserPaymentMethod, UserPaymentType } from "@/types/marketplace";
 
 const defaultNotifications: Omit<NotificationPreference, "id" | "userId"> = {
@@ -22,8 +26,11 @@ const defaultNotifications: Omit<NotificationPreference, "id" | "userId"> = {
 };
 
 export default function AccountPage() {
+  const router = useRouter();
   const user = useAuthStore((state) => state.user);
   const setUser = useAuthStore((state) => state.setUser);
+  const clearCart = useCartStore((state) => state.clearCart);
+  const clearWishlist = useWishlistStore((state) => state.clear);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -164,6 +171,15 @@ export default function AccountPage() {
     }
   };
 
+  const onLogout = async () => {
+    await logoutUser();
+    clearCart();
+    clearWishlist();
+    setUser(null);
+    router.push("/");
+    router.refresh();
+  };
+
   return (
     <main className="mx-auto w-full max-w-4xl space-y-8 px-4 py-10 lg:px-10">
       <header className="space-y-3 border-b border-zinc-300 pb-5">
@@ -182,11 +198,14 @@ export default function AccountPage() {
             <p className="text-lg">{user.role}</p>
             <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Quick Access</p>
             <div className="mt-2 flex gap-3">
-              <Link href="/wishlist" className="border border-black px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em]">
-                Wishlist
+              <Link href="/account/orders" className="border border-black px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em]">
+                Orders
               </Link>
               <Link href="/cart" className="border border-black px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em]">
                 Cart
+              </Link>
+              <Link href="/wishlist" className="border border-black px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em]">
+                Wishlist
               </Link>
             </div>
           </article>
@@ -270,13 +289,19 @@ export default function AccountPage() {
             {paymentFeedback ? <p className="text-xs text-zinc-700">{paymentFeedback}</p> : null}
           </article>
 
+          <article className="md:col-span-2">
+            <OrderTrackerClient compact />
+          </article>
+
           <article className="space-y-3 border border-zinc-300 p-6 md:col-span-2">
             <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Account Management</p>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              <Link href="/wishlist" className="border border-zinc-300 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em]">Wishlist</Link>
+              <Link href="/account/orders" className="border border-zinc-300 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em]">Orders</Link>
               <Link href="/cart" className="border border-zinc-300 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em]">Cart</Link>
+              <Link href="/wishlist" className="border border-zinc-300 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em]">Wishlist</Link>
               <Link href="/offers" className="border border-zinc-300 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em]">Offers</Link>
               <span className="border border-zinc-300 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em]">Notification Preferences</span>
+              <button type="button" onClick={() => void onLogout()} className="border border-black bg-black px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-white">Logout</button>
             </div>
             <form className="space-y-2 border border-zinc-200 p-4" onSubmit={onSaveNotifications}>
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={notificationPrefs.orderUpdates} onChange={(event) => setNotificationPrefs((current) => ({ ...current, orderUpdates: event.target.checked }))} /> Order updates</label>

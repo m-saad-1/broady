@@ -4,8 +4,10 @@ import type { Product } from "@/types/marketplace";
 
 type CartState = {
   items: { product: Product; quantity: number; selectedColor?: string; selectedSize?: string }[];
+  setItems: (items: { product: Product; quantity: number; selectedColor?: string; selectedSize?: string }[]) => void;
   addToCart: (product: Product, options?: { selectedColor?: string; selectedSize?: string }) => void;
   removeFromCart: (productId: string, options?: { selectedColor?: string; selectedSize?: string }) => void;
+  removeByKeys: (keys: string[]) => void;
   updateQuantity: (productId: string, quantity: number, options?: { selectedColor?: string; selectedSize?: string }) => void;
   clearCart: () => void;
 };
@@ -14,6 +16,7 @@ export const useCartStore = create<CartState>()(
   persist(
     (set) => ({
       items: [],
+      setItems: (items) => set({ items }),
       addToCart: (product, options) =>
         set((state) => {
           const existing = state.items.find(
@@ -54,6 +57,12 @@ export const useCartStore = create<CartState>()(
                 (options?.selectedColor ? item.selectedColor === options.selectedColor : true) &&
                 (options?.selectedSize ? item.selectedSize === options.selectedSize : true)
               ),
+          ),
+        })),
+      removeByKeys: (keys) =>
+        set((state) => ({
+          items: state.items.filter(
+            (item) => !keys.includes(`${item.product.id}:${item.selectedSize || ""}:${item.selectedColor || ""}`),
           ),
         })),
       updateQuantity: (productId, quantity, options) =>

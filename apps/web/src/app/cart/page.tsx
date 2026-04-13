@@ -48,6 +48,9 @@ export default function CartPage() {
   );
 
   const previewItem = items.find((item) => getRowKey(item) === previewItemKey) || null;
+  const checkoutHref = selectedRows.length
+    ? `/checkout?items=${encodeURIComponent(selectedRows.join(","))}`
+    : "/checkout";
 
   return (
     <main className="mx-auto w-full max-w-4xl space-y-8 px-4 py-10 lg:px-10">
@@ -149,7 +152,7 @@ export default function CartPage() {
         </div>
       </section>
 
-      <Link href="/checkout" className="inline-flex h-11 items-center border border-black bg-black px-6 text-xs font-semibold uppercase tracking-[0.15em] text-white">
+      <Link href={checkoutHref} className="inline-flex h-11 items-center border border-black bg-black px-6 text-xs font-semibold uppercase tracking-[0.15em] text-white">
         {selectedRows.length ? `Checkout Selected (${selectedRows.length})` : "Proceed to Checkout"}
       </Link>
 

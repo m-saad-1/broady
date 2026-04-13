@@ -28,7 +28,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
 
   const sameTopCategory = products.filter((item) => item.topCategory === product.topCategory && item.id !== product.id);
   const sameSubcategory = sameTopCategory.filter((item) => item.subCategory === product.subCategory);
-  const related = (sameSubcategory.length ? sameSubcategory : sameTopCategory).slice(0, 3);
+  const related = (sameSubcategory.length ? sameSubcategory : sameTopCategory).slice(0, 4);
 
   return (
     <main className="mx-auto w-full max-w-7xl space-y-12 px-4 py-10 lg:px-10">
@@ -36,7 +36,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
 
       <section className="space-y-5">
         <h2 className="font-heading text-3xl uppercase">Related Pieces</h2>
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {related.map((item) => (
             <ProductCard key={item.id} product={item} />
           ))}

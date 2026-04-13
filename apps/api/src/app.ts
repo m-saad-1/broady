@@ -6,6 +6,7 @@ import morgan from "morgan";
 import { env } from "./config/env.js";
 import authRoutes from "./modules/auth/auth.routes.js";
 import brandsRoutes from "./modules/brands/brands.routes.js";
+import brandDashboardRoutes from "./modules/brands/brand-dashboard.routes.js";
 import ordersRoutes from "./modules/orders/orders.routes.js";
 import productsRoutes from "./modules/products/products.routes.js";
 import usersRoutes from "./modules/users/users.routes.js";
@@ -14,10 +15,24 @@ import { errorHandler } from "./middleware/error-handler.js";
 
 const app = express();
 
+const allowedOrigins = new Set([
+	env.webAppUrl,
+	"http://localhost:3000",
+	"http://localhost:3001",
+	"http://localhost:3002",
+]);
+
 app.use(helmet());
 app.use(
 	cors({
-		origin: env.webAppUrl,
+		origin: (origin, callback) => {
+			// Allow server-to-server requests and local dev frontend ports.
+			if (!origin || allowedOrigins.has(origin)) {
+				callback(null, true);
+				return;
+			}
+			callback(new Error(`CORS blocked for origin: ${origin}`));
+		},
 		credentials: true,
 	}),
 );
@@ -29,6 +44,7 @@ app.get("/health", (_req, res) => res.json({ status: "ok", service: "broady-api"
 
 app.use("/api/auth", authRoutes);
 app.use("/api/brands", brandsRoutes);
+app.use("/api/brand-dashboard", brandDashboardRoutes);
 app.use("/api/products", productsRoutes);
 app.use("/api/orders", ordersRoutes);
 app.use("/api/users", usersRoutes);

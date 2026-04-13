@@ -10,6 +10,7 @@ export type Brand = {
 export type Product = {
   id: string;
   brandId: string;
+  approvalStatus?: "DRAFT" | "PENDING" | "APPROVED" | "REJECTED";
   name: string;
   slug: string;
   description: string;
@@ -44,7 +45,8 @@ export type User = {
   id: string;
   fullName: string;
   email: string;
-  role: "USER" | "ADMIN";
+  role: "USER" | "ADMIN" | "BRAND" | "BRAND_ADMIN" | "BRAND_STAFF" | "SUPER_ADMIN";
+  brandId?: string | null;
 };
 
 export type BrandWithProducts = Brand & {
@@ -70,4 +72,145 @@ export type NotificationPreference = {
   promoEmails: boolean;
   securityAlerts: boolean;
   wishlistAlerts: boolean;
+};
+
+export type OrderStatus = "PENDING" | "CONFIRMED" | "PACKED" | "SHIPPED" | "DELIVERED" | "CANCELED";
+
+export type PaymentStatus = "PENDING" | "HELD" | "BRAND_COLLECTS_COD" | "COMPLETED";
+
+export type OrderStatusLog = {
+  id: string;
+  status: OrderStatus;
+  updatedBy: "SYSTEM" | "BRAND" | "ADMIN";
+  updatedById?: string | null;
+  note?: string | null;
+  createdAt: string;
+};
+
+export type BrandDashboardOrder = {
+  id: string;
+  status: OrderStatus;
+  paymentMethod: "COD" | "JAZZCASH" | "EASYPAISA";
+  paymentStatus: PaymentStatus;
+  totalPkr: number;
+  deliveryAddress: string;
+  trackingId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  user: { id: string; fullName: string; email: string };
+  items: Array<{
+    id: string;
+    quantity: number;
+    unitPricePkr: number;
+    product: Product;
+    brand?: Brand;
+  }>;
+  statusLogs: OrderStatusLog[];
+};
+
+export type UserOrder = {
+  id: string;
+  status: OrderStatus;
+  paymentMethod: "COD" | "JAZZCASH" | "EASYPAISA";
+  paymentStatus: PaymentStatus;
+  totalPkr: number;
+  deliveryAddress: string;
+  trackingId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  user: { id: string; fullName: string; email: string };
+  items: Array<{
+    id: string;
+    quantity: number;
+    unitPricePkr: number;
+    product: Product;
+    brand?: Brand;
+  }>;
+  statusLogs: OrderStatusLog[];
+};
+
+export type BrandDashboardOverview = {
+  brand: Brand & {
+    commissionRate: number;
+    apiEnabled: boolean;
+    contactEmail?: string | null;
+    whatsappNumber?: string | null;
+  };
+  metrics: {
+    totalProducts: number;
+    activeProducts: number;
+    grossPkr: number;
+    estimatedNetPkr: number;
+    commissionRate: number;
+    orderItems: number;
+    byStatus: Record<string, number>;
+  };
+  recentOrders: BrandDashboardOrder[];
+};
+
+export type NotificationItem = {
+  id: string;
+  type: "ORDER_PLACED" | "ORDER_STATUS_UPDATED" | "BRAND_ORDER_ASSIGNED";
+  title: string;
+  message: string;
+  readAt?: string | null;
+  createdAt: string;
+  order?: { id: string; status: OrderStatus; trackingId?: string | null };
+  channels: Array<{
+    id: string;
+    channel: "DASHBOARD" | "EMAIL" | "WHATSAPP";
+    status: "SENT" | "QUEUED" | "FAILED";
+    recipient: string;
+  }>;
+};
+
+export type BrandProvisioningResponse = {
+  brand: Brand & {
+    commissionRate?: number;
+    apiEnabled?: boolean;
+    contactEmail?: string | null;
+    whatsappNumber?: string | null;
+  };
+  account: User;
+  inviteUrl: string;
+  brandEmail: string;
+};
+
+export type AdminBrandDashboardRecord = {
+  brand: Brand & {
+    contactEmail?: string | null;
+    whatsappNumber?: string | null;
+    commissionRate: number;
+    apiEnabled: boolean;
+    createdAt: string;
+  };
+  products: Product[];
+  orders: Array<{
+    id: string;
+    status: OrderStatus;
+    paymentMethod: "COD" | "JAZZCASH" | "EASYPAISA";
+    paymentStatus: PaymentStatus;
+    deliveryAddress: string;
+    trackingId?: string | null;
+    totalPkr: number;
+    createdAt: string;
+    updatedAt: string;
+    user: { id: string; fullName: string; email: string };
+    statusLogs: OrderStatusLog[];
+    items: Array<{
+      id: string;
+      quantity: number;
+      unitPricePkr: number;
+      createdAt: string;
+      product: Product;
+    }>;
+  }>;
+  metrics: {
+    totalProducts: number;
+    activeProducts: number;
+    pendingProducts: number;
+    totalOrders: number;
+    grossPkr: number;
+    statusCounts: Record<string, number>;
+  };
 };

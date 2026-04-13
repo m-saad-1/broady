@@ -28,6 +28,12 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false);
   const setUser = useAuthStore((state) => state.setUser);
 
+  const resolveNextRoute = (role?: string) => {
+    if (role === "SUPER_ADMIN" || role === "ADMIN") return "/admin";
+    if (role === "BRAND_ADMIN" || role === "BRAND_STAFF" || role === "BRAND") return "/brand/dashboard";
+    return "/catalog";
+  };
+
   useEffect(() => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     if (!clientId) return;
@@ -53,7 +59,7 @@ export default function RegisterPage() {
             setIsLoading(true);
             const user = await loginWithGoogleIdToken(credential);
             setUser(user);
-            const nextUrl = user.role === "ADMIN" ? "/admin" : "/catalog";
+            const nextUrl = resolveNextRoute(user.role);
             router.push(nextUrl);
             router.refresh();
           } catch (error) {
@@ -94,7 +100,7 @@ export default function RegisterPage() {
       setIsLoading(true);
       const user = await registerUser({ fullName, email, password });
       setUser(user);
-      router.push("/catalog");
+      router.push(resolveNextRoute(user.role));
       router.refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to register.");

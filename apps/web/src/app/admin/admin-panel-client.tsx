@@ -2,12 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  approveProduct,
   createBrand,
   createProduct,
   deleteBrand,
   deleteProduct,
   getAdminBrands,
   getAdminProducts,
+  getPendingProducts,
+  rejectProduct,
   updateBrand,
   updateProduct,
 } from "@/lib/api";
@@ -102,13 +105,20 @@ export function AdminPanelClient() {
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [brandForm, setBrandForm] = useState<BrandFormState>(defaultBrandForm);
   const [productForm, setProductForm] = useState<ProductFormState>(defaultProductForm);
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [pendingProducts, setPendingProducts] = useState<Product[]>([]);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [nextBrands, nextProducts] = await Promise.all([getAdminBrands(), getAdminProducts()]);
+      const [nextBrands, nextProducts, nextPendingProducts] = await Promise.all([
+        getAdminBrands(),
+        getAdminProducts(),
+        getPendingProducts(),
+      ]);
       setBrands(nextBrands);
       setProducts(nextProducts);
+      setPendingProducts(nextPendingProducts);
       setProductForm((current) => ({
         ...current,
         brandId: current.brandId || nextBrands[0]?.id || "",
@@ -151,7 +161,8 @@ export function AdminPanelClient() {
         await updateBrand(editingBrandId, payload);
         pushToast("Brand updated", "success");
       } else {
-        await createBrand(payload);
+        const result = await createBrand(payload);
+        setInviteUrl(result.inviteUrl);
         pushToast("Brand created", "success");
       }
 
@@ -244,8 +255,38 @@ export function AdminPanelClient() {
     }
   };
 
+  const handleApproveProduct = async (product: Product) => {
+    try {
+      await approveProduct(product.id);
+      pushToast("Product approved", "success");
+      await loadData();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to approve product";
+      pushToast(message, "error");
+    }
+  };
+
+  const handleRejectProduct = async (product: Product) => {
+    try {
+      await rejectProduct(product.id, "Rejected by Broady");
+      pushToast("Product rejected", "success");
+      await loadData();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to reject product";
+      pushToast(message, "error");
+    }
+  };
+
   return (
     <div className="space-y-8">
+      {inviteUrl ? (
+        <section className="border border-black bg-black p-4 text-white">
+          <p className="text-xs uppercase tracking-[0.16em] text-zinc-300">Brand invite</p>
+          <p className="mt-2 text-sm">A secure invite link was generated for the new brand account.</p>
+          <p className="mt-2 break-all text-sm underline">{inviteUrl}</p>
+        </section>
+      ) : null}
+
       <section className="grid gap-4 md:grid-cols-3">
         <article className="border border-zinc-300 p-5">
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Brands</p>
@@ -260,6 +301,37 @@ export function AdminPanelClient() {
           <p className="mt-3 font-heading text-4xl">{totals.activeProducts}</p>
         </article>
       </section>
+
+      {pendingProducts.length ? (
+        <section className="space-y-3 border border-amber-300 bg-amber-50 p-4">
+          <h2 className="font-heading text-3xl uppercase">Pending Product Approvals</h2>
+          {pendingProducts.map((product) => (
+            <div key={product.id} className="grid gap-3 border-b border-amber-200 py-3 md:grid-cols-[2fr_1fr_auto] md:items-center">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.08em]">{product.name}</p>
+                <p className="text-xs text-zinc-700">{product.brand?.name || "Brand"} / {product.topCategory} / {product.subCategory}</p>
+              </div>
+              <p className="text-sm">PKR {product.pricePkr.toLocaleString()}</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleApproveProduct(product)}
+                  className="h-9 border border-black bg-black px-3 text-xs font-semibold uppercase tracking-[0.12em] text-white"
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleRejectProduct(product)}
+                  className="h-9 border border-zinc-300 px-3 text-xs font-semibold uppercase tracking-[0.12em]"
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          ))}
+        </section>
+      ) : null}
 
       <section className="grid gap-6 lg:grid-cols-2">
         <form className="space-y-3 border border-zinc-300 p-4" onSubmit={handleBrandSubmit}>
@@ -490,7 +562,7 @@ export function AdminPanelClient() {
             <span>{product.name}</span>
             <span>{product.brand?.name || "-"}</span>
             <span>{product.topCategory} / {product.subCategory}</span>
-            <span>PKR {product.pricePkr.toLocaleString()}</span>
+            <span>PKR {product.pricePkr.toLocaleString()} {product.approvalStatus ? `(${product.approvalStatus})` : ""}</span>
             <div className="flex gap-2">
               <button
                 type="button"

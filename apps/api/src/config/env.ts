@@ -12,6 +12,9 @@ export const env = {
   cloudinaryUrl: process.env.CLOUDINARY_URL || "",
   awsS3Bucket: process.env.AWS_S3_BUCKET || "",
   cloudflareCdnUrl: process.env.CLOUDFLARE_CDN_URL || "",
+  resendApiKey: process.env.RESEND_API_KEY || "",
+  emailFromAddress: process.env.EMAIL_FROM_ADDRESS || "notifications@broady.pk",
+  whatsappWebhookUrl: process.env.WHATSAPP_WEBHOOK_URL || "",
   nodeEnv: process.env.NODE_ENV || "development",
 };
 

@@ -16,7 +16,7 @@ export default function WishlistPage() {
       {items.length === 0 ? (
         <p className="border border-zinc-300 p-6 text-sm uppercase tracking-[0.12em] text-zinc-600">No products saved yet.</p>
       ) : (
-        <section className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <section className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {items.map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}

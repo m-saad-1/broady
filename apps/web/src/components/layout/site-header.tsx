@@ -2,16 +2,16 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { fetchCurrentUser, logoutUser } from "@/lib/auth-client";
-import { getWishlistProducts } from "@/lib/api";
+import { usePathname, useRouter } from "next/navigation";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { fetchCurrentUser } from "@/lib/auth-client";
+import { addWishlistProduct, getUserCartItems, getUserNotifications, getWishlistProducts, syncUserCartItems } from "@/lib/api";
 import { fallbackProducts } from "@/lib/mock-data";
 import { useMockFallback } from "@/lib/runtime-flags";
 import { useAuthStore } from "@/stores/auth-store";
 import { useCartStore } from "@/stores/cart-store";
 import { useWishlistStore } from "@/stores/wishlist-store";
-import type { Product } from "@/types/marketplace";
+import type { NotificationItem, Product } from "@/types/marketplace";
 
 function scoreProductMatch(product: Product, query: string) {
   const q = query.trim().toLowerCase();
@@ -33,8 +33,40 @@ function scoreProductMatch(product: Product, query: string) {
   return 0;
 }
 
-const navLinkClass =
-  "relative after:absolute after:-bottom-1 after:left-0 after:h-px after:w-full after:origin-left after:scale-x-0 after:bg-black after:transition-transform after:duration-200 hover:after:scale-x-100";
+function getCartKey(item: { product: Product; selectedColor?: string; selectedSize?: string }) {
+  return `${item.product.id}:${item.selectedSize || ""}:${item.selectedColor || ""}`;
+}
+
+const baseNavLinkClass =
+  "relative whitespace-nowrap after:absolute after:-bottom-1 after:left-0 after:h-px after:w-full after:origin-left after:bg-black after:transition-transform after:duration-200";
+
+const primaryNavItems = [
+  { href: "/category/Men", label: "Men" },
+  { href: "/category/Women", label: "Women" },
+  { href: "/category/Kids", label: "Kids" },
+  { href: "/catalog", label: "Catalog" },
+  { href: "/offers", label: "Offers" },
+  { href: "/brands", label: "Brands" },
+];
+
+function isLinkActive(pathname: string, href: string) {
+  if (href === "/catalog") {
+    return pathname === "/catalog" || pathname.startsWith("/product/");
+  }
+  if (href.startsWith("/category/")) {
+    return pathname === href;
+  }
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function navLinkClass(pathname: string, href: string) {
+  const active = isLinkActive(pathname, href);
+  return `${baseNavLinkClass} ${active ? "after:scale-x-100" : "after:scale-x-0 hover:after:scale-x-100"}`;
+}
+
+function canAccessBrandArea(role?: string) {
+  return role === "BRAND_ADMIN" || role === "BRAND_STAFF" || role === "BRAND";
+}
 
 function IconButton({
   children,
@@ -89,7 +121,10 @@ function IconButton({
 
 export function SiteHeader() {
   const router = useRouter();
+  const pathname = usePathname();
   const cartCount = useCartStore((state) => state.items.length);
+  const cartItems = useCartStore((state) => state.items);
+  const setCartItems = useCartStore((state) => state.setItems);
   const clearCart = useCartStore((state) => state.clearCart);
   const wishlistCount = useWishlistStore((state) => state.items.length);
   const setWishlistItems = useWishlistStore((state) => state.setItems);
@@ -100,6 +135,11 @@ export function SiteHeader() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [liveResults, setLiveResults] = useState<Product[]>([]);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationError, setNotificationError] = useState<string | null>(null);
+  const cartSyncEnabledRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -108,24 +148,55 @@ export function SiteHeader() {
       setUser(currentUser);
       if (currentUser) {
         try {
-          const products = await getWishlistProducts();
+          const [products, remoteCartItems] = await Promise.all([getWishlistProducts(), getUserCartItems()]);
           if (active) {
+            const localCartItems = useCartStore.getState().items;
+            const mergedCartMap = new Map<string, { product: Product; quantity: number; selectedColor?: string; selectedSize?: string }>();
+            for (const entry of remoteCartItems) {
+              mergedCartMap.set(getCartKey(entry), { ...entry });
+            }
+            for (const entry of localCartItems) {
+              const key = getCartKey(entry);
+              const existing = mergedCartMap.get(key);
+              if (existing) {
+                mergedCartMap.set(key, { ...existing, quantity: existing.quantity + entry.quantity });
+              } else {
+                mergedCartMap.set(key, { ...entry });
+              }
+            }
+            const mergedCart = Array.from(mergedCartMap.values());
+            setCartItems(mergedCart);
+            await syncUserCartItems(
+              mergedCart.map((entry) => ({
+                productId: entry.product.id,
+                quantity: entry.quantity,
+                selectedColor: entry.selectedColor,
+                selectedSize: entry.selectedSize,
+              })),
+              { merge: false },
+            );
+
             const localWishlistItems = useWishlistStore.getState().items;
             const seen = new Set(products.map((item) => item.slug));
             const merged = [...products];
             for (const localItem of localWishlistItems) {
               if (!seen.has(localItem.slug)) {
                 merged.push(localItem);
+                await addWishlistProduct(localItem.id).catch(() => undefined);
               }
             }
             setWishlistItems(merged);
+            cartSyncEnabledRef.current = true;
           }
         } catch {
           if (active) {
+            setCartItems(useCartStore.getState().items);
             setWishlistItems(useWishlistStore.getState().items);
+            cartSyncEnabledRef.current = true;
           }
         }
       } else {
+        cartSyncEnabledRef.current = false;
         clearWishlist();
       }
       setInitialized(true);
@@ -133,16 +204,61 @@ export function SiteHeader() {
     return () => {
       active = false;
     };
-  }, [clearWishlist, setInitialized, setUser, setWishlistItems]);
+  }, [clearWishlist, setCartItems, setInitialized, setUser, setWishlistItems]);
 
-  const onLogout = async () => {
-    await logoutUser();
-    clearCart();
-    clearWishlist();
-    setUser(null);
-    router.push("/");
-    router.refresh();
-  };
+  useEffect(() => {
+    if (!user || !cartSyncEnabledRef.current) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      void syncUserCartItems(
+        cartItems.map((entry) => ({
+          productId: entry.product.id,
+          quantity: entry.quantity,
+          selectedColor: entry.selectedColor,
+          selectedSize: entry.selectedSize,
+        })),
+        { merge: false },
+      );
+    }, 350);
+
+    return () => window.clearTimeout(timeout);
+  }, [cartItems, user]);
+
+  useEffect(() => {
+    if (!notificationsOpen) {
+      return;
+    }
+
+    if (!user) {
+      setNotifications([]);
+      setNotificationError(null);
+      return;
+    }
+
+    let active = true;
+    setNotificationsLoading(true);
+    setNotificationError(null);
+    getUserNotifications()
+      .then((items) => {
+        if (!active) return;
+        setNotifications(items);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setNotificationError(error instanceof Error ? error.message : "Unable to load notifications.");
+      })
+      .finally(() => {
+        if (active) {
+          setNotificationsLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [notificationsOpen, user]);
 
   useEffect(() => {
     if (!searchOpen || searchTerm.trim().length < 2) {
@@ -197,6 +313,7 @@ export function SiteHeader() {
   };
 
   const hasQuery = useMemo(() => searchTerm.trim().length > 0, [searchTerm]);
+  const unreadNotificationCount = useMemo(() => notifications.filter((item) => !item.readAt).length, [notifications]);
 
   return (
     <header className="sticky top-0 z-50 border-b border-zinc-300 bg-white">
@@ -206,13 +323,13 @@ export function SiteHeader() {
         </Link>
 
         <nav className="hidden items-center gap-5 text-xs font-semibold uppercase tracking-[0.14em] lg:flex">
-          <Link href="/brands" className={navLinkClass}>Brands</Link>
-          <Link href="/catalog" className={navLinkClass}>Catalog</Link>
-          <Link href="/offers" className={navLinkClass}>Offers</Link>
-          <Link href="/category/Men" className={navLinkClass}>Men</Link>
-          <Link href="/category/Women" className={navLinkClass}>Women</Link>
-          <Link href="/category/Kids" className={navLinkClass}>Kids</Link>
-          {user?.role === "ADMIN" ? <Link href="/admin" className={navLinkClass}>Admin</Link> : null}
+          {primaryNavItems.map((item) => (
+            <Link key={item.href} href={item.href} className={navLinkClass(pathname, item.href)}>
+              {item.label}
+            </Link>
+          ))}
+          {canAccessBrandArea(user?.role) ? <Link href="/brand/dashboard" className={navLinkClass(pathname, "/brand/dashboard")}>Brand Dashboard</Link> : null}
+          {user?.role === "SUPER_ADMIN" || user?.role === "ADMIN" ? <Link href="/admin" className={navLinkClass(pathname, "/admin")}>Admin</Link> : null}
         </nav>
 
         <div className="flex items-center gap-2">
@@ -237,6 +354,13 @@ export function SiteHeader() {
             </svg>
           </IconButton>
 
+          <IconButton label="Notifications" onClick={() => setNotificationsOpen(true)} badge={unreadNotificationCount}>
+            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M12 4a4 4 0 0 0-4 4v2.8c0 .8-.3 1.5-.8 2.1L6 14.2V16h12v-1.8l-1.2-1.3a3 3 0 0 1-.8-2.1V8a4 4 0 0 0-4-4z" />
+              <path d="M10 18a2 2 0 0 0 4 0" />
+            </svg>
+          </IconButton>
+
           <IconButton href={user ? "/account" : "/login"} label={user ? "Profile" : "Login / Profile"}>
             <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
               <circle cx="12" cy="8" r="3.2" />
@@ -244,27 +368,18 @@ export function SiteHeader() {
             </svg>
           </IconButton>
 
-          {user ? (
-            <button
-              type="button"
-              onClick={onLogout}
-              className="ml-1 hidden h-10 border border-black bg-black px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-white sm:inline-flex sm:items-center"
-            >
-              Logout
-            </button>
-          ) : null}
         </div>
       </div>
 
       <div className="border-t border-zinc-200 px-4 py-2 lg:hidden">
         <nav className="mx-auto flex max-w-7xl items-center gap-5 overflow-x-auto text-[11px] font-semibold uppercase tracking-[0.12em]">
-          <Link href="/brands" className={navLinkClass}>Brands</Link>
-          <Link href="/catalog" className={navLinkClass}>Catalog</Link>
-          <Link href="/offers" className={navLinkClass}>Offers</Link>
-          <Link href="/category/Men" className={navLinkClass}>Men</Link>
-          <Link href="/category/Women" className={navLinkClass}>Women</Link>
-          <Link href="/category/Kids" className={navLinkClass}>Kids</Link>
-          {user?.role === "ADMIN" ? <Link href="/admin" className={navLinkClass}>Admin</Link> : null}
+          {primaryNavItems.map((item) => (
+            <Link key={item.href} href={item.href} className={navLinkClass(pathname, item.href)}>
+              {item.label}
+            </Link>
+          ))}
+          {canAccessBrandArea(user?.role) ? <Link href="/brand/dashboard" className={navLinkClass(pathname, "/brand/dashboard")}>Brand Dashboard</Link> : null}
+          {user?.role === "SUPER_ADMIN" || user?.role === "ADMIN" ? <Link href="/admin" className={navLinkClass(pathname, "/admin")}>Admin</Link> : null}
         </nav>
       </div>
 
@@ -329,6 +444,53 @@ export function SiteHeader() {
                 )}
               </div>
             ) : null}
+          </div>
+        </div>
+      </div>
+
+      <div
+        className={`pointer-events-none fixed inset-0 z-[75] transition ${notificationsOpen ? "opacity-100" : "opacity-0"}`}
+        aria-hidden={!notificationsOpen}
+      >
+        <div className="absolute inset-0 bg-black/40" onClick={() => setNotificationsOpen(false)} />
+        <div className={`pointer-events-auto absolute right-4 top-20 w-[min(94vw,420px)] border border-zinc-300 bg-white p-4 shadow-xl transition-transform duration-200 ${notificationsOpen ? "translate-y-0" : "-translate-y-4"}`}>
+          <div className="flex items-start justify-between gap-3 border-b border-zinc-200 pb-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Notifications</p>
+              <p className="mt-1 text-sm text-zinc-700">Recent updates for your account.</p>
+            </div>
+            <button type="button" className="border border-zinc-300 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]" onClick={() => setNotificationsOpen(false)}>
+              Close
+            </button>
+          </div>
+
+          <div className="mt-3 max-h-80 space-y-2 overflow-auto">
+            {!user ? (
+              <p className="text-sm text-zinc-700">Sign in to view your notifications.</p>
+            ) : notificationsLoading ? (
+              <p className="text-sm text-zinc-700">Loading notifications...</p>
+            ) : notificationError ? (
+              <p className="text-sm text-amber-700">{notificationError}</p>
+            ) : notifications.length ? (
+              notifications.slice(0, 5).map((item) => (
+                <article key={item.id} className="border border-zinc-200 p-3 text-sm">
+                  <p className="font-semibold uppercase tracking-[0.08em]">{item.title}</p>
+                  <p className="mt-1 text-zinc-600">{item.message}</p>
+                </article>
+              ))
+            ) : (
+              <p className="text-sm text-zinc-700">No notifications yet.</p>
+            )}
+          </div>
+
+          <div className="mt-4 border-t border-zinc-200 pt-3">
+            <Link
+              href="/account/notifications"
+              className="inline-flex h-10 w-full items-center justify-center border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white"
+              onClick={() => setNotificationsOpen(false)}
+            >
+              View All Notifications
+            </Link>
           </div>
         </div>
       </div>

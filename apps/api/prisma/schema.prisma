@@ -11,6 +11,10 @@ datasource db {
 enum Role {
   USER
   ADMIN
+  BRAND
+  BRAND_ADMIN
+  BRAND_STAFF
+  SUPER_ADMIN
 }
 
 enum AuthProvider {
@@ -21,9 +25,17 @@ enum AuthProvider {
 enum OrderStatus {
   PENDING
   CONFIRMED
+  PACKED
   SHIPPED
   DELIVERED
   CANCELED
+}
+
+enum PaymentStatus {
+  PENDING
+  HELD
+  BRAND_COLLECTS_COD
+  COMPLETED
 }
 
 enum PaymentMethod {
@@ -39,6 +51,37 @@ enum UserPaymentType {
   BANK
 }
 
+enum OrderStatusUpdatedBy {
+  SYSTEM
+  BRAND
+  ADMIN
+}
+
+enum NotificationType {
+  ORDER_PLACED
+  ORDER_STATUS_UPDATED
+  BRAND_ORDER_ASSIGNED
+}
+
+enum NotificationChannel {
+  DASHBOARD
+  EMAIL
+  WHATSAPP
+}
+
+enum NotificationDeliveryStatus {
+  SENT
+  QUEUED
+  FAILED
+}
+
+enum ProductApprovalStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model User {
   id          String         @id @default(cuid())
   email       String         @unique
@@ -47,6 +90,11 @@ model User {
   googleId    String?        @unique
   authProvider AuthProvider  @default(LOCAL)
   role        Role           @default(USER)
+  brandId     String?        @unique
+  brand       Brand?         @relation("BrandOwnership", fields: [brandId], references: [id], onDelete: SetNull)
+  brandInviteTokenHash String?
+  brandInviteTokenExpiresAt DateTime?
+  brandInviteAcceptedAt DateTime?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   sessions    Session[]
@@ -55,6 +103,8 @@ model User {
   wishlistItems WishlistItem[]
   paymentMethods UserPaymentMethod[]
   notificationPreference NotificationPreference?
+  brandMemberships BrandMember[]
+  notifications Notification[]
 }
 
 model UserPaymentMethod {
@@ -100,10 +150,12 @@ model CartItem {
   productId  String
   product    Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
   quantity   Int       @default(1)
+  selectedColor String?
+  selectedSize  String?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  @@unique([cartId, productId])
+  @@unique([cartId, productId, selectedColor, selectedSize])
   @@index([productId])
 }
 
@@ -128,15 +180,39 @@ model Brand {
   logoUrl     String?
   description String?
   verified    Boolean   @default(true)
+  commissionRate Float  @default(12)
+  apiEnabled   Boolean  @default(false)
+  contactEmail String?
+  whatsappNumber String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   products    Product[]
+  members     BrandMember[]
+  orderItems  OrderItem[]
+  notifications Notification[]
+  owner       User?         @relation("BrandOwnership")
+}
+
+model BrandMember {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brandId          String
+  brand            Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  canManageProducts Boolean @default(true)
+  createdAt        DateTime @default(now())
+
+  @@unique([userId, brandId])
+  @@index([brandId])
 }
 
 model Product {
   id          String    @id @default(cuid())
   brandId     String
   brand       Brand     @relation(fields: [brandId], references: [id])
+  approvalStatus ProductApprovalStatus @default(APPROVED)
+  approvalReviewedAt DateTime?
+  approvalReviewedById String?
   name        String
   slug        String    @unique
   description String
@@ -175,11 +251,15 @@ model Order {
   user          User          @relation(fields: [userId], references: [id])
   status        OrderStatus   @default(PENDING)
   paymentMethod PaymentMethod
+  paymentStatus PaymentStatus @default(PENDING)
   totalPkr      Int
   deliveryAddress String
+  trackingId    String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   items         OrderItem[]
+  statusLogs    OrderStatusLog[]
+  notifications Notification[]
 
   @@index([userId, status])
 }
@@ -190,6 +270,55 @@ model OrderItem {
   order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId  String
   product    Product  @relation(fields: [productId], references: [id])
+  brandId    String
+  brand      Brand    @relation(fields: [brandId], references: [id])
   quantity   Int
   unitPricePkr Int
+
+  @@index([brandId, orderId])
+}
+
+model OrderStatusLog {
+  id          String               @id @default(cuid())
+  orderId     String
+  order       Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status      OrderStatus
+  updatedBy   OrderStatusUpdatedBy
+  updatedById String?
+  note        String?
+  createdAt   DateTime             @default(now())
+
+  @@index([orderId, createdAt])
+}
+
+model Notification {
+  id        String                @id @default(cuid())
+  type      NotificationType
+  title     String
+  message   String
+  userId    String?
+  user      User?                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brandId   String?
+  brand     Brand?                @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  orderId   String?
+  order     Order?                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  readAt    DateTime?
+  createdAt DateTime              @default(now())
+  channels  NotificationChannelLog[]
+
+  @@index([userId, createdAt])
+  @@index([brandId, createdAt])
+}
+
+model NotificationChannelLog {
+  id             String                     @id @default(cuid())
+  notificationId String
+  notification   Notification               @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  channel        NotificationChannel
+  status         NotificationDeliveryStatus
+  recipient      String
+  error          String?
+  createdAt      DateTime                   @default(now())
+
+  @@index([notificationId])
 }

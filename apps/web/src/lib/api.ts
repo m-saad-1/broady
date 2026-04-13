@@ -1,11 +1,19 @@
 import { fallbackBrands, fallbackProducts } from "./mock-data";
 import { useMockFallback } from "./runtime-flags";
+import { clearStoredAuthToken, getStoredAuthToken } from "@/lib/auth-client";
 import { normalizeProduct } from "@/lib/taxonomy";
 import type {
+  AdminBrandDashboardRecord,
   Brand,
+  BrandProvisioningResponse,
+  BrandDashboardOrder,
+  BrandDashboardOverview,
   BrandWithProducts,
+  CartItem,
+  NotificationItem,
   NotificationPreference,
   Product,
+  UserOrder,
   UserPaymentMethod,
   UserPaymentType,
 } from "@/types/marketplace";
@@ -13,6 +21,19 @@ import type {
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
 type ApiEnvelope<T> = { data: T };
+type ApiErrorBody = { message?: string; code?: string };
+
+export class ApiRequestError extends Error {
+  status: number;
+  code?: string;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+    this.code = code;
+  }
+}
 
 function mergeProductsWithFallback(products: Product[]): Product[] {
   const normalizedApi = products.map(normalizeProduct);
@@ -33,10 +54,11 @@ function mergeProductsWithFallback(products: Product[]): Product[] {
 
 async function safeFetch<T>(path: string): Promise<T> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 3000);
+  const timeout = setTimeout(() => controller.abort(), 8000);
   try {
     const response = await fetch(`${API_BASE}${path}`, {
-      next: { revalidate: 60 },
+      cache: "no-store",
+      next: { revalidate: 0 },
       signal: controller.signal,
     });
     if (!response.ok) throw new Error("API failed");
@@ -50,26 +72,39 @@ async function safeFetch<T>(path: string): Promise<T> {
 }
 
 async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const authToken = getStoredAuthToken();
   const response = await fetch(`${API_BASE}${path}`, {
     credentials: "include",
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       ...(init?.headers || {}),
     },
   });
 
   if (!response.ok) {
     let message = `Request failed: ${response.status}`;
+    let code: string | undefined;
     try {
-      const json = (await response.json()) as { message?: string };
+      const json = (await response.json()) as ApiErrorBody;
       if (json.message) {
         message = json.message;
       }
+      code = json.code;
     } catch {
       // Ignore non-JSON error bodies.
     }
-    throw new Error(message);
+
+    if (
+      response.status === 401 &&
+      /unauthorized|token expired|session expired|invalid token|session revoked/i.test(message)
+    ) {
+      clearStoredAuthToken();
+      throw new ApiRequestError("Your session expired. Please sign in again and retry.", response.status, code || "AUTH_SESSION_EXPIRED");
+    }
+
+    throw new ApiRequestError(message, response.status, code);
   }
 
   if (response.status === 204) {
@@ -96,6 +131,9 @@ export async function getBrands(): Promise<Brand[]> {
 
     return merged;
   } catch {
+    if (!useMockFallback) {
+      return [];
+    }
     return fallbackBrands;
   }
 }
@@ -154,6 +192,9 @@ export async function getProducts(params?: Record<string, string>): Promise<Prod
     }
     return fallbackProducts.map(normalizeProduct);
   } catch {
+    if (!useMockFallback) {
+      return [];
+    }
     return fallbackProducts.map(normalizeProduct);
   }
 }
@@ -173,6 +214,16 @@ export async function getProduct(slug: string): Promise<Product | null> {
 }
 
 type WishlistEnvelope = { data: Array<{ product: Product }> };
+type UserCartEnvelope = {
+  data: {
+    items: Array<{
+      quantity: number;
+      selectedColor?: string | null;
+      selectedSize?: string | null;
+      product: Product;
+    }>;
+  };
+};
 
 export async function getWishlistProducts(): Promise<Product[]> {
   const response = await authFetch<WishlistEnvelope>("/users/wishlist", { method: "GET" });
@@ -185,6 +236,33 @@ export async function addWishlistProduct(productId: string): Promise<void> {
 
 export async function removeWishlistProduct(productId: string): Promise<void> {
   await authFetch(`/users/wishlist/${productId}`, { method: "DELETE" });
+}
+
+export async function getUserCartItems(): Promise<CartItem[]> {
+  const response = await authFetch<UserCartEnvelope>("/users/cart", { method: "GET" });
+  return response.data.items.map((item) => ({
+    quantity: item.quantity,
+    product: normalizeProduct(item.product),
+    selectedColor: item.selectedColor || undefined,
+    selectedSize: item.selectedSize || undefined,
+  }));
+}
+
+export async function syncUserCartItems(
+  items: Array<{ productId: string; quantity: number; selectedColor?: string; selectedSize?: string }>,
+  options?: { merge?: boolean },
+): Promise<CartItem[]> {
+  const response = await authFetch<UserCartEnvelope>("/users/cart", {
+    method: "PUT",
+    body: JSON.stringify({ items, merge: Boolean(options?.merge) }),
+  });
+
+  return response.data.items.map((item) => ({
+    quantity: item.quantity,
+    product: normalizeProduct(item.product),
+    selectedColor: item.selectedColor || undefined,
+    selectedSize: item.selectedSize || undefined,
+  }));
 }
 
 type CreateOrderPayload = {
@@ -205,14 +283,53 @@ export async function createOrder(payload: CreateOrderPayload): Promise<CreateOr
   });
 }
 
+export async function getUserOrders(): Promise<UserOrder[]> {
+  const response = await authFetch<ApiEnvelope<UserOrder[]>>("/orders/me", {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function getUserOrder(orderId: string): Promise<UserOrder> {
+  const response = await authFetch<ApiEnvelope<UserOrder>>(`/orders/me/${orderId}`, {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function cancelUserOrder(orderId: string, note?: string): Promise<UserOrder> {
+  const response = await authFetch<ApiEnvelope<UserOrder>>(`/orders/me/${orderId}/cancel`, {
+    method: "POST",
+    body: JSON.stringify(note ? { note } : {}),
+  });
+  return response.data;
+}
+
 export async function getAdminBrands(): Promise<Brand[]> {
   const response = await authFetch<ApiEnvelope<Brand[]>>("/brands", { method: "GET" });
   return response.data;
 }
 
 export async function getAdminProducts(): Promise<Product[]> {
-  const response = await authFetch<ApiEnvelope<Product[]>>("/products", { method: "GET" });
+  const response = await authFetch<ApiEnvelope<Product[]>>("/products/admin", { method: "GET" });
   return response.data.map(normalizeProduct);
+}
+
+export async function getAdminBrandDashboard(): Promise<AdminBrandDashboardRecord[]> {
+  const response = await authFetch<ApiEnvelope<AdminBrandDashboardRecord[]>>("/admin/brand-dashboard", {
+    method: "GET",
+  });
+  return response.data.map((entry) => ({
+    ...entry,
+    products: entry.products.map(normalizeProduct),
+    orders: entry.orders.map((order) => ({
+      ...order,
+      items: order.items.map((item) => ({
+        ...item,
+        product: normalizeProduct(item.product),
+      })),
+    })),
+  }));
 }
 
 type BrandMutationPayload = {
@@ -237,8 +354,8 @@ type ProductMutationPayload = {
   isActive?: boolean;
 };
 
-export async function createBrand(payload: BrandMutationPayload): Promise<Brand> {
-  const response = await authFetch<ApiEnvelope<Brand>>("/brands", {
+export async function createBrand(payload: BrandMutationPayload): Promise<BrandProvisioningResponse> {
+  const response = await authFetch<ApiEnvelope<BrandProvisioningResponse>>("/brands", {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -259,6 +376,35 @@ export async function deleteBrand(brandId: string): Promise<void> {
 
 export async function createProduct(payload: ProductMutationPayload): Promise<Product> {
   const response = await authFetch<ApiEnvelope<Product>>("/products", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return normalizeProduct(response.data);
+}
+
+export async function getPendingProducts(): Promise<Product[]> {
+  const response = await authFetch<ApiEnvelope<Product[]>>("/products/approval/pending", { method: "GET" });
+  return response.data.map(normalizeProduct);
+}
+
+export async function approveProduct(productId: string, note?: string): Promise<Product> {
+  const response = await authFetch<ApiEnvelope<Product>>(`/products/${productId}/approval`, {
+    method: "PATCH",
+    body: JSON.stringify({ approvalStatus: "APPROVED", note }),
+  });
+  return normalizeProduct(response.data);
+}
+
+export async function rejectProduct(productId: string, note?: string): Promise<Product> {
+  const response = await authFetch<ApiEnvelope<Product>>(`/products/${productId}/approval`, {
+    method: "PATCH",
+    body: JSON.stringify({ approvalStatus: "REJECTED", note }),
+  });
+  return normalizeProduct(response.data);
+}
+
+export async function submitBrandProduct(payload: Omit<ProductMutationPayload, "brandId">): Promise<Product> {
+  const response = await authFetch<ApiEnvelope<Product>>("/brand-dashboard/products", {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -332,6 +478,86 @@ export async function updateNotificationPreferences(
   const response = await authFetch<ApiEnvelope<NotificationPreference>>("/users/notification-preferences", {
     method: "PUT",
     body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function getUserNotifications(): Promise<NotificationItem[]> {
+  const response = await authFetch<ApiEnvelope<NotificationItem[]>>("/users/notifications", {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function markNotificationAsRead(notificationId: string): Promise<void> {
+  await authFetch(`/users/notifications/${notificationId}/read`, { method: "PATCH" });
+}
+
+export async function getBrandDashboardOverview(): Promise<BrandDashboardOverview> {
+  const response = await authFetch<ApiEnvelope<BrandDashboardOverview>>("/brand-dashboard/overview", {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function getBrandDashboardOrders(status?: string): Promise<BrandDashboardOrder[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  const response = await authFetch<ApiEnvelope<BrandDashboardOrder[]>>(`/brand-dashboard/orders${query}`, {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function getBrandDashboardOrder(orderId: string): Promise<BrandDashboardOrder> {
+  const response = await authFetch<ApiEnvelope<BrandDashboardOrder>>(`/brand-dashboard/orders/${orderId}`, {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function updateBrandOrderStatus(
+  orderId: string,
+  payload: { status: string; trackingId?: string; note?: string; customerNote?: string },
+): Promise<BrandDashboardOrder> {
+  const response = await authFetch<ApiEnvelope<BrandDashboardOrder>>(`/brand-dashboard/orders/${orderId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function updateAdminOrderStatus(
+  orderId: string,
+  payload: { status: string; trackingId?: string; note?: string; customerNote?: string },
+): Promise<BrandDashboardOrder> {
+  const response = await authFetch<ApiEnvelope<BrandDashboardOrder>>(`/orders/${orderId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function getBrandDashboardProducts(): Promise<Product[]> {
+  const response = await authFetch<ApiEnvelope<Product[]>>("/brand-dashboard/products", {
+    method: "GET",
+  });
+  return response.data.map(normalizeProduct);
+}
+
+export async function updateBrandDashboardProduct(
+  productId: string,
+  payload: Partial<Pick<Product, "name" | "slug" | "description" | "pricePkr" | "topCategory" | "subCategory" | "sizes" | "stock" | "isActive" | "imageUrl">>,
+): Promise<Product> {
+  const response = await authFetch<ApiEnvelope<Product>>(`/brand-dashboard/products/${productId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  return normalizeProduct(response.data);
+}
+
+export async function getBrandDashboardNotifications(): Promise<NotificationItem[]> {
+  const response = await authFetch<ApiEnvelope<NotificationItem[]>>("/brand-dashboard/notifications", {
+    method: "GET",
   });
   return response.data;
 }

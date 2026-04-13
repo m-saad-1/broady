@@ -32,6 +32,108 @@ const notificationSchema = z.object({
   wishlistAlerts: z.boolean(),
 });
 
+const cartSyncSchema = z.object({
+  merge: z.boolean().optional(),
+  items: z.array(
+    z.object({
+      productId: z.string().min(1),
+      quantity: z.number().int().min(1),
+      selectedColor: z.string().trim().min(1).max(60).optional(),
+      selectedSize: z.string().trim().min(1).max(40).optional(),
+    }),
+  ).max(200),
+});
+
+router.get("/cart", requireAuth, async (req, res) => {
+  const cart = await prisma.cart.upsert({
+    where: { userId: req.auth!.userId },
+    create: { userId: req.auth!.userId },
+    update: {},
+    include: {
+      items: {
+        include: { product: { include: { brand: true } } },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+
+  return res.json({ data: cart });
+});
+
+router.put("/cart", requireAuth, async (req, res) => {
+  const parsed = cartSyncSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.flatten() });
+  }
+
+  const uniqueProductIds = Array.from(new Set(parsed.data.items.map((item) => item.productId)));
+  if (uniqueProductIds.length) {
+    const validProducts = await prisma.product.findMany({
+      where: { id: { in: uniqueProductIds }, isActive: true, approvalStatus: "APPROVED" },
+      select: { id: true },
+    });
+    const validSet = new Set(validProducts.map((item) => item.id));
+    const invalid = uniqueProductIds.filter((id) => !validSet.has(id));
+    if (invalid.length) {
+      return res.status(400).json({ message: "One or more cart products are invalid or inactive", invalidProductIds: invalid });
+    }
+  }
+
+  const cart = await prisma.$transaction(async (tx) => {
+    const ensuredCart = await tx.cart.upsert({
+      where: { userId: req.auth!.userId },
+      create: { userId: req.auth!.userId },
+      update: {},
+      select: { id: true },
+    });
+
+    if (!parsed.data.merge) {
+      await tx.cartItem.deleteMany({ where: { cartId: ensuredCart.id } });
+    }
+
+    for (const item of parsed.data.items) {
+      const existing = await tx.cartItem.findFirst({
+        where: {
+          cartId: ensuredCart.id,
+          productId: item.productId,
+          selectedColor: item.selectedColor || null,
+          selectedSize: item.selectedSize || null,
+        },
+        select: { id: true, quantity: true },
+      });
+
+      if (existing) {
+        await tx.cartItem.update({
+          where: { id: existing.id },
+          data: { quantity: parsed.data.merge ? existing.quantity + item.quantity : item.quantity },
+        });
+      } else {
+        await tx.cartItem.create({
+          data: {
+            cartId: ensuredCart.id,
+            productId: item.productId,
+            quantity: item.quantity,
+            selectedColor: item.selectedColor,
+            selectedSize: item.selectedSize,
+          },
+        });
+      }
+    }
+
+    return tx.cart.findUniqueOrThrow({
+      where: { id: ensuredCart.id },
+      include: {
+        items: {
+          include: { product: { include: { brand: true } } },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
+  });
+
+  return res.json({ data: cart });
+});
+
 router.get("/wishlist", requireAuth, async (req, res) => {
   const items = await prisma.wishlistItem.findMany({
     where: { userId: req.auth!.userId },
@@ -205,6 +307,36 @@ router.put("/notification-preferences", requireAuth, async (req, res) => {
   });
 
   return res.json({ data: preferences });
+});
+
+router.get("/notifications", requireAuth, async (req, res) => {
+  const notifications = await prisma.notification.findMany({
+    where: { userId: req.auth!.userId },
+    include: {
+      channels: true,
+      order: { select: { id: true, status: true, trackingId: true } },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  });
+
+  return res.json({ data: notifications });
+});
+
+router.patch("/notifications/:id/read", requireAuth, async (req, res) => {
+  const existing = await prisma.notification.findFirst({
+    where: { id: String(req.params.id), userId: req.auth!.userId },
+    select: { id: true },
+  });
+
+  if (!existing) return res.status(404).json({ message: "Notification not found" });
+
+  const updated = await prisma.notification.update({
+    where: { id: existing.id },
+    data: { readAt: new Date() },
+  });
+
+  return res.json({ data: updated });
 });
 
 export default router;

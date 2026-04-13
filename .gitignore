@@ -10,3 +10,6 @@ build
 coverage
 *.log
 apps/api/prisma/migrations
+docs/
+images/
+scripts/

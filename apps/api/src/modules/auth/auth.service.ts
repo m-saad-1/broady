@@ -1,8 +1,8 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { Prisma } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { OAuth2Client } from "google-auth-library";
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { env } from "../../config/env.js";
 import { prisma } from "../../config/prisma.js";
 import type { LoginInput, RegisterInput } from "./auth.schemas.js";
@@ -11,24 +11,38 @@ type SafeUser = {
   id: string;
   email: string;
   fullName: string;
-  role: "USER" | "ADMIN";
+  role: "USER" | "ADMIN" | "BRAND" | "BRAND_ADMIN" | "BRAND_STAFF" | "SUPER_ADMIN";
+  brandId?: string | null;
+};
+
+type BrandInviteResult = {
+  user: SafeUser;
+  brandEmail: string;
+  inviteToken: string;
+  inviteUrl: string;
 };
 
 type AuthTokenPayload = {
   userId: string;
-  role: "USER" | "ADMIN";
+  role: "USER" | "ADMIN" | "BRAND" | "BRAND_ADMIN" | "BRAND_STAFF" | "SUPER_ADMIN";
+  brandId?: string | null;
   sessionId: string;
   tokenId: string;
 };
 
 const oauthClient = env.googleClientId ? new OAuth2Client(env.googleClientId) : null;
 
-function toSafeUser(user: { id: string; email: string; fullName: string; role: "USER" | "ADMIN" }): SafeUser {
+function hashInviteToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function toSafeUser(user: { id: string; email: string; fullName: string; role: SafeUser["role"]; brandId?: string | null }): SafeUser {
   return {
     id: user.id,
     email: user.email,
     fullName: user.fullName,
     role: user.role,
+    brandId: user.brandId,
   };
 }
 
@@ -36,7 +50,10 @@ function buildToken(payload: AuthTokenPayload) {
   return jwt.sign(payload, env.jwtSecret, { expiresIn: "7d" });
 }
 
-async function createSessionAndToken(user: { id: string; role: "USER" | "ADMIN" }, meta?: { userAgent?: string; ipAddress?: string }) {
+async function createSessionAndToken(
+  user: { id: string; role: SafeUser["role"]; brandId?: string | null },
+  meta?: { userAgent?: string; ipAddress?: string },
+) {
   const tokenId = randomUUID();
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
@@ -53,6 +70,7 @@ async function createSessionAndToken(user: { id: string; role: "USER" | "ADMIN" 
   const token = buildToken({
     userId: user.id,
     role: user.role,
+    brandId: user.brandId,
     sessionId: session.id,
     tokenId,
   });
@@ -163,6 +181,93 @@ export async function loginWithGoogle(idToken: string, meta?: { userAgent?: stri
   }
 }
 
+export async function createBrandInviteAccount(input: {
+  prismaClient: PrismaClient | Prisma.TransactionClient;
+  brandId: string;
+  brandName: string;
+  contactEmail?: string | null;
+  fullName?: string;
+}) {
+  const inviteToken = randomBytes(32).toString("hex");
+  const inviteTokenHash = hashInviteToken(inviteToken);
+  const brandInviteTokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const brandEmail = input.contactEmail?.trim().toLowerCase() || `brand.${input.brandName.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "") || input.brandId}@broady.local`;
+
+  const account = await input.prismaClient.user.create({
+    data: {
+      email: brandEmail,
+      fullName: input.fullName || `${input.brandName} Brand Admin`,
+      role: "BRAND_ADMIN" as any,
+      brandId: input.brandId,
+      authProvider: "LOCAL",
+      password: null,
+      brandInviteTokenHash: inviteTokenHash,
+      brandInviteTokenExpiresAt,
+    } as any,
+    select: { id: true, email: true, fullName: true, role: true, brandId: true } as any,
+  });
+
+  const accountData = account as any;
+
+  return {
+    user: {
+      id: accountData.id,
+      email: accountData.email,
+      fullName: accountData.fullName,
+      role: accountData.role,
+      brandId: accountData.brandId,
+    },
+    brandEmail,
+    inviteToken,
+    inviteUrl: `${env.webAppUrl.replace(/\/$/, "")}/brand/invite?token=${inviteToken}`,
+  } satisfies BrandInviteResult;
+}
+
+export async function completeBrandInvite(input: { token: string; password: string }) {
+  const tokenHash = hashInviteToken(input.token);
+  const user = await prisma.user.findFirst({
+    where: {
+      brandInviteTokenHash: tokenHash,
+      brandInviteTokenExpiresAt: { gt: new Date() },
+    } as any,
+  });
+
+  if (!user) {
+    return { error: { status: 400, message: "Invalid or expired invite link" } } as const;
+  }
+
+  const hashedPassword = await bcrypt.hash(input.password, 12);
+  const updated = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      password: hashedPassword,
+      brandInviteTokenHash: null,
+      brandInviteTokenExpiresAt: null,
+      brandInviteAcceptedAt: new Date(),
+      authProvider: "LOCAL",
+    } as any,
+    select: { id: true, email: true, fullName: true, role: true, brandId: true } as any,
+  });
+
+  const updatedData = updated as any;
+
+  const { token } = await createSessionAndToken({
+    id: updatedData.id,
+    role: updatedData.role,
+    brandId: updatedData.brandId,
+  });
+  return {
+    token,
+    user: {
+      id: updatedData.id,
+      email: updatedData.email,
+      fullName: updatedData.fullName,
+      role: updatedData.role,
+      brandId: updatedData.brandId,
+    },
+  } as const;
+}
+
 export async function revokeSessionFromToken(token: string | undefined) {
   if (!token) return;
 
@@ -186,7 +291,7 @@ export async function revokeSessionFromToken(token: string | undefined) {
 export async function getSafeUserById(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, email: true, fullName: true, role: true },
+    select: { id: true, email: true, fullName: true, role: true, brandId: true },
   });
   return user;
 }

@@ -3,8 +3,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { addWishlistProduct, removeWishlistProduct } from "@/lib/api";
 import { getProductPricing } from "@/lib/pricing";
 import { formatPkr } from "@/lib/utils";
+import { useAuthStore } from "@/stores/auth-store";
 import { useCartStore } from "@/stores/cart-store";
 import { useToastStore } from "@/stores/toast-store";
 import { useWishlistStore } from "@/stores/wishlist-store";
@@ -37,8 +39,11 @@ export function ProductDetailClient({ product }: Props) {
   const [selectedColor, setSelectedColor] = useState(product.colors?.[0] || "Black");
   const [zoomOpen, setZoomOpen] = useState(false);
 
+  const user = useAuthStore((state) => state.user);
   const addToCart = useCartStore((state) => state.addToCart);
   const pushToast = useToastStore((state) => state.pushToast);
+  const addWishlistLocal = useWishlistStore((state) => state.addItem);
+  const removeWishlistLocal = useWishlistStore((state) => state.removeItem);
   const toggleWishlist = useWishlistStore((state) => state.toggleWishlist);
   const isInWishlist = useWishlistStore((state) => state.isInWishlist(product.id));
   const pricing = getProductPricing(product);
@@ -87,6 +92,13 @@ export function ProductDetailClient({ product }: Props) {
             {product.brand?.name || "Verified Brand"}
           </Link>
           <span className={`border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${badgeClass}`}>{badge}</span>
+        </div>
+
+        <div className="grid gap-2 border border-zinc-200 p-3 text-[11px] uppercase tracking-[0.12em] text-zinc-600 sm:grid-cols-2">
+          <p>Stock: {product.stock > 0 ? `${product.stock} available` : "Out of stock"}</p>
+          <p>Status: {product.approvalStatus || "APPROVED"}</p>
+          <p>Category: {product.topCategory}</p>
+          <p>Sub-category: {product.subCategory}</p>
         </div>
 
         <h1 className="font-heading text-5xl uppercase leading-[0.95]">{product.name}</h1>
@@ -147,10 +159,39 @@ export function ProductDetailClient({ product }: Props) {
           <button
             type="button"
             className="h-11 border border-black px-4 text-xs font-semibold uppercase tracking-[0.14em]"
-            onClick={() => {
-              const action = isInWishlist ? "Removed from wishlist" : "Added to wishlist";
-              toggleWishlist(product);
-              pushToast(action, isInWishlist ? "info" : "success");
+            onClick={async () => {
+              if (isInWishlist) {
+                if (user) {
+                  try {
+                    await removeWishlistProduct(product.id);
+                  } catch {
+                    // Keep local state responsive even if remote remove fails.
+                  }
+                  removeWishlistLocal(product.id);
+                } else {
+                  toggleWishlist(product);
+                }
+                pushToast("Removed from wishlist", "info");
+                return;
+              }
+
+              if (user) {
+                try {
+                  await addWishlistProduct(product.id);
+                  addWishlistLocal(product);
+                } catch (error) {
+                  const message = error instanceof Error ? error.message : "Failed to save wishlist item";
+                  if (message.toLowerCase().includes("product not found")) {
+                    addWishlistLocal(product);
+                  } else {
+                    pushToast(message, "error");
+                    return;
+                  }
+                }
+              } else {
+                toggleWishlist(product);
+              }
+              pushToast("Added to wishlist", "success");
             }}
           >
             {isInWishlist ? "Saved" : "Wishlist"}

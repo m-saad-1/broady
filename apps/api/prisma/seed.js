@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
@@ -9,18 +10,27 @@ async function main() {
       slug: "outfitters",
       logoUrl: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800",
       description: "Contemporary western streetwear with clean tailoring and urban utility pieces.",
+      commissionRate: 12,
+      contactEmail: "ops+outfitters@broady.local",
+      whatsappNumber: "+923000000111",
     },
     {
       name: "Breakout",
       slug: "breakout",
       logoUrl: "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=800",
       description: "Modern casualwear balancing denim heritage, essentials, and bold seasonal statements.",
+      commissionRate: 10,
+      contactEmail: "ops+breakout@broady.local",
+      whatsappNumber: "+923000000222",
     },
     {
       name: "Cougar",
       slug: "cougar",
       logoUrl: "https://images.unsplash.com/photo-1445205170230-053b83016050?w=800",
       description: "Refined outerwear, footwear, and premium textures for elevated everyday dressing.",
+      commissionRate: 14,
+      contactEmail: "ops+cougar@broady.local",
+      whatsappNumber: "+923000000333",
     },
   ];
 
@@ -272,6 +282,61 @@ async function main() {
       where: { slug: product.slug },
       update: product,
       create: product,
+    });
+  }
+
+  const brandUsers = [
+    {
+      email: "brand.outfitters@broady.local",
+      fullName: "Outfitters Team",
+      password: "BrandUser123!",
+      brandId: outfitters.id,
+    },
+    {
+      email: "brand.breakout@broady.local",
+      fullName: "Breakout Team",
+      password: "BrandUser123!",
+      brandId: breakout.id,
+    },
+    {
+      email: "brand.cougar@broady.local",
+      fullName: "Cougar Team",
+      password: "BrandUser123!",
+      brandId: cougar.id,
+    },
+  ];
+
+  for (const account of brandUsers) {
+    const hashed = await bcrypt.hash(account.password, 12);
+    const user = await prisma.user.upsert({
+      where: { email: account.email },
+      update: {
+        fullName: account.fullName,
+        role: "BRAND",
+        password: hashed,
+      },
+      create: {
+        email: account.email,
+        fullName: account.fullName,
+        role: "BRAND",
+        password: hashed,
+        authProvider: "LOCAL",
+      },
+    });
+
+    await prisma.brandMember.upsert({
+      where: {
+        userId_brandId: {
+          userId: user.id,
+          brandId: account.brandId,
+        },
+      },
+      update: { canManageProducts: true },
+      create: {
+        userId: user.id,
+        brandId: account.brandId,
+        canManageProducts: true,
+      },
     });
   }
 }

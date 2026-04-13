@@ -63,38 +63,28 @@ export function CategoryCollectionClient({ products, category }: Props) {
     [effectiveSize, effectiveSubCategory, normalized, productType],
   );
 
-  const availableSubcategories = useMemo(
-    () => [...new Set(filtered.map((item) => item.subCategory))],
-    [filtered],
-  );
-
   return (
     <div className="space-y-5">
       <section className="border border-zinc-300 p-3">
         <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.12em]">
-          <span className="text-zinc-500">Type</span>
           <select className="h-9 border border-zinc-300 px-2" value={productType} onChange={(event) => setProductType(event.target.value)}>
-            <option value="">Type</option>
+            <option value="">All types</option>
             {productTypeOptions.map((type) => (
               <option key={type} value={type}>
                 {type}
               </option>
             ))}
           </select>
-          <span className="text-zinc-400">/</span>
-          <span className="text-zinc-500">Subcategory</span>
           <select className="h-9 border border-zinc-300 px-2" value={effectiveSubCategory} onChange={(event) => setSubCategory(event.target.value)}>
-            <option value="">Subcategory</option>
+            <option value="">All subcategories</option>
             {subCategoryOptions.map((item) => (
               <option key={item} value={item}>
                 {item}
               </option>
             ))}
           </select>
-          <span className="text-zinc-400">/</span>
-          <span className="text-zinc-500">Size</span>
           <select className="h-9 border border-zinc-300 px-2" value={effectiveSize} onChange={(event) => setSize(event.target.value)}>
-            <option value="">Size</option>
+            <option value="">All sizes</option>
             {sizeOptions.map((item) => (
               <option key={item} value={item}>
                 {item}
@@ -104,12 +94,8 @@ export function CategoryCollectionClient({ products, category }: Props) {
         </div>
       </section>
 
-      <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">
-        Subcategories: {availableSubcategories.length ? availableSubcategories.join(" / ") : "-"}
-      </p>
-
       {filtered.length ? (
-        <section className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <section className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {filtered.map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}

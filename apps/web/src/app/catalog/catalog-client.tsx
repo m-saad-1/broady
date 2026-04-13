@@ -89,7 +89,6 @@ async function fetchProducts(params: Record<string, string>) {
 export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
   const router = useRouter();
   const searchBoxRef = useRef<HTMLDivElement | null>(null);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [q, setQ] = useState(params.q || "");
   const [liveQuery, setLiveQuery] = useState(params.q || "");
@@ -213,7 +212,7 @@ export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
   return (
     <div className="space-y-5">
       <section className="space-y-3 border border-zinc-300 p-4">
-        <div ref={searchBoxRef} className="relative grid gap-2 sm:grid-cols-[1fr_auto]">
+        <div ref={searchBoxRef} className="relative">
           <div className="relative">
             <input
               value={liveQuery}
@@ -240,89 +239,79 @@ export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
             ) : null}
 
             {suggestionsOpen && liveQuery.trim().length >= 2 ? (
-            <div className="absolute left-0 right-0 top-12 z-20 border border-zinc-300 bg-white">
-              {suggestions.length ? (
-                suggestions.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className="grid w-full grid-cols-[1fr_auto] border-b border-zinc-200 px-3 py-2 text-left text-sm hover:bg-zinc-50"
-                    onClick={() => {
-                      setSuggestionsOpen(false);
-                      router.push(`/product/${item.slug}`);
-                    }}
-                  >
-                    <span className="uppercase tracking-[0.08em]">{item.name}</span>
-                    <span className="text-[11px] uppercase tracking-[0.12em] text-zinc-500">{item.topCategory}</span>
-                  </button>
-                ))
-              ) : (
-                <p className="px-3 py-3 text-sm text-zinc-600">No results found.</p>
-              )}
-            </div>
-          ) : null}
+              <div className="absolute left-0 right-0 top-12 z-20 border border-zinc-300 bg-white">
+                {suggestions.length ? (
+                  suggestions.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="grid w-full grid-cols-[1fr_auto] border-b border-zinc-200 px-3 py-2 text-left text-sm hover:bg-zinc-50"
+                      onClick={() => {
+                        setSuggestionsOpen(false);
+                        router.push(`/product/${item.slug}`);
+                      }}
+                    >
+                      <span className="uppercase tracking-[0.08em]">{item.name}</span>
+                      <span className="text-[11px] uppercase tracking-[0.12em] text-zinc-500">{item.topCategory}</span>
+                    </button>
+                  ))
+                ) : (
+                  <p className="px-3 py-3 text-sm text-zinc-600">No results found.</p>
+                )}
+              </div>
+            ) : null}
           </div>
-
-          <button
-            type="button"
-            className="h-11 border border-black px-4 text-xs font-semibold uppercase tracking-[0.12em]"
-            onClick={() => setFiltersOpen((open) => !open)}
-          >
-            {filtersOpen ? "Hide Filters" : "Filters"}
-          </button>
         </div>
 
-        {filtersOpen ? (
-          <div className="grid gap-2 border border-zinc-300 p-3 sm:grid-cols-2 lg:grid-cols-5">
-            <select className="h-10 border border-zinc-300 px-2 text-xs uppercase" value={topCategory} onChange={(event) => setTopCategory(event.target.value)}>
-              <option value="">Gender</option>
-              {topCategoryOptions.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-            <select className="h-10 border border-zinc-300 px-2 text-xs uppercase" value={effectiveProductType} onChange={(event) => setProductType(event.target.value)}>
-              <option value="">Type</option>
-              {productTypeOptions.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-            <select className="h-10 border border-zinc-300 px-2 text-xs uppercase" value={effectiveSubCategory} onChange={(event) => setSubCategory(event.target.value)}>
-              <option value="">Subcategory</option>
-              {subCategoryOptions.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-            <select className="h-10 border border-zinc-300 px-2 text-xs uppercase" value={effectiveSize} onChange={(event) => setSize(event.target.value)}>
-              <option value="">Size</option>
-              {sizeOptions.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-            <select className="h-10 border border-zinc-300 px-2 text-xs uppercase" value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
-              {[
-                { value: "latest", label: "Latest" },
-                { value: "price-asc", label: "Price Low to High" },
-                { value: "price-desc", label: "Price High to Low" },
-                { value: "name", label: "Name A-Z" },
-              ].map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.12em]">
+          <select className="h-9 border border-zinc-300 px-2" value={topCategory} onChange={(event) => setTopCategory(event.target.value)}>
+            <option value="">All genders</option>
+            {topCategoryOptions.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+          <select className="h-9 border border-zinc-300 px-2" value={effectiveProductType} onChange={(event) => setProductType(event.target.value)}>
+            <option value="">All types</option>
+            {productTypeOptions.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+          <select className="h-9 border border-zinc-300 px-2" value={effectiveSubCategory} onChange={(event) => setSubCategory(event.target.value)}>
+            <option value="">All subcategories</option>
+            {subCategoryOptions.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+          <select className="h-9 border border-zinc-300 px-2" value={effectiveSize} onChange={(event) => setSize(event.target.value)}>
+            <option value="">All sizes</option>
+            {sizeOptions.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+          <select className="h-9 border border-zinc-300 px-2" value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+            {[
+              { value: "latest", label: "Latest" },
+              { value: "price-asc", label: "Price Low to High" },
+              { value: "price-desc", label: "Price High to Low" },
+              { value: "name", label: "Name A-Z" },
+            ].map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </section>
 
-      <section className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      <section className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {orderedProducts.map((product) => (
           <ProductCard key={product.id} product={normalizeProduct(product)} />
         ))}
