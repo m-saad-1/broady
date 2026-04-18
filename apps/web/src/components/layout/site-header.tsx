@@ -5,33 +5,19 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { fetchCurrentUser } from "@/lib/auth-client";
-import { addWishlistProduct, getUserCartItems, getUserNotifications, getWishlistProducts, syncUserCartItems } from "@/lib/api";
-import { fallbackProducts } from "@/lib/mock-data";
-import { useMockFallback } from "@/lib/runtime-flags";
+import {
+  addWishlistProduct,
+  getProductSearchSuggestions,
+  getProducts,
+  getUserCartItems,
+  getUserNotifications,
+  getWishlistProducts,
+  syncUserCartItems,
+} from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
 import { useCartStore } from "@/stores/cart-store";
 import { useWishlistStore } from "@/stores/wishlist-store";
-import type { NotificationItem, Product } from "@/types/marketplace";
-
-function scoreProductMatch(product: Product, query: string) {
-  const q = query.trim().toLowerCase();
-  if (!q) return 1;
-  const name = product.name.toLowerCase();
-  const brand = product.brand?.name?.toLowerCase() || "";
-  const subCategory = product.subCategory.toLowerCase();
-  const topCategory = product.topCategory.toLowerCase();
-
-  if (name === q) return 120;
-  if (name.startsWith(q)) return 100;
-  if (name.includes(q)) return 80;
-  if (subCategory.startsWith(q)) return 65;
-  if (subCategory.includes(q)) return 60;
-  if (brand.startsWith(q)) return 55;
-  if (brand.includes(q)) return 50;
-  if (topCategory === q) return 40;
-
-  return 0;
-}
+import type { NotificationItem, Product, SearchSuggestion } from "@/types/marketplace";
 
 function getCartKey(item: { product: Product; selectedColor?: string; selectedSize?: string }) {
   return `${item.product.id}:${item.selectedSize || ""}:${item.selectedColor || ""}`;
@@ -122,6 +108,7 @@ function IconButton({
 export function SiteHeader() {
   const router = useRouter();
   const pathname = usePathname();
+  const [hasHydrated, setHasHydrated] = useState(false);
   const cartCount = useCartStore((state) => state.items.length);
   const cartItems = useCartStore((state) => state.items);
   const setCartItems = useCartStore((state) => state.setItems);
@@ -134,12 +121,54 @@ export function SiteHeader() {
   const setInitialized = useAuthStore((state) => state.setInitialized);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [suggestionsCorrection, setSuggestionsCorrection] = useState<string | null>(null);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
   const [liveResults, setLiveResults] = useState<Product[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationError, setNotificationError] = useState<string | null>(null);
   const cartSyncEnabledRef = useRef(false);
+
+  const topCategoryContext = useMemo(() => {
+    if (!pathname.startsWith("/category/")) {
+      return undefined;
+    }
+
+    const categorySlug = decodeURIComponent(pathname.split("/")[2] || "");
+    if (categorySlug === "Men" || categorySlug === "Women" || categorySlug === "Kids") {
+      return categorySlug;
+    }
+
+    return undefined;
+  }, [pathname]);
+
+  const runCatalogSearch = (query: string, topCategory?: string) => {
+    const q = query.trim();
+    if (!q) {
+      return;
+    }
+
+    const params = new URLSearchParams({ q });
+    if (topCategory) {
+      params.set("topCategory", topCategory);
+    }
+
+    router.push(`/catalog?${params.toString()}`);
+    setSearchOpen(false);
+    setSearchTerm("");
+    setSuggestions([]);
+    setSuggestionsCorrection(null);
+    setLiveResults([]);
+    setActiveSuggestionIndex(-1);
+  };
+
+  const applySuggestion = (item: SearchSuggestion) => {
+    const scopedTopCategory = item.topCategory || topCategoryContext;
+    runCatalogSearch(item.query, scopedTopCategory);
+  };
 
   useEffect(() => {
     let active = true;
@@ -262,58 +291,69 @@ export function SiteHeader() {
 
   useEffect(() => {
     if (!searchOpen || searchTerm.trim().length < 2) {
+      setSuggestions([]);
+      setSuggestionsCorrection(null);
+      setSuggestionsLoading(false);
+      setActiveSuggestionIndex(-1);
       setLiveResults([]);
       return;
     }
 
+    let active = true;
+    setSuggestionsLoading(true);
+
     const timeout = setTimeout(async () => {
       const q = searchTerm.trim();
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const productParams: Record<string, string> = { q };
+      if (topCategoryContext) {
+        productParams.topCategory = topCategoryContext;
+      }
+
       try {
-        const response = await fetch(`${apiBase}/products?q=${encodeURIComponent(q)}`);
-        if (!response.ok) throw new Error("search failed");
-        const json = (await response.json()) as { data: Product[] };
-        const baseProducts = useMockFallback
-          ? (() => {
-              const seen = new Set(json.data.map((item) => item.slug));
-              const merged = [...json.data];
-              for (const fallback of fallbackProducts) {
-                if (!seen.has(fallback.slug)) {
-                  merged.push(fallback);
-                }
-              }
-              return merged;
-            })()
-          : json.data;
-        const matched = baseProducts
-          .map((product) => ({ product, score: scoreProductMatch(product, q) }))
-          .filter((item) => item.score > 0)
-          .sort((a, b) => b.score - a.score)
-          .map((item) => item.product)
-          .slice(0, 8);
-        setLiveResults(matched);
+        const [suggestionResult, productResult] = await Promise.all([
+          getProductSearchSuggestions(q, { topCategory: topCategoryContext }),
+          getProducts(productParams),
+        ]);
+
+        if (!active) return;
+        setSuggestions(suggestionResult.suggestions.slice(0, 8));
+        setSuggestionsCorrection(suggestionResult.correctedQuery || null);
+        setLiveResults(productResult.slice(0, 6));
+        setActiveSuggestionIndex(-1);
       } catch {
-        const local = fallbackProducts
-          .map((product) => ({ product, score: scoreProductMatch(product, q) }))
-          .filter((item) => item.score > 0)
-          .sort((a, b) => b.score - a.score)
-          .map((item) => item.product)
-          .slice(0, 8);
-        setLiveResults(local);
+        if (!active) return;
+        setSuggestions([]);
+        setSuggestionsCorrection(null);
+        setLiveResults([]);
+        setActiveSuggestionIndex(-1);
+      } finally {
+        if (active) {
+          setSuggestionsLoading(false);
+        }
       }
     }, 180);
 
-    return () => clearTimeout(timeout);
-  }, [searchOpen, searchTerm]);
+    return () => {
+      active = false;
+      clearTimeout(timeout);
+    };
+  }, [searchOpen, searchTerm, topCategoryContext]);
 
   const closeSearch = () => {
     setSearchOpen(false);
     setSearchTerm("");
+    setSuggestions([]);
+    setSuggestionsCorrection(null);
     setLiveResults([]);
+    setActiveSuggestionIndex(-1);
   };
 
   const hasQuery = useMemo(() => searchTerm.trim().length > 0, [searchTerm]);
   const unreadNotificationCount = useMemo(() => notifications.filter((item) => !item.readAt).length, [notifications]);
+
+  useEffect(() => {
+    setHasHydrated(true);
+  }, []);
 
   return (
     <header className="sticky top-0 z-50 border-b border-zinc-300 bg-white">
@@ -340,13 +380,13 @@ export function SiteHeader() {
             </svg>
           </IconButton>
 
-          <IconButton href="/wishlist" label="Wishlist" badge={wishlistCount}>
+          <IconButton href="/wishlist" label="Wishlist" badge={hasHydrated ? wishlistCount : 0}>
             <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M12 20s-7-4.7-7-10.2C5 7 6.8 5 9.2 5c1.2 0 2.3.5 2.8 1.4.5-.9 1.6-1.4 2.8-1.4C17.2 5 19 7 19 9.8 19 15.3 12 20 12 20z" />
             </svg>
           </IconButton>
 
-          <IconButton href="/cart" label="Cart" badge={cartCount}>
+          <IconButton href="/cart" label="Cart" badge={hasHydrated ? cartCount : 0}>
             <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M3 5h2l2 10h9l2-7H7" />
               <circle cx="10" cy="19" r="1.2" />
@@ -384,12 +424,12 @@ export function SiteHeader() {
       </div>
 
       <div
-        className={`pointer-events-none fixed inset-0 z-[70] transition ${searchOpen ? "opacity-100" : "opacity-0"}`}
+        className={`fixed inset-0 z-[70] transition ${searchOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
         aria-hidden={!searchOpen}
       >
         <div className="absolute inset-0 bg-black/50" onClick={closeSearch} />
         <div
-          className={`pointer-events-auto absolute left-0 right-0 top-0 border-b border-zinc-300 bg-white p-4 transition-transform duration-300 ${searchOpen ? "translate-y-0" : "-translate-y-full"}`}
+          className={`absolute left-0 right-0 top-0 border-b border-zinc-300 bg-white p-4 transition-transform duration-300 ${searchOpen ? "pointer-events-auto translate-y-0" : "pointer-events-none -translate-y-full"}`}
         >
           <div className="mx-auto max-w-5xl space-y-3">
             <div className="flex items-center gap-2">
@@ -398,9 +438,37 @@ export function SiteHeader() {
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" && hasQuery) {
-                    router.push(`/catalog?q=${encodeURIComponent(searchTerm.trim())}`);
-                    closeSearch();
+                  if (!hasQuery) {
+                    return;
+                  }
+
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setActiveSuggestionIndex((previous) => {
+                      if (!suggestions.length) return -1;
+                      const next = previous + 1;
+                      return next >= suggestions.length ? 0 : next;
+                    });
+                  }
+
+                  if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setActiveSuggestionIndex((previous) => {
+                      if (!suggestions.length) return -1;
+                      const next = previous - 1;
+                      return next < 0 ? suggestions.length - 1 : next;
+                    });
+                  }
+
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    const activeSuggestion = activeSuggestionIndex >= 0 ? suggestions[activeSuggestionIndex] : undefined;
+                    if (activeSuggestion) {
+                      applySuggestion(activeSuggestion);
+                      return;
+                    }
+
+                    runCatalogSearch(searchTerm, topCategoryContext);
                   }
                 }}
                 placeholder="Search products, subcategories, brands"
@@ -411,8 +479,7 @@ export function SiteHeader() {
                 className="h-12 border border-black bg-black px-5 text-xs font-semibold uppercase tracking-[0.12em] text-white"
                 onClick={() => {
                   if (!hasQuery) return;
-                  router.push(`/catalog?q=${encodeURIComponent(searchTerm.trim())}`);
-                  closeSearch();
+                  runCatalogSearch(searchTerm, topCategoryContext);
                 }}
               >
                 Search
@@ -423,25 +490,57 @@ export function SiteHeader() {
             </div>
 
             {hasQuery ? (
-              <div className="max-h-72 overflow-auto border border-zinc-300">
-                {liveResults.length ? (
-                  liveResults.map((item) => (
+              <div className="grid gap-3 lg:grid-cols-2">
+                <div className="max-h-72 overflow-auto border border-zinc-300">
+                  {suggestionsLoading ? (
+                    <p className="px-4 py-4 text-sm text-zinc-600">Searching suggestions...</p>
+                  ) : suggestions.length ? (
+                    suggestions.map((item, index) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`grid w-full grid-cols-[1fr_auto] gap-3 border-b border-zinc-200 px-4 py-3 text-left text-sm ${activeSuggestionIndex === index ? "bg-zinc-100" : "hover:bg-zinc-50"}`}
+                        onMouseEnter={() => setActiveSuggestionIndex(index)}
+                        onClick={() => applySuggestion(item)}
+                      >
+                        <span className="uppercase tracking-[0.08em]">{item.label}</span>
+                        <span className="text-xs uppercase tracking-[0.12em] text-zinc-500">{item.topCategory || item.kind}</span>
+                      </button>
+                    ))
+                  ) : (
+                    <p className="px-4 py-4 text-sm text-zinc-600">No suggestions yet.</p>
+                  )}
+                  {suggestionsCorrection ? (
                     <button
-                      key={item.id}
                       type="button"
-                      className="grid w-full grid-cols-[1fr_auto] gap-3 border-b border-zinc-200 px-4 py-3 text-left text-sm hover:bg-zinc-50"
-                      onClick={() => {
-                        router.push(`/product/${item.slug}`);
-                        closeSearch();
-                      }}
+                      className="w-full border-t border-zinc-200 px-4 py-3 text-left text-xs uppercase tracking-[0.12em] text-zinc-600 hover:bg-zinc-50"
+                      onClick={() => runCatalogSearch(suggestionsCorrection, topCategoryContext)}
                     >
-                      <span className="uppercase tracking-[0.08em]">{item.name}</span>
-                      <span className="text-xs uppercase tracking-[0.12em] text-zinc-500">{item.topCategory} / {item.subCategory}</span>
+                      Did you mean: {suggestionsCorrection}
                     </button>
-                  ))
-                ) : (
-                  <p className="px-4 py-4 text-sm text-zinc-600">No matching products found.</p>
-                )}
+                  ) : null}
+                </div>
+
+                <div className="max-h-72 overflow-auto border border-zinc-300">
+                  {liveResults.length ? (
+                    liveResults.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="grid w-full grid-cols-[1fr_auto] gap-3 border-b border-zinc-200 px-4 py-3 text-left text-sm hover:bg-zinc-50"
+                        onClick={() => {
+                          router.push(`/product/${item.slug}`);
+                          closeSearch();
+                        }}
+                      >
+                        <span className="uppercase tracking-[0.08em]">{item.name}</span>
+                        <span className="text-xs uppercase tracking-[0.12em] text-zinc-500">{item.topCategory} / {item.subCategory}</span>
+                      </button>
+                    ))
+                  ) : (
+                    <p className="px-4 py-4 text-sm text-zinc-600">No matching products found.</p>
+                  )}
+                </div>
               </div>
             ) : null}
           </div>
@@ -449,11 +548,11 @@ export function SiteHeader() {
       </div>
 
       <div
-        className={`pointer-events-none fixed inset-0 z-[75] transition ${notificationsOpen ? "opacity-100" : "opacity-0"}`}
+        className={`fixed inset-0 z-[75] transition ${notificationsOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
         aria-hidden={!notificationsOpen}
       >
         <div className="absolute inset-0 bg-black/40" onClick={() => setNotificationsOpen(false)} />
-        <div className={`pointer-events-auto absolute right-4 top-20 w-[min(94vw,420px)] border border-zinc-300 bg-white p-4 shadow-xl transition-transform duration-200 ${notificationsOpen ? "translate-y-0" : "-translate-y-4"}`}>
+        <div className={`absolute right-4 top-20 w-[min(94vw,420px)] border border-zinc-300 bg-white p-4 shadow-xl transition-transform duration-200 ${notificationsOpen ? "pointer-events-auto translate-y-0" : "pointer-events-none -translate-y-4"}`}>
           <div className="flex items-start justify-between gap-3 border-b border-zinc-200 pb-3">
             <div>
               <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Notifications</p>

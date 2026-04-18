@@ -48,6 +48,30 @@ This structure is production-ready for separation into auth/catalog/orders modul
 - Users module: /api/users
 - Admin module: /api/admin
 
+## Notification Queue (Async Jobs)
+- Queue backend is adapter-driven and now defaults to Redis (BullMQ-based worker).
+- Local infra: run `npm run db:up` to start both Postgres and Redis.
+- Worker metrics endpoint (admin only): `GET /api/admin/notifications/worker`
+- Dead-letter operations (admin only):
+   - `GET /api/admin/notifications/dead-letters?limit=25&offset=0`
+   - `POST /api/admin/notifications/dead-letters/:jobId/requeue`
+   - `DELETE /api/admin/notifications/dead-letters/:jobId`
+   - `DELETE /api/admin/notifications/dead-letters?confirm=purge-dead-letters&limit=100&olderThanHours=24`
+- Dedicated worker mode:
+   - API process without embedded worker: `NOTIFICATION_WORKER_EMBEDDED=false npm run dev:api`
+   - Standalone worker process: `npm run dev:worker`
+
+Environment variables:
+- `NOTIFICATION_QUEUE_ADAPTER`: `redis` | `postgres` | `memory` (default: `redis`)
+- `REDIS_URL`: Redis connection URL (default: `redis://127.0.0.1:6379`)
+- `NOTIFICATION_REDIS_QUEUE_NAME`: queue name (default: `broady-notifications`)
+- `NOTIFICATION_REDIS_PREFIX`: key prefix (default: `broady`)
+- `NOTIFICATION_WORKER_CONCURRENCY`: worker concurrency (default: `4`)
+- `NOTIFICATION_WORKER_MAX_ATTEMPTS`: max retry attempts (default: `3`)
+- `NOTIFICATION_WORKER_SHUTDOWN_WAIT_MS`: graceful shutdown wait (default: `5000`)
+- `NOTIFICATION_WORKER_EMBEDDED`: run worker in API process (`true` by default)
+- `NOTIFICATION_WORKER_HEALTH_PORT`: worker-only health port (`0` disables endpoint, use `/healthz` when enabled)
+
 ## Authentication Details
 - Local auth:
    - `POST /api/auth/register`

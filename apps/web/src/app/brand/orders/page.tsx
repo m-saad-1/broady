@@ -1,5 +1,6 @@
-import { BrandDashboardClient } from "../../brand-dashboard/brand-dashboard-client";
+import { BrandOrdersClient } from "./orders-client";
 import { getBrandSession } from "../_lib/brand-session";
+import Link from "next/link";
 
 export const metadata = {
   title: "Brand Orders | BROADY",
@@ -15,9 +16,17 @@ export default async function BrandOrdersPage() {
         <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Brand Orders</p>
         <h1 className="font-heading text-5xl uppercase">Orders</h1>
         <p className="max-w-3xl text-sm text-zinc-600">Use this view to scan orders quickly and jump into a specific order record for details.</p>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/brand/dashboard" className="inline-flex h-10 items-center border border-zinc-300 px-4 text-xs font-semibold uppercase tracking-[0.12em]">
+            Back to Dashboard
+          </Link>
+          <Link href="/brand/products" className="inline-flex h-10 items-center border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white">
+            Manage Products
+          </Link>
+        </div>
       </header>
 
-      <BrandDashboardClient mode="orders" />
+      <BrandOrdersClient title="All Orders" mode="orders" />
     </main>
   );
 }

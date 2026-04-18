@@ -1,8 +1,8 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ProductImage } from "@/components/ui/product-image";
 import { addWishlistProduct, removeWishlistProduct } from "@/lib/api";
 import { getProductPricing } from "@/lib/pricing";
 import { formatPkr } from "@/lib/utils";
@@ -16,27 +16,11 @@ type Props = {
   product: Product;
 };
 
-function DetailAccordion({ title, content }: { title: string; content: string }) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <article className="border border-zinc-300">
-      <button
-        type="button"
-        className="flex w-full items-center justify-between px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.12em]"
-        onClick={() => setOpen((current) => !current)}
-      >
-        <span>{title}</span>
-        <span>{open ? "-" : "+"}</span>
-      </button>
-      {open ? <p className="border-t border-zinc-300 px-4 py-3 text-sm leading-7 text-zinc-700">{content}</p> : null}
-    </article>
-  );
-}
-
 export function ProductDetailClient({ product }: Props) {
+  const [hasHydrated, setHasHydrated] = useState(false);
   const [selectedSize, setSelectedSize] = useState(product.sizes[0] || "");
   const [selectedColor, setSelectedColor] = useState(product.colors?.[0] || "Black");
+  const [openPanel, setOpenPanel] = useState<"sizeGuide" | "deliveriesReturns" | "shippingDelivery" | "fabricCare" | null>("sizeGuide");
   const [zoomOpen, setZoomOpen] = useState(false);
 
   const user = useAuthStore((state) => state.user);
@@ -46,7 +30,19 @@ export function ProductDetailClient({ product }: Props) {
   const removeWishlistLocal = useWishlistStore((state) => state.removeItem);
   const toggleWishlist = useWishlistStore((state) => state.toggleWishlist);
   const isInWishlist = useWishlistStore((state) => state.isInWishlist(product.id));
+  const wishlistActive = hasHydrated ? isInWishlist : false;
   const pricing = getProductPricing(product);
+
+  const getStockColor = () => {
+    if (product.stock === 0) return "bg-red-100 border-red-300";
+    if (product.stock <= 5) return "bg-amber-100 border-amber-300";
+    if (product.stock <= 15) return "bg-yellow-100 border-yellow-300";
+    return "bg-emerald-100 border-emerald-300";
+  };
+
+  useEffect(() => {
+    setHasHydrated(true);
+  }, []);
 
   const badge = useMemo(() => {
     if (pricing.hasDiscount) return `-${pricing.discountPercentage}%`;
@@ -79,7 +75,7 @@ export function ProductDetailClient({ product }: Props) {
           title="Click to zoom"
           aria-label="Zoom product image"
         >
-          <Image src={product.imageUrl} alt={product.name} fill className="object-cover" sizes="(max-width: 768px) 100vw, 60vw" priority />
+          <ProductImage src={product.imageUrl} alt={product.name} fill className="object-cover" sizes="(max-width: 768px) 100vw, 60vw" priority />
           <span className="absolute bottom-3 right-3 border border-black bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]">
             Zoom
           </span>
@@ -94,13 +90,6 @@ export function ProductDetailClient({ product }: Props) {
           <span className={`border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${badgeClass}`}>{badge}</span>
         </div>
 
-        <div className="grid gap-2 border border-zinc-200 p-3 text-[11px] uppercase tracking-[0.12em] text-zinc-600 sm:grid-cols-2">
-          <p>Stock: {product.stock > 0 ? `${product.stock} available` : "Out of stock"}</p>
-          <p>Status: {product.approvalStatus || "APPROVED"}</p>
-          <p>Category: {product.topCategory}</p>
-          <p>Sub-category: {product.subCategory}</p>
-        </div>
-
         <h1 className="font-heading text-5xl uppercase leading-[0.95]">{product.name}</h1>
         {pricing.hasDiscount ? (
           <div className="flex items-center gap-3">
@@ -112,19 +101,10 @@ export function ProductDetailClient({ product }: Props) {
         )}
         <p className="text-sm leading-7 text-zinc-700">{product.descriptionLong || product.description}</p>
 
-        <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">Color</p>
-          <div className="flex flex-wrap gap-2">
-            {(product.colors || ["Black", "White"]).map((color) => (
-              <button
-                key={color}
-                type="button"
-                onClick={() => setSelectedColor(color)}
-                className={`border px-3 py-2 text-xs uppercase tracking-[0.12em] ${selectedColor === color ? "border-black bg-black text-white" : "border-zinc-300 bg-white"}`}
-              >
-                {color}
-              </button>
-            ))}
+        <div className={`border p-3 text-xs uppercase tracking-[0.12em] ${getStockColor()}`}>
+          <div className="flex items-center justify-between">
+            <span>Stock: {product.stock > 0 ? `${product.stock} available` : "Out of stock"}</span>
+            <span>{product.topCategory} / {product.subCategory}</span>
           </div>
         </div>
 
@@ -144,6 +124,22 @@ export function ProductDetailClient({ product }: Props) {
           </div>
         </div>
 
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">Color</p>
+          <div className="flex flex-wrap gap-2">
+            {(product.colors || ["Black", "White"]).map((color) => (
+              <button
+                key={color}
+                type="button"
+                onClick={() => setSelectedColor(color)}
+                className={`border px-3 py-2 text-xs uppercase tracking-[0.12em] ${selectedColor === color ? "border-black bg-black text-white" : "border-zinc-300 bg-white"}`}
+              >
+                {color}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
@@ -154,13 +150,13 @@ export function ProductDetailClient({ product }: Props) {
               pushToast("Added to cart", "success");
             }}
           >
-            {canAdd ? `Add to Cart (${selectedSize}, ${selectedColor})` : "Out of Stock"}
+            {canAdd ? "Add to Cart" : "Out of Stock"}
           </button>
           <button
             type="button"
             className="h-11 border border-black px-4 text-xs font-semibold uppercase tracking-[0.14em]"
             onClick={async () => {
-              if (isInWishlist) {
+              if (wishlistActive) {
                 if (user) {
                   try {
                     await removeWishlistProduct(product.id);
@@ -194,16 +190,110 @@ export function ProductDetailClient({ product }: Props) {
               pushToast("Added to wishlist", "success");
             }}
           >
-            {isInWishlist ? "Saved" : "Wishlist"}
+            {wishlistActive ? "Saved" : "Wishlist"}
           </button>
         </div>
 
-        <div className="space-y-2">
-          <DetailAccordion title="Size Guide" content="Fits true to size. For an oversized look, size up by one. Full chest and length chart available in future release." />
-          <DetailAccordion title="Shipping & Delivery" content="Karachi, Lahore, Islamabad: 2-3 business days. Other cities: 3-5 business days. Free shipping above PKR 7,500." />
-          <DetailAccordion title="Returns & Exchange" content="7-day return and exchange window for unworn items with tags and original packaging." />
-          <DetailAccordion title="Fabric & Care" content="Premium blended fabric. Machine wash cold on gentle cycle. Do not bleach. Iron inside out at low heat." />
-        </div>
+        <section className="space-y-3 p-0">
+          {[
+            {
+              key: "sizeGuide" as const,
+              title: "Size Guide",
+              content: product.sizeGuide?.entries?.length ? (
+                <div className="space-y-3">
+                  {product.sizeGuide.imageUrl ? (
+                    <div className="relative h-48 overflow-hidden border border-zinc-200">
+                      <ProductImage src={product.sizeGuide.imageUrl} alt={`${product.name} size chart`} fill className="object-contain" sizes="(max-width: 768px) 100vw, 40vw" />
+                    </div>
+                  ) : null}
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse border border-zinc-200 text-xs">
+                      <thead>
+                        <tr className="bg-zinc-50 text-left uppercase tracking-[0.12em] text-zinc-600">
+                          <th className="border border-zinc-200 px-2 py-2">Size</th>
+                          <th className="border border-zinc-200 px-2 py-2">CM</th>
+                          <th className="border border-zinc-200 px-2 py-2">Inches</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {product.sizeGuide.entries.map((entry) => (
+                          <tr key={`size-guide-${entry.size}-${entry.cm}-${entry.inches}`}>
+                            <td className="border border-zinc-200 px-2 py-2">{entry.size}</td>
+                            <td className="border border-zinc-200 px-2 py-2">{entry.cm}</td>
+                            <td className="border border-zinc-200 px-2 py-2">{entry.inches}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-zinc-600">Size guide will be updated soon.</p>
+              ),
+            },
+            {
+              key: "deliveriesReturns" as const,
+              title: "Deliveries & Returns",
+              content: product.deliveriesReturns ? (
+                <div className="space-y-2 text-sm text-zinc-700">
+                  <p><span className="font-semibold">Delivery Time:</span> {product.deliveriesReturns.deliveryTime}</p>
+                  <p><span className="font-semibold">Return Policy:</span> {product.deliveriesReturns.returnPolicy}</p>
+                  <p><span className="font-semibold">Refund Conditions:</span> {product.deliveriesReturns.refundConditions}</p>
+                </div>
+              ) : (
+                <p className="text-sm text-zinc-600">Delivery and return policy will be updated soon.</p>
+              ),
+            },
+            {
+              key: "shippingDelivery" as const,
+              title: "Shipping & Delivery",
+              content: product.shippingDelivery ? (
+                <div className="space-y-2 text-sm text-zinc-700">
+                  <p><span className="font-semibold">Estimated Delivery:</span> {product.shippingDelivery.estimatedDeliveryTime}</p>
+                  <p><span className="font-semibold">Regions:</span> {product.shippingDelivery.regions.join(", ")}</p>
+                  {product.shippingDelivery.charges ? <p><span className="font-semibold">Charges:</span> {product.shippingDelivery.charges}</p> : null}
+                </div>
+              ) : (
+                <p className="text-sm text-zinc-600">Shipping details will be updated soon.</p>
+              ),
+            },
+            {
+              key: "fabricCare" as const,
+              title: "Fabric & Care",
+              content: product.fabricCare ? (
+                <div className="space-y-2 text-sm text-zinc-700">
+                  <p><span className="font-semibold">Fabric:</span> {product.fabricCare.fabricType}</p>
+                  <div>
+                    <p className="font-semibold">Care Instructions:</p>
+                    <ul className="list-disc space-y-1 pl-5">
+                      {product.fabricCare.careInstructions.map((instruction) => (
+                        <li key={`care-${instruction}`}>{instruction}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-zinc-600">Fabric and care details will be updated soon.</p>
+              ),
+            },
+          ].map((panel) => {
+            const isOpen = openPanel === panel.key;
+
+            return (
+              <article key={panel.key} className="w-full border border-zinc-300">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.12em] hover:bg-black hover:text-white"
+                  onClick={() => setOpenPanel((current) => (current === panel.key ? null : panel.key))}
+                >
+                  <span>{panel.title}</span>
+                  <span>{isOpen ? "-" : "+"}</span>
+                </button>
+                {isOpen ? <div className="w-full px-4 py-3">{panel.content}</div> : null}
+              </article>
+            );
+          })}
+        </section>
       </div>
 
       {zoomOpen ? (
@@ -216,7 +306,7 @@ export function ProductDetailClient({ product }: Props) {
             >
               Close
             </button>
-            <Image src={product.imageUrl} alt={`${product.name} zoomed`} fill className="object-contain" sizes="100vw" />
+            <ProductImage src={product.imageUrl} alt={`${product.name} zoomed`} fill className="object-contain" sizes="100vw" />
           </div>
         </div>
       ) : null}

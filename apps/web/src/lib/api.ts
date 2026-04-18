@@ -3,6 +3,7 @@ import { useMockFallback } from "./runtime-flags";
 import { clearStoredAuthToken, getStoredAuthToken } from "@/lib/auth-client";
 import { normalizeProduct } from "@/lib/taxonomy";
 import type {
+  AdminReviewReportRecord,
   AdminBrandDashboardRecord,
   Brand,
   BrandProvisioningResponse,
@@ -12,7 +13,19 @@ import type {
   CartItem,
   NotificationItem,
   NotificationPreference,
+  ProductContentTemplate,
+  ProductDeliveriesReturns,
+  ProductFabricCare,
+  ProductShippingDelivery,
+  ProductSizeGuide,
+  ProductTemplateType,
   Product,
+  ProductReview,
+  ProductReviewsResponse,
+  ReviewReport,
+  ReviewReportReason,
+  ReviewReportStatus,
+  SearchSuggestion,
   UserOrder,
   UserPaymentMethod,
   UserPaymentType,
@@ -73,11 +86,12 @@ async function safeFetch<T>(path: string): Promise<T> {
 
 async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const authToken = getStoredAuthToken();
+  const isFormDataBody = typeof FormData !== "undefined" && init?.body instanceof FormData;
   const response = await fetch(`${API_BASE}${path}`, {
     credentials: "include",
     ...init,
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormDataBody ? {} : { "Content-Type": "application/json" }),
       ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       ...(init?.headers || {}),
     },
@@ -184,18 +198,30 @@ export async function getBrandBySlug(slug: string): Promise<BrandWithProducts | 
 
 export async function getProducts(params?: Record<string, string>): Promise<Product[]> {
   const query = params ? `?${new URLSearchParams(params).toString()}` : "";
+  const hasActiveFilters = Boolean(
+    params?.q ||
+      params?.brand ||
+      params?.topCategory ||
+      params?.productType ||
+      params?.subCategory ||
+      params?.size ||
+      params?.minPrice ||
+      params?.maxPrice,
+  );
+
   try {
     const products = await safeFetch<Product[]>(`/products${query}`);
-    const mergedProducts = mergeProductsWithFallback(products);
+    const mergedProducts = hasActiveFilters ? products.map(normalizeProduct) : mergeProductsWithFallback(products);
     if (mergedProducts.length) {
       return mergedProducts;
     }
-    return fallbackProducts.map(normalizeProduct);
+
+    return hasActiveFilters ? [] : fallbackProducts.map(normalizeProduct);
   } catch {
     if (!useMockFallback) {
       return [];
     }
-    return fallbackProducts.map(normalizeProduct);
+    return hasActiveFilters ? [] : fallbackProducts.map(normalizeProduct);
   }
 }
 
@@ -212,6 +238,41 @@ export async function getProduct(slug: string): Promise<Product | null> {
     return fallback ? normalizeProduct(fallback) : null;
   }
 }
+
+export async function getProductSearchSuggestions(
+  query: string,
+  options?: { topCategory?: string },
+): Promise<{ suggestions: SearchSuggestion[]; correctedQuery?: string }> {
+  const normalized = query.trim();
+  if (normalized.length < 2) {
+    return { suggestions: [] };
+  }
+
+  const params = new URLSearchParams({ q: normalized });
+  if (options?.topCategory) {
+    params.set("topCategory", options.topCategory);
+  }
+
+  try {
+    const response = await fetch(`${API_BASE}/products/suggest?${params.toString()}`, {
+      cache: "no-store",
+      next: { revalidate: 0 },
+    });
+
+    if (!response.ok) {
+      throw new Error("API failed");
+    }
+
+    const json = (await response.json()) as { data?: SearchSuggestion[]; correctedQuery?: string };
+    return {
+      suggestions: Array.isArray(json.data) ? json.data : [],
+      correctedQuery: json.correctedQuery,
+    };
+  } catch {
+    return { suggestions: [] };
+  }
+}
+
 
 type WishlistEnvelope = { data: Array<{ product: Product }> };
 type UserCartEnvelope = {
@@ -338,9 +399,11 @@ type BrandMutationPayload = {
   logoUrl?: string;
   description?: string;
   verified?: boolean;
+  contactEmail?: string;
+  whatsappNumber?: string;
 };
 
-type ProductMutationPayload = {
+export type ProductMutationPayload = {
   brandId: string;
   name: string;
   slug: string;
@@ -350,14 +413,54 @@ type ProductMutationPayload = {
   subCategory: string;
   sizes: string[];
   imageUrl: string;
+  sizeGuideTemplateId?: string;
+  sizeGuide: ProductSizeGuide;
+  deliveriesReturnsTemplateId?: string;
+  deliveriesReturns: ProductDeliveriesReturns;
+  shippingDeliveryTemplateId?: string;
+  shippingDelivery: ProductShippingDelivery;
+  fabricCareTemplateId?: string;
+  fabricCare: ProductFabricCare;
   stock: number;
   isActive?: boolean;
 };
+
+export async function getProductContentTemplates(type: ProductTemplateType): Promise<ProductContentTemplate[]> {
+  const response = await authFetch<ApiEnvelope<ProductContentTemplate[]>>(`/products/templates?type=${encodeURIComponent(type)}`, {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function createProductContentTemplate(
+  payload: {
+    type: ProductTemplateType;
+    name: string;
+    content: ProductSizeGuide | ProductDeliveriesReturns | ProductShippingDelivery | ProductFabricCare;
+  },
+): Promise<ProductContentTemplate> {
+  const response = await authFetch<ApiEnvelope<ProductContentTemplate>>("/products/templates", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
 
 export async function createBrand(payload: BrandMutationPayload): Promise<BrandProvisioningResponse> {
   const response = await authFetch<ApiEnvelope<BrandProvisioningResponse>>("/brands", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function createBrandAccountInvite(
+  brandId: string,
+  payload?: { contactEmail?: string; fullName?: string },
+): Promise<BrandProvisioningResponse> {
+  const response = await authFetch<ApiEnvelope<BrandProvisioningResponse>>(`/brands/${brandId}/account`, {
+    method: "POST",
+    body: JSON.stringify(payload || {}),
   });
   return response.data;
 }
@@ -546,7 +649,29 @@ export async function getBrandDashboardProducts(): Promise<Product[]> {
 
 export async function updateBrandDashboardProduct(
   productId: string,
-  payload: Partial<Pick<Product, "name" | "slug" | "description" | "pricePkr" | "topCategory" | "subCategory" | "sizes" | "stock" | "isActive" | "imageUrl">>,
+  payload: Partial<
+    Pick<
+      Product,
+      | "name"
+      | "slug"
+      | "description"
+      | "pricePkr"
+      | "topCategory"
+      | "subCategory"
+      | "sizes"
+      | "stock"
+      | "isActive"
+      | "imageUrl"
+      | "sizeGuideTemplateId"
+      | "sizeGuide"
+      | "deliveriesReturnsTemplateId"
+      | "deliveriesReturns"
+      | "shippingDeliveryTemplateId"
+      | "shippingDelivery"
+      | "fabricCareTemplateId"
+      | "fabricCare"
+    >
+  >,
 ): Promise<Product> {
   const response = await authFetch<ApiEnvelope<Product>>(`/brand-dashboard/products/${productId}`, {
     method: "PUT",
@@ -558,6 +683,158 @@ export async function updateBrandDashboardProduct(
 export async function getBrandDashboardNotifications(): Promise<NotificationItem[]> {
   const response = await authFetch<ApiEnvelope<NotificationItem[]>>("/brand-dashboard/notifications", {
     method: "GET",
+  });
+  return response.data;
+}
+
+export async function getAdminOrder(orderId: string): Promise<UserOrder> {
+  const response = await authFetch<ApiEnvelope<UserOrder>>(`/admin/orders/${orderId}`, {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export type ReviewMutationPayload = {
+  orderItemId: string;
+  rating: number;
+  content: string;
+  imageUrls?: string[];
+};
+
+export async function uploadReviewImages(files: File[]): Promise<string[]> {
+  if (!files.length) {
+    return [];
+  }
+
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append("images", file);
+  }
+
+  const response = await authFetch<ApiEnvelope<{ urls: string[] }>>("/reviews/uploads", {
+    method: "POST",
+    body: formData,
+  });
+
+  return response.data.urls;
+}
+
+export async function getProductReviews(
+  productId: string,
+  options?: { limit?: number; skip?: number; sort?: "newest" | "rating" | "helpful"; rating?: number },
+): Promise<ProductReviewsResponse> {
+  const params = new URLSearchParams();
+  if (options?.limit) params.set("limit", String(options.limit));
+  if (options?.skip) params.set("skip", String(options.skip));
+  if (options?.sort) params.set("sort", options.sort);
+  if (options?.rating) params.set("rating", String(options.rating));
+
+  const query = params.toString();
+  const path = query ? `/reviews/product/${productId}?${query}` : `/reviews/product/${productId}`;
+  const response = await safeFetch<ProductReviewsResponse>(path);
+  return response;
+}
+
+export async function createReview(payload: ReviewMutationPayload): Promise<ProductReview> {
+  const response = await authFetch<ApiEnvelope<ProductReview>>("/reviews", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function getMyReviews(limit = 20, skip = 0): Promise<ProductReview[]> {
+  const response = await authFetch<ApiEnvelope<ProductReview[]>>(`/reviews/me?limit=${limit}&skip=${skip}`, {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function updateReview(
+  reviewId: string,
+  payload: Partial<Omit<ReviewMutationPayload, "orderItemId">>,
+): Promise<ProductReview> {
+  const response = await authFetch<ApiEnvelope<ProductReview>>(`/reviews/item/${reviewId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function deleteReview(reviewId: string): Promise<void> {
+  await authFetch(`/reviews/item/${reviewId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function voteReviewHelpfulness(reviewId: string, isHelpful: boolean): Promise<void> {
+  await authFetch(`/reviews/item/${reviewId}/helpfulness`, {
+    method: "POST",
+    body: JSON.stringify({ isHelpful }),
+  });
+}
+
+export async function reportReview(reviewId: string, payload: { reason: ReviewReportReason; description?: string }): Promise<ReviewReport> {
+  const response = await authFetch<ApiEnvelope<ReviewReport>>(`/reviews/item/${reviewId}/report`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function getBrandReviews(limit = 20, skip = 0): Promise<ProductReview[]> {
+  const response = await authFetch<ApiEnvelope<ProductReview[]>>(`/reviews/brand?limit=${limit}&skip=${skip}`, {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function replyToReview(reviewId: string, content: string): Promise<void> {
+  await authFetch(`/reviews/item/${reviewId}/reply`, {
+    method: "POST",
+    body: JSON.stringify({ content }),
+  });
+}
+
+export async function getAdminReviewReports(options?: {
+  status?: ReviewReportStatus;
+  limit?: number;
+  skip?: number;
+}): Promise<AdminReviewReportRecord[]> {
+  const params = new URLSearchParams();
+  if (options?.status) params.set("status", options.status);
+  if (options?.limit) params.set("limit", String(options.limit));
+  if (options?.skip) params.set("skip", String(options.skip));
+  const query = params.toString();
+
+  const response = await authFetch<ApiEnvelope<AdminReviewReportRecord[]>>(
+    query ? `/reviews/admin/reports?${query}` : "/reviews/admin/reports",
+    {
+      method: "GET",
+    },
+  );
+
+  return response.data;
+}
+
+export async function resolveAdminReviewReport(
+  reportId: string,
+  payload: { status: ReviewReportStatus; resolutionNote?: string },
+): Promise<ReviewReport> {
+  const response = await authFetch<ApiEnvelope<ReviewReport>>(`/reviews/admin/reports/${reportId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function moderateReview(
+  reviewId: string,
+  payload: { action: "HIDE" | "UNHIDE" | "FLAG" | "REMOVE"; reason?: string },
+): Promise<ProductReview> {
+  const response = await authFetch<ApiEnvelope<ProductReview>>(`/reviews/admin/${reviewId}/moderate`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
   });
   return response.data;
 }

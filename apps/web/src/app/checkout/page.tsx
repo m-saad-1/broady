@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ApiRequestError, createOrder } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
@@ -9,7 +9,7 @@ import { useCartStore } from "@/stores/cart-store";
 
 const paymentMethods = ["COD", "JAZZCASH", "EASYPAISA"] as const;
 
-export default function CheckoutPage() {
+function CheckoutPageContent() {
   const searchParams = useSearchParams();
   const user = useAuthStore((state) => state.user);
   const [paymentMethod, setPaymentMethod] = useState<(typeof paymentMethods)[number]>("COD");
@@ -29,7 +29,7 @@ export default function CheckoutPage() {
   }, [searchParams]);
 
   const checkoutItems = useMemo(() => {
-    if (!selectedKeys.length) return items;
+    if (!selectedKeys.length) return [];
     const keySet = new Set(selectedKeys);
     return items.filter((item) => keySet.has(`${item.product.id}:${item.selectedSize || ""}:${item.selectedColor || ""}`));
   }, [items, selectedKeys]);
@@ -42,8 +42,13 @@ export default function CheckoutPage() {
       return;
     }
 
+    if (!selectedKeys.length) {
+      setMessage("Please select specific cart items before checkout.");
+      return;
+    }
+
     if (!checkoutItems.length) {
-      setMessage("Cart is empty.");
+      setMessage("Selected items are no longer available in cart. Please select again.");
       return;
     }
 
@@ -111,6 +116,15 @@ export default function CheckoutPage() {
         </section>
       ) : null}
 
+      {!selectedKeys.length ? (
+        <section className="space-y-3 border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <p>Select one or more specific items in your cart before continuing to checkout.</p>
+          <Link href="/cart" className="inline-flex h-10 items-center border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white">
+            Return to cart
+          </Link>
+        </section>
+      ) : null}
+
       <form className="space-y-4 border border-zinc-300 p-6" onSubmit={placeOrder}>
         <p className="text-xs uppercase tracking-[0.12em] text-zinc-600">
           Ordering {checkoutItems.length} {checkoutItems.length === 1 ? "item" : "items"}
@@ -133,12 +147,20 @@ export default function CheckoutPage() {
             ))}
           </select>
         </label>
-        <button type="submit" disabled={isSubmitting} className="h-11 border border-black bg-black px-6 text-xs font-semibold uppercase tracking-[0.15em] text-white disabled:cursor-not-allowed disabled:opacity-50">
+        <button type="submit" disabled={isSubmitting || !selectedKeys.length} className="h-11 border border-black bg-black px-6 text-xs font-semibold uppercase tracking-[0.15em] text-white disabled:cursor-not-allowed disabled:opacity-50">
           {isSubmitting ? "Placing Order..." : "Place Order"}
         </button>
       </form>
 
       {message && <p className="border border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-700">{message}</p>}
     </main>
+  );
+}
+
+export default function CheckoutPage() {
+  return (
+    <Suspense fallback={<main className="mx-auto w-full max-w-3xl px-4 py-10 lg:px-10" />}>
+      <CheckoutPageContent />
+    </Suspense>
   );
 }

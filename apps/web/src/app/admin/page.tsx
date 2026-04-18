@@ -1,11 +1,10 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AdminPanelClient } from "./admin-panel-client";
 
 export const metadata = {
   title: "Admin Panel | BROADY",
-  description: "Manage brands, products, and orders from the BROADY admin dashboard.",
+  description: "Navigate brand, product, and order administration in BROADY.",
 };
 
 export default async function AdminPage() {
@@ -22,19 +21,35 @@ export default async function AdminPage() {
   if (session.user?.role !== "ADMIN" && session.user?.role !== "SUPER_ADMIN") redirect("/account?forbidden=admin");
 
   return (
-    <main className="mx-auto w-full max-w-7xl space-y-8 px-4 py-10 lg:px-10">
+    <main className="mx-auto w-full max-w-5xl space-y-8 px-4 py-10 lg:px-10">
       <header className="space-y-3 border-b border-zinc-300 pb-5">
         <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Operations</p>
         <h1 className="font-heading text-5xl uppercase">Admin Panel</h1>
-        <Link
-          href="/admin/brand-dashboard"
-          className="inline-flex h-10 items-center border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white"
-        >
-          Open Admin Brand Dashboard
-        </Link>
+        <p className="max-w-3xl text-sm text-zinc-600">Use dedicated pages for brand and product management, and open read-only dashboard views for brand operations.</p>
       </header>
 
-      <AdminPanelClient />
+      <section className="grid gap-4 md:grid-cols-4">
+        <Link href="/admin/brands" className="border border-zinc-300 p-5 transition hover:border-black hover:bg-zinc-50">
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Manage</p>
+          <p className="mt-3 font-heading text-3xl uppercase">Brands</p>
+          <p className="mt-2 text-sm text-zinc-600">Brand records, invite links, and notification channels.</p>
+        </Link>
+        <Link href="/admin/products" className="border border-zinc-300 p-5 transition hover:border-black hover:bg-zinc-50">
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Manage</p>
+          <p className="mt-3 font-heading text-3xl uppercase">Products</p>
+          <p className="mt-2 text-sm text-zinc-600">Catalog data, approvals, stock, and product detail routing.</p>
+        </Link>
+        <Link href="/admin/brand-dashboard" className="border border-zinc-300 p-5 transition hover:border-black hover:bg-zinc-50">
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Monitor</p>
+          <p className="mt-3 font-heading text-3xl uppercase">Brand Dashboard</p>
+          <p className="mt-2 text-sm text-zinc-600">Read-only view of brand orders with links to order and product details.</p>
+        </Link>
+        <Link href="/admin/reviews" className="border border-zinc-300 p-5 transition hover:border-black hover:bg-zinc-50">
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Moderate</p>
+          <p className="mt-3 font-heading text-3xl uppercase">Reviews</p>
+          <p className="mt-2 text-sm text-zinc-600">Handle reported reviews and enforce marketplace review policy.</p>
+        </Link>
+      </section>
     </main>
   );
 }

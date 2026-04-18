@@ -5,11 +5,19 @@ export type Brand = {
   logoUrl?: string;
   description?: string;
   verified: boolean;
+  commissionRate?: number;
+  apiEnabled?: boolean;
+  contactEmail?: string | null;
+  whatsappNumber?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type Product = {
   id: string;
   brandId: string;
+  createdAt?: string;
+  updatedAt?: string;
   approvalStatus?: "DRAFT" | "PENDING" | "APPROVED" | "REJECTED";
   name: string;
   slug: string;
@@ -20,6 +28,14 @@ export type Product = {
   productType?: "Top" | "Bottom" | "Footwear" | "Accessories";
   subCategory: string;
   sizes: string[];
+  sizeGuideTemplateId?: string;
+  sizeGuide?: ProductSizeGuide;
+  deliveriesReturnsTemplateId?: string;
+  deliveriesReturns?: ProductDeliveriesReturns;
+  shippingDeliveryTemplateId?: string;
+  shippingDelivery?: ProductShippingDelivery;
+  fabricCareTemplateId?: string;
+  fabricCare?: ProductFabricCare;
   colors?: string[];
   badge?: "Sale" | "New" | "Limited" | "Out of Stock";
   imageUrl: string;
@@ -32,6 +48,45 @@ export type Product = {
     endsAt?: string;
   };
   brand?: Brand;
+};
+
+export type ProductSizeGuide = {
+  imageUrl?: string;
+  entries: Array<{
+    size: string;
+    cm: string;
+    inches: string;
+  }>;
+};
+
+export type ProductDeliveriesReturns = {
+  deliveryTime: string;
+  returnPolicy: string;
+  refundConditions: string;
+};
+
+export type ProductShippingDelivery = {
+  regions: string[];
+  estimatedDeliveryTime: string;
+  charges?: string;
+};
+
+export type ProductFabricCare = {
+  fabricType: string;
+  careInstructions: string[];
+};
+
+export type ProductTemplateType = "SIZE_GUIDE" | "DELIVERIES_RETURNS" | "SHIPPING_DELIVERY" | "FABRIC_CARE";
+
+export type ProductContentTemplate = {
+  id: string;
+  type: ProductTemplateType;
+  name: string;
+  content: ProductSizeGuide | ProductDeliveriesReturns | ProductShippingDelivery | ProductFabricCare;
+  brandId?: string | null;
+  brand?: Pick<Brand, "id" | "name" | "slug">;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type CartItem = {
@@ -150,7 +205,14 @@ export type BrandDashboardOverview = {
 
 export type NotificationItem = {
   id: string;
-  type: "ORDER_PLACED" | "ORDER_STATUS_UPDATED" | "BRAND_ORDER_ASSIGNED";
+  type:
+    | "ORDER_PLACED"
+    | "ORDER_STATUS_UPDATED"
+    | "BRAND_ORDER_ASSIGNED"
+    | "PRODUCT_REVIEW_SUBMITTED"
+    | "PRODUCT_REVIEW_REPORTED"
+    | "PRODUCT_REVIEW_MODERATED"
+    | "PRODUCT_REVIEW_REPLIED";
   title: string;
   message: string;
   readAt?: string | null;
@@ -162,6 +224,14 @@ export type NotificationItem = {
     status: "SENT" | "QUEUED" | "FAILED";
     recipient: string;
   }>;
+};
+
+export type SearchSuggestion = {
+  id: string;
+  label: string;
+  query: string;
+  topCategory?: "Men" | "Women" | "Kids";
+  kind: "query" | "product";
 };
 
 export type BrandProvisioningResponse = {
@@ -213,4 +283,108 @@ export type AdminBrandDashboardRecord = {
     grossPkr: number;
     statusCounts: Record<string, number>;
   };
+};
+
+export type ReviewStatus = "VISIBLE" | "HIDDEN" | "FLAGGED" | "REMOVED";
+
+export type ReviewReportReason = "SPAM" | "INAPPROPRIATE" | "OFFENSIVE_LANGUAGE" | "FAKE_REVIEW" | "OTHER";
+
+export type ReviewReportStatus = "OPEN" | "RESOLVED" | "DISMISSED";
+
+export type ProductReviewAggregate = {
+  averageRating: number;
+  totalReviews: number;
+  rating1: number;
+  rating2: number;
+  rating3: number;
+  rating4: number;
+  rating5: number;
+};
+
+export type ProductReview = {
+  id: string;
+  productId: string;
+  userId: string;
+  brandId: string;
+  orderItemId: string;
+  rating: number;
+  content: string;
+  status: ReviewStatus;
+  isVerifiedPurchase: boolean;
+  moderationReason?: string | null;
+  moderatedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  user: {
+    id: string;
+    fullName: string;
+  };
+  product?: {
+    id: string;
+    name: string;
+    slug: string;
+    imageUrl?: string;
+  };
+  images: Array<{
+    id: string;
+    url: string;
+    sortOrder: number;
+  }>;
+  brandReply?: {
+    id: string;
+    brandId: string;
+    userId: string;
+    content: string;
+    createdAt: string;
+    updatedAt: string;
+    user: {
+      id: string;
+      fullName: string;
+    };
+  } | null;
+  _count?: {
+    helpfulnessVotes: number;
+    reports: number;
+  };
+};
+
+export type ProductReviewsResponse = {
+  total: number;
+  limit: number;
+  skip: number;
+  items: ProductReview[];
+  aggregate: ProductReviewAggregate;
+};
+
+export type ReviewReport = {
+  id: string;
+  reviewId: string;
+  reportedByUserId: string;
+  reason: ReviewReportReason;
+  description?: string | null;
+  status: ReviewReportStatus;
+  resolutionNote?: string | null;
+  resolvedById?: string | null;
+  resolvedAt?: string | null;
+  createdAt: string;
+};
+
+export type AdminReviewReportRecord = ReviewReport & {
+  review: ProductReview & {
+    product: {
+      id: string;
+      name: string;
+      slug: string;
+    };
+  };
+  reportedByUser: {
+    id: string;
+    fullName: string;
+    email: string;
+  };
+  resolvedBy?: {
+    id: string;
+    fullName: string;
+    email: string;
+  } | null;
 };

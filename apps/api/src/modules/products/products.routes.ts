@@ -1,26 +1,26 @@
-import { NotificationType, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { cache } from "../../config/cache.js";
 import { prisma } from "../../config/prisma.js";
 import { requireAdmin, requireAuth } from "../../middleware/auth.js";
-import { createNotificationWithChannels } from "../notifications/notification.service.js";
+import { notificationEventNames } from "../notifications/notification.events.js";
+import { queueNotificationEvent } from "../notifications/notification.service.js";
+import {
+  productApprovalStatuses,
+  productBaseSchema,
+  productDeliveriesReturnsSchema,
+  productFabricCareSchema,
+  productShippingDeliverySchema,
+  productSizeGuideSchema,
+  productTemplateTypes,
+} from "./product.validation.js";
 
 const router = Router();
 
-const productCreateSchema = z.object({
-  brandId: z.string(),
-  name: z.string().trim().min(2),
-  slug: z.string().trim().min(2),
-  description: z.string().trim().min(10),
-  pricePkr: z.number().int().positive(),
-  topCategory: z.enum(["Men", "Women", "Kids"]),
-  subCategory: z.string().trim().min(2),
-  sizes: z.array(z.string().trim().min(1)).min(1),
-  imageUrl: z.string().url(),
-  stock: z.number().int().min(0),
-  isActive: z.boolean().optional(),
-  approvalStatus: z.enum(["DRAFT", "PENDING", "APPROVED", "REJECTED"]).optional(),
+const productCreateSchema = productBaseSchema.extend({
+  brandId: z.string().trim().min(1),
+  approvalStatus: z.enum(productApprovalStatuses).optional(),
 });
 
 const productUpdateSchema = productCreateSchema.partial().refine((payload) => Object.keys(payload).length > 0, {
@@ -33,6 +33,601 @@ const productTypeMap: Record<string, string[]> = {
   Footwear: ["Slip Ons", "Sneakers", "Boots", "Sandals", "Loafers", "Footwear"],
   Accessories: ["Bags", "Belts", "Caps", "Jewelry", "Accessories"],
 };
+
+async function getTemplateScope(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, role: true, brandId: true },
+  });
+
+  if (!user) return null;
+
+  if (user.role === "ADMIN" || user.role === "SUPER_ADMIN") {
+    return { role: user.role, brandId: null as string | null };
+  }
+
+  if (user.role === "BRAND" || user.role === "BRAND_ADMIN" || user.role === "BRAND_STAFF") {
+    if (user.brandId) {
+      return { role: user.role, brandId: user.brandId };
+    }
+
+    const membership = await prisma.brandMember.findFirst({
+      where: { userId: user.id },
+      select: { brandId: true },
+    });
+
+    if (membership?.brandId) {
+      return { role: user.role, brandId: membership.brandId };
+    }
+  }
+
+  return null;
+}
+
+const topSubCategories = productTypeMap.Top;
+const bottomSubCategories = productTypeMap.Bottom;
+const footwearSubCategories = productTypeMap.Footwear;
+const accessoriesSubCategories = productTypeMap.Accessories;
+
+type ProductSearchFilters = {
+  brand?: string;
+  topCategory?: string;
+  productType?: string;
+  subCategory?: string;
+  subCategoryHints?: string[];
+  size?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  // NEW: Category-aware search flags
+  shouldEnforceNameMatch?: boolean;    // If true, require keyword to appear in product name (avoid description-only matches)
+  nameMatchTokens?: string[];           // Tokens that should appear in name for category-intent searches
+};
+
+const colorWords = [
+  "black", "white", "navy", "blue", "red", "green", "beige", "brown", "grey", "gray", "olive", "maroon", "cream",
+];
+
+const topCategoryTokenMap: Record<string, "Men" | "Women" | "Kids"> = {
+  men: "Men",
+  mens: "Men",
+  male: "Men",
+  man: "Men",
+  women: "Women",
+  womens: "Women",
+  female: "Women",
+  woman: "Women",
+  kids: "Kids",
+  kid: "Kids",
+  child: "Kids",
+  children: "Kids",
+  boys: "Kids",
+  girls: "Kids",
+};
+
+const searchStopWords = new Set(["for", "and", "the", "a", "an", "of", "to", "in", "on", "with", "by"]);
+
+const subCategoryHintMap: Record<string, string[]> = {
+  shirt: ["T-Shirts", "Polo Shirts", "V-Neck", "Formal Shirts"],
+  tshirt: ["T-Shirts"],
+  tee: ["T-Shirts"],
+  polo: ["Polo Shirts"],
+  vneck: ["V-Neck"],
+  pant: ["Trousers", "Jeans", "Joggers", "Cargo Pants"],
+  trouser: ["Trousers"],
+  jean: ["Jeans"],
+};
+
+function normalizeSearchInput(input?: string) {
+  if (!input) return "";
+  return input.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function normalizeSearchToken(token: string) {
+  let normalized = token.toLowerCase().trim();
+
+  if (normalized.endsWith("ies") && normalized.length > 4) {
+    normalized = `${normalized.slice(0, -3)}y`;
+  } else if (normalized.endsWith("es") && normalized.length > 4) {
+    normalized = normalized.slice(0, -2);
+  } else if (normalized.endsWith("s") && normalized.length > 3) {
+    normalized = normalized.slice(0, -1);
+  }
+
+  return normalized;
+}
+
+function tokenizeSearchQuery(query: string) {
+  return (
+    query
+      .toLowerCase()
+      .match(/[a-z0-9]+/g)
+      ?.map((term) => normalizeSearchToken(term))
+      .filter((term) => term.length > 1 && !searchStopWords.has(term)) || []
+  );
+}
+
+/**
+ * Calculates what percentage of tokens match a given category type.
+ * @param tokens - Normalized search tokens
+ * @param categoryType - 'subCategory' or 'topCategory'
+ * @returns { coverageRatio: 0-1, matchingTokens: Set of tokens that matched }
+ */
+function calculateTokenCoverage(tokens: string[], categoryType: 'subCategory' | 'topCategory') {
+  if (!tokens.length) return { coverageRatio: 0, matchingTokens: new Set<string>() };
+
+  const mapToUse = categoryType === 'subCategory' ? subCategoryHintMap : topCategoryTokenMap;
+  const matchingTokens = new Set<string>();
+
+  for (const token of tokens) {
+    if (token in mapToUse) {
+      matchingTokens.add(token);
+    }
+  }
+
+  const coverageRatio = matchingTokens.size / tokens.length;
+  return { coverageRatio, matchingTokens };
+}
+
+/**
+ * Decides if search query should trigger category-specific filtering for subcategories.
+ * Requires 50% or more of tokens to map to subcategories.
+ */
+function decideIfShouldFilterBySubCategory(query: string, tokens?: string[]) {
+  const searchTokens = tokens ?? tokenizeSearchQuery(query);
+  if (!searchTokens.length) return false;
+
+  const { coverageRatio } = calculateTokenCoverage(searchTokens, 'subCategory');
+  return coverageRatio >= 0.5;
+}
+
+/**
+ * Decides if search query should trigger category-specific filtering for top categories.
+ * Requires 50% or more of tokens to map to top categories (Men/Women/Kids).
+ */
+function decideIfShouldFilterByTopCategory(query: string, tokens?: string[]) {
+  const searchTokens = tokens ?? tokenizeSearchQuery(query);
+  if (!searchTokens.length) return false;
+
+  const { coverageRatio } = calculateTokenCoverage(searchTokens, 'topCategory');
+  return coverageRatio >= 0.5;
+}
+
+function inferSubCategoryHints(query: string) {
+  const tokens = tokenizeSearchQuery(query);
+  if (!tokens.length) return [] as string[];
+
+  // Find all subcategories that match any token
+  const categoryMap = new Map<string, Set<string>>();
+  for (const token of tokens) {
+    const matches = subCategoryHintMap[token];
+    if (matches) {
+      for (const subCategory of matches) {
+        if (!categoryMap.has(subCategory)) {
+          categoryMap.set(subCategory, new Set());
+        }
+        categoryMap.get(subCategory)!.add(token);
+      }
+    }
+  }
+
+  // Find the subcategory (or set of related subcategories) with highest token coverage
+  // If multiple SubCategories are equally matched, return all of them (they form a logical group)
+  let maxCoverage = 0;
+  const bestHints = new Set<string>();
+
+  for (const [subCategory, matchedTokens] of categoryMap) {
+    const coverage = matchedTokens.size / tokens.length;
+    if (coverage > maxCoverage) {
+      maxCoverage = coverage;
+      bestHints.clear();
+      bestHints.add(subCategory);
+    } else if (coverage === maxCoverage) {
+      bestHints.add(subCategory);
+    }
+  }
+
+  return Array.from(bestHints);
+}
+
+function inferQueryCategory(query: string) {
+  const tokens = tokenizeSearchQuery(query);
+  if (!tokens.length) {
+    return { normalizedQuery: query } as { normalizedQuery: string; inferredTopCategory?: "Men" | "Women" | "Kids" };
+  }
+
+  // Count token coverage for each topCategory
+  const categoryTokenCount = new Map<"Men" | "Women" | "Kids", number>();
+  for (const token of tokens) {
+    const mapped = topCategoryTokenMap[token];
+    if (mapped) {
+      categoryTokenCount.set(mapped, (categoryTokenCount.get(mapped) ?? 0) + 1);
+    }
+  }
+
+  // Only infer topCategory if 50%+ of tokens map to THE SAME category
+  let inferredTopCategory: "Men" | "Women" | "Kids" | undefined;
+  const maxCoverage = Math.max(...Array.from(categoryTokenCount.values()), 0);
+  const requiredCoverage = Math.ceil(tokens.length * 0.5);
+
+  if (maxCoverage >= requiredCoverage) {
+    // Find the category with the most matches
+    let bestCategory: "Men" | "Women" | "Kids" | undefined;
+    let bestCount = 0;
+    for (const [category, count] of categoryTokenCount) {
+      if (count > bestCount) {
+        bestCount = count;
+        bestCategory = category;
+      }
+    }
+    inferredTopCategory = bestCategory;
+  }
+
+  const normalizedTokens = inferredTopCategory
+    ? tokens.filter((token) => topCategoryTokenMap[token] !== inferredTopCategory)
+    : tokens;
+
+  return {
+    normalizedQuery: normalizedTokens.join(" ").trim() || query,
+    inferredTopCategory,
+  };
+}
+
+function buildPrefixTsQuery(query: string) {
+  const terms = tokenizeSearchQuery(query);
+  if (!terms.length) {
+    return null;
+  }
+
+  return terms.map((term) => `${term}:*`).join(" & ");
+}
+
+function buildFilterConditions(parsed: {
+  brand?: string;
+  topCategory?: string;
+  productType?: string;
+  subCategory?: string;
+  size?: string;
+  minPrice?: number;
+  maxPrice?: number;
+}) {
+  const conditions: Prisma.Sql[] = [
+    Prisma.sql`p."isActive" = true`,
+    Prisma.sql`p."approvalStatus" = 'APPROVED'::"ProductApprovalStatus"`,
+  ];
+
+  if (parsed.brand) {
+    conditions.push(Prisma.sql`b."slug" = ${parsed.brand}`);
+  }
+
+   if (parsed.topCategory) {
+     conditions.push(Prisma.sql`p."topCategory" = ${parsed.topCategory}`);
+   }
+
+  if (parsed.productType && productTypeMap[parsed.productType]) {
+    conditions.push(Prisma.sql`p."subCategory" IN (${Prisma.join(productTypeMap[parsed.productType])})`);
+  }
+
+  if (parsed.subCategory) {
+    conditions.push(Prisma.sql`p."subCategory" = ${parsed.subCategory}`);
+  }
+
+
+  if (parsed.size) {
+    conditions.push(Prisma.sql`${parsed.size} = ANY(p."sizes")`);
+  }
+
+  if (typeof parsed.minPrice === "number") {
+    conditions.push(Prisma.sql`p."pricePkr" >= ${parsed.minPrice}`);
+  }
+
+  if (typeof parsed.maxPrice === "number") {
+    conditions.push(Prisma.sql`p."pricePkr" <= ${parsed.maxPrice}`);
+  }
+
+  return conditions;
+}
+
+async function runRankedProductSearch(q: string, filters: ProductSearchFilters) {
+  const searchTerms = tokenizeSearchQuery(q);
+  const hasSearchTerms = searchTerms.length > 0;
+  const prefixQuery = buildPrefixTsQuery(q);
+  const searchConditions = buildFilterConditions(filters);
+  const inferredProductType = Prisma.sql`
+    CASE
+      WHEN p."subCategory" IN (${Prisma.join(topSubCategories)}) THEN 'Top'
+      WHEN p."subCategory" IN (${Prisma.join(bottomSubCategories)}) THEN 'Bottom'
+      WHEN p."subCategory" IN (${Prisma.join(footwearSubCategories)}) THEN 'Footwear'
+      WHEN p."subCategory" IN (${Prisma.join(accessoriesSubCategories)}) THEN 'Accessories'
+      ELSE 'Top'
+    END
+  `;
+  const searchableText = Prisma.sql`
+    concat_ws(
+      ' ',
+      coalesce(p."name", ''),
+      coalesce(p."topCategory", ''),
+      coalesce(p."subCategory", ''),
+      coalesce(${inferredProductType}, ''),
+      coalesce(p."searchDocument", ''),
+      coalesce(array_to_string(p."sizes", ' '), ''),
+      coalesce(p."description", ''),
+      coalesce(b."name", '')
+    )
+  `;
+  const searchableTextLower = Prisma.sql`lower(${searchableText})`;
+  const searchVector = Prisma.sql`to_tsvector('english', ${searchableText})`;
+  const searchQuery = prefixQuery ? Prisma.sql`to_tsquery('english', ${prefixQuery})` : null;
+  const queryText = q.toLowerCase();
+  const hasSubCategoryHints = Boolean(filters.subCategoryHints?.length);
+  const subCategoryHintMatch = hasSubCategoryHints
+    ? Prisma.sql` OR p."subCategory" IN (${Prisma.join(filters.subCategoryHints || [])})`
+    : Prisma.empty;
+  const subCategoryHintRankBonus = hasSubCategoryHints
+    ? Prisma.sql` + CASE WHEN p."subCategory" IN (${Prisma.join(filters.subCategoryHints || [])}) THEN 1.4 ELSE 0 END`
+    : Prisma.empty;
+  const tokenSubCategoryMatch = hasSearchTerms
+    ? Prisma.sql`
+        OR EXISTS (
+          SELECT 1
+          FROM unnest(ARRAY[${Prisma.join(searchTerms)}]::text[]) AS term
+          WHERE lower(p."subCategory") LIKE '%' || term || '%'
+        )
+      `
+    : Prisma.empty;
+  const tokenTopCategoryMatch = hasSearchTerms
+    ? Prisma.sql`
+        OR EXISTS (
+          SELECT 1
+          FROM unnest(ARRAY[${Prisma.join(searchTerms)}]::text[]) AS term
+          WHERE lower(p."topCategory") LIKE '%' || term || '%'
+        )
+      `
+    : Prisma.empty;
+  const tokenProductTypeMatch = hasSearchTerms
+    ? Prisma.sql`
+        OR EXISTS (
+          SELECT 1
+          FROM unnest(ARRAY[${Prisma.join(searchTerms)}]::text[]) AS term
+          WHERE lower(${inferredProductType}) LIKE '%' || term || '%'
+        )
+      `
+    : Prisma.empty;
+  const tokenSubCategoryRankBonus = hasSearchTerms
+    ? Prisma.sql`
+        + CASE
+            WHEN EXISTS (
+              SELECT 1
+              FROM unnest(ARRAY[${Prisma.join(searchTerms)}]::text[]) AS term
+              WHERE lower(p."subCategory") LIKE '%' || term || '%'
+            )
+            THEN 1.2
+            ELSE 0
+          END
+      `
+    : Prisma.empty;
+  const tokenProductTypeRankBonus = hasSearchTerms
+    ? Prisma.sql`
+        + CASE
+            WHEN EXISTS (
+              SELECT 1
+              FROM unnest(ARRAY[${Prisma.join(searchTerms)}]::text[]) AS term
+              WHERE lower(${inferredProductType}) LIKE '%' || term || '%'
+            )
+            THEN 0.9
+            ELSE 0
+          END
+      `
+    : Prisma.empty;
+  const tokenTopCategoryRankBonus = hasSearchTerms
+    ? Prisma.sql`
+        + CASE
+            WHEN EXISTS (
+              SELECT 1
+              FROM unnest(ARRAY[${Prisma.join(searchTerms)}]::text[]) AS term
+              WHERE lower(p."topCategory") LIKE '%' || term || '%'
+            )
+            THEN 0.7
+            ELSE 0
+          END
+      `
+    : Prisma.empty;
+  const tokenAnyFieldMatch = hasSearchTerms
+    ? Prisma.sql`
+        OR EXISTS (
+          SELECT 1
+          FROM unnest(ARRAY[${Prisma.join(searchTerms)}]::text[]) AS term
+          WHERE ${searchableTextLower} LIKE '%' || term || '%'
+        )
+      `
+    : Prisma.empty;
+  const tokenAnyFieldRankBonus = hasSearchTerms
+    ? Prisma.sql`
+        + CASE
+            WHEN EXISTS (
+              SELECT 1
+              FROM unnest(ARRAY[${Prisma.join(searchTerms)}]::text[]) AS term
+              WHERE ${searchableTextLower} LIKE '%' || term || '%'
+            )
+            THEN 1.6
+            ELSE 0
+          END
+      `
+    : Prisma.empty;
+
+  const enforceNameMatch = Boolean(filters.shouldEnforceNameMatch && filters.nameMatchTokens?.length);
+  const nameMatchTokens = filters.nameMatchTokens || [];
+  const nameIntentGuard = enforceNameMatch
+    ? Prisma.sql`
+      AND EXISTS (
+        SELECT 1
+        FROM unnest(ARRAY[${Prisma.join(nameMatchTokens)}]::text[]) AS term
+        WHERE lower(p."name") LIKE '%' || term || '%'
+      )
+    `
+    : Prisma.empty;
+
+  const searchMatch = searchQuery
+    ? Prisma.sql`
+      (
+        ${searchVector} @@ ${searchQuery}
+        OR lower(p."name") LIKE ${queryText} || '%'
+        OR lower(b."name") LIKE ${queryText} || '%'
+        OR lower(p."description") LIKE '%' || ${queryText} || '%'
+        OR lower(p."subCategory") LIKE ${queryText} || '%'
+        OR lower(p."subCategory") LIKE '%' || ${queryText} || '%'
+        OR lower(p."topCategory") LIKE ${queryText} || '%'
+        OR lower(p."topCategory") LIKE '%' || ${queryText} || '%'
+        OR lower(${inferredProductType}) LIKE ${queryText} || '%'
+        OR lower(${inferredProductType}) LIKE '%' || ${queryText} || '%'
+        OR lower(p."searchDocument") LIKE '%' || ${queryText} || '%'
+        ${tokenSubCategoryMatch}
+        ${tokenTopCategoryMatch}
+        ${tokenProductTypeMatch}
+        ${tokenAnyFieldMatch}
+        OR ${queryText} = ANY(ARRAY(SELECT lower(s) FROM unnest(p."sizes") AS s))
+        OR similarity(${searchableText}, ${q}) > 0.18
+        ${subCategoryHintMatch}
+      )
+    `
+    : Prisma.sql`
+      (
+        lower(p."name") LIKE ${queryText} || '%'
+        OR lower(b."name") LIKE ${queryText} || '%'
+        OR lower(p."description") LIKE '%' || ${queryText} || '%'
+        OR lower(p."subCategory") LIKE ${queryText} || '%'
+        OR lower(p."subCategory") LIKE '%' || ${queryText} || '%'
+        OR lower(p."topCategory") LIKE ${queryText} || '%'
+        OR lower(p."topCategory") LIKE '%' || ${queryText} || '%'
+        OR lower(${inferredProductType}) LIKE ${queryText} || '%'
+        OR lower(${inferredProductType}) LIKE '%' || ${queryText} || '%'
+        OR lower(p."searchDocument") LIKE '%' || ${queryText} || '%'
+        ${tokenSubCategoryMatch}
+        ${tokenTopCategoryMatch}
+        ${tokenProductTypeMatch}
+        ${tokenAnyFieldMatch}
+        OR ${queryText} = ANY(ARRAY(SELECT lower(s) FROM unnest(p."sizes") AS s))
+        OR similarity(${searchableText}, ${q}) > 0.18
+        ${subCategoryHintMatch}
+      )
+    `;
+
+  const rankExpression = searchQuery
+    ? Prisma.sql`
+      (
+        ts_rank_cd(${searchVector}, ${searchQuery}) * 4
+        + CASE WHEN lower(p."name") LIKE ${queryText} || '%' THEN 2.5 ELSE 0 END
+        + CASE WHEN lower(b."name") LIKE ${queryText} || '%' THEN 2.0 ELSE 0 END
+        + CASE WHEN lower(p."subCategory") LIKE ${queryText} || '%' THEN 1.4 ELSE 0 END
+        + CASE WHEN lower(p."subCategory") LIKE '%' || ${queryText} || '%' THEN 1.1 ELSE 0 END
+        + CASE WHEN lower(p."topCategory") LIKE ${queryText} || '%' THEN 0.8 ELSE 0 END
+        + CASE WHEN lower(p."topCategory") LIKE '%' || ${queryText} || '%' THEN 0.5 ELSE 0 END
+        + CASE WHEN lower(${inferredProductType}) LIKE ${queryText} || '%' THEN 1.0 ELSE 0 END
+        + CASE WHEN lower(${inferredProductType}) LIKE '%' || ${queryText} || '%' THEN 0.8 ELSE 0 END
+        + CASE WHEN lower(p."searchDocument") LIKE '%' || ${queryText} || '%' THEN 0.9 ELSE 0 END
+        ${tokenSubCategoryRankBonus}
+        ${tokenTopCategoryRankBonus}
+        ${tokenProductTypeRankBonus}
+        ${tokenAnyFieldRankBonus}
+        + CASE WHEN ${queryText} = ANY(ARRAY(SELECT lower(s) FROM unnest(p."sizes") AS s)) THEN 0.6 ELSE 0 END
+        + similarity(${searchableText}, ${q}) * 1.5
+        ${subCategoryHintRankBonus}
+      )
+    `
+    : Prisma.sql`
+      (
+        CASE WHEN lower(p."name") LIKE ${queryText} || '%' THEN 2.5 ELSE 0 END
+        + CASE WHEN lower(b."name") LIKE ${queryText} || '%' THEN 2.0 ELSE 0 END
+        + CASE WHEN lower(p."subCategory") LIKE ${queryText} || '%' THEN 1.4 ELSE 0 END
+        + CASE WHEN lower(p."subCategory") LIKE '%' || ${queryText} || '%' THEN 1.1 ELSE 0 END
+        + CASE WHEN lower(p."topCategory") LIKE ${queryText} || '%' THEN 0.8 ELSE 0 END
+        + CASE WHEN lower(p."topCategory") LIKE '%' || ${queryText} || '%' THEN 0.5 ELSE 0 END
+        + CASE WHEN lower(${inferredProductType}) LIKE ${queryText} || '%' THEN 1.0 ELSE 0 END
+        + CASE WHEN lower(${inferredProductType}) LIKE '%' || ${queryText} || '%' THEN 0.8 ELSE 0 END
+        + CASE WHEN lower(p."searchDocument") LIKE '%' || ${queryText} || '%' THEN 0.9 ELSE 0 END
+        ${tokenSubCategoryRankBonus}
+        ${tokenTopCategoryRankBonus}
+        ${tokenProductTypeRankBonus}
+        ${tokenAnyFieldRankBonus}
+        + CASE WHEN ${queryText} = ANY(ARRAY(SELECT lower(s) FROM unnest(p."sizes") AS s)) THEN 0.6 ELSE 0 END
+        + similarity(${searchableText}, ${q}) * 1.5
+        ${subCategoryHintRankBonus}
+      )
+    `;
+
+  const rankedRows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT p."id"
+    FROM "Product" p
+    INNER JOIN "Brand" b ON b."id" = p."brandId"
+    WHERE ${Prisma.join(searchConditions, " AND ")}
+      AND ${searchMatch}
+      ${nameIntentGuard}
+    ORDER BY ${rankExpression} DESC, p."createdAt" DESC
+    LIMIT 100
+  `);
+
+  return rankedRows.map((row) => row.id);
+}
+
+async function getCorrectedQuery(normalizedQuery: string) {
+  const tokens = tokenizeSearchQuery(normalizedQuery);
+  if (!tokens.length) return null;
+
+  const corrected = await Promise.all(
+    tokens.map(async (token) => {
+      if (token.length < 3) {
+        return token;
+      }
+
+      const suggestion = await prisma.$queryRaw<Array<{ term: string }>>(Prisma.sql`
+        WITH lexemes AS (
+          SELECT DISTINCT lower(regexp_replace(word, '[^a-z0-9]', '', 'g')) AS term
+          FROM "Product" p
+          INNER JOIN "Brand" b ON b."id" = p."brandId"
+          CROSS JOIN LATERAL regexp_split_to_table(
+            concat_ws(
+              ' ',
+              coalesce(p."name", ''),
+              coalesce(p."topCategory", ''),
+              coalesce(p."subCategory", ''),
+              coalesce(
+                CASE
+                  WHEN p."subCategory" IN (${Prisma.join(topSubCategories)}) THEN 'Top'
+                  WHEN p."subCategory" IN (${Prisma.join(bottomSubCategories)}) THEN 'Bottom'
+                  WHEN p."subCategory" IN (${Prisma.join(footwearSubCategories)}) THEN 'Footwear'
+                  WHEN p."subCategory" IN (${Prisma.join(accessoriesSubCategories)}) THEN 'Accessories'
+                  ELSE 'Top'
+                END,
+                ''
+              ),
+              coalesce(array_to_string(p."sizes", ' '), ''),
+              coalesce(p."description", ''),
+              coalesce(b."name", ''),
+              coalesce(p."searchDocument", '')
+            ),
+            E'\\s+'
+          ) AS word
+          WHERE p."isActive" = true
+            AND p."approvalStatus" = 'APPROVED'::"ProductApprovalStatus"
+        )
+        SELECT term
+        FROM lexemes
+        WHERE length(term) >= 3
+          AND similarity(term, ${token}) > 0.34
+        ORDER BY similarity(term, ${token}) DESC
+        LIMIT 1
+      `);
+
+      return suggestion[0]?.term || token;
+    }),
+  );
+
+  const correctedQuery = corrected.join(" ").trim();
+  if (!correctedQuery || correctedQuery === normalizedQuery) {
+    return null;
+  }
+
+  return correctedQuery;
+}
 
 function clearProductCache() {
   cache.clear();
@@ -53,9 +648,66 @@ router.get("/", async (req, res) => {
   const parsed = querySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ message: "Invalid query" });
 
-  const cacheKey = `products:${JSON.stringify(parsed.data)}`;
+  const cacheKey = `products:v2:${JSON.stringify(parsed.data)}`;
   const cached = cache.get(cacheKey);
   if (cached) return res.json({ data: cached, cached: true });
+
+  const q = normalizeSearchInput(parsed.data.q);
+
+  if (q) {
+    const inferredQuery = inferQueryCategory(q);
+    const searchText = inferredQuery.normalizedQuery;
+    const tokens = tokenizeSearchQuery(searchText);
+    
+    // Find product-type keywords (e.g., "shirt", "trouser", "jean") that MUST appear in product name
+    // If ANY token is a known product type, only return products containing that keyword in their name
+    const typeKeywords = tokens.filter(t => t in subCategoryHintMap);
+    const shouldEnforceNameMatch = typeKeywords.length > 0 && !parsed.data.topCategory;
+    
+    // IMPORTANT: If user searches with a gender keyword (men, women, kids), apply it as a MANDATORY filter
+    // This ensures "men shirt" only returns Men's products (not Women's or Kids')
+    const genderKeyword = tokens
+      .map(t => topCategoryTokenMap[t])
+      .find(cat => cat !== undefined);
+    
+    // Subcategory hints are used for ranking boosts, not as hard filters.
+    const subCategoryHints = inferSubCategoryHints(searchText);
+    
+    // Apply topCategory: explicit parameter > detected gender keyword > inferred from category detection
+    const effectiveFilters = {
+      ...parsed.data,
+      topCategory: parsed.data.topCategory || genderKeyword || inferredQuery.inferredTopCategory,
+      subCategoryHints,
+      // Enforce product name must contain known type keyword(s)
+      shouldEnforceNameMatch,
+      nameMatchTokens: typeKeywords,
+    };
+    let orderedIds = await runRankedProductSearch(searchText, effectiveFilters);
+    let correctedQuery: string | null = null;
+
+    if (!orderedIds.length) {
+      correctedQuery = await getCorrectedQuery(searchText);
+      if (correctedQuery) {
+        orderedIds = await runRankedProductSearch(correctedQuery, effectiveFilters);
+      }
+    }
+
+    if (!orderedIds.length) {
+      cache.set(cacheKey, []);
+      return res.json({ data: [], correctedQuery });
+    }
+
+    const products = await prisma.product.findMany({
+      where: { id: { in: orderedIds } },
+      include: { brand: true },
+    });
+
+    const byId = new Map(products.map((product) => [product.id, product]));
+    const orderedProducts = orderedIds.map((id) => byId.get(id)).filter((product): product is (typeof products)[number] => Boolean(product));
+
+    cache.set(cacheKey, orderedProducts);
+    return res.json({ data: orderedProducts, correctedQuery });
+  }
 
   const whereClause = {
     isActive: true,
@@ -68,14 +720,6 @@ router.get("/", async (req, res) => {
       gte: parsed.data.minPrice,
       lte: parsed.data.maxPrice,
     },
-    OR: parsed.data.q
-      ? [
-          { name: { contains: parsed.data.q, mode: "insensitive" } },
-          { description: { contains: parsed.data.q, mode: "insensitive" } },
-          { subCategory: { contains: parsed.data.q, mode: "insensitive" } },
-          { topCategory: { contains: parsed.data.q, mode: "insensitive" } },
-        ]
-      : undefined,
   } as Prisma.ProductWhereInput;
 
   if (parsed.data.productType && productTypeMap[parsed.data.productType]) {
@@ -98,6 +742,184 @@ router.get("/", async (req, res) => {
   return res.json({ data: products });
 });
 
+router.get("/templates", requireAuth, async (req, res) => {
+  const parsed = z
+    .object({
+      type: z.enum(productTemplateTypes),
+    })
+    .safeParse(req.query);
+
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid query", issues: parsed.error.flatten() });
+  }
+
+  const scope = await getTemplateScope(req.auth!.userId);
+  if (!scope) {
+    return res.status(403).json({ message: "Template library access is limited to admin and brand users." });
+  }
+
+  const where = {
+    type: parsed.data.type,
+    OR: scope.brandId ? [{ brandId: null }, { brandId: scope.brandId }] : undefined,
+  };
+
+  const templates = await (prisma as any).productContentTemplate.findMany({
+    where,
+    orderBy: [{ brandId: "asc" }, { name: "asc" }],
+    include: {
+      brand: {
+        select: { id: true, name: true, slug: true },
+      },
+    },
+  });
+
+  return res.json({ data: templates });
+});
+
+router.post("/templates", requireAuth, async (req, res) => {
+  const parsed = z
+    .object({
+      type: z.enum(productTemplateTypes),
+      name: z.string().trim().min(2),
+      content: z.unknown(),
+    })
+    .safeParse(req.body);
+
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.flatten() });
+  }
+
+  const scope = await getTemplateScope(req.auth!.userId);
+  if (!scope) {
+    return res.status(403).json({ message: "Template library access is limited to admin and brand users." });
+  }
+
+  const contentValidation = (() => {
+    if (parsed.data.type === "SIZE_GUIDE") return productSizeGuideSchema.safeParse(parsed.data.content);
+    if (parsed.data.type === "DELIVERIES_RETURNS") return productDeliveriesReturnsSchema.safeParse(parsed.data.content);
+    if (parsed.data.type === "SHIPPING_DELIVERY") return productShippingDeliverySchema.safeParse(parsed.data.content);
+    return productFabricCareSchema.safeParse(parsed.data.content);
+  })();
+
+  if (!contentValidation.success) {
+    return res.status(400).json({ message: "Invalid template content", issues: contentValidation.error.flatten() });
+  }
+
+  try {
+    const template = await (prisma as any).productContentTemplate.create({
+      data: {
+        type: parsed.data.type,
+        name: parsed.data.name,
+        content: contentValidation.data,
+        brandId: scope.brandId,
+        createdById: req.auth!.userId,
+      },
+      include: {
+        brand: {
+          select: { id: true, name: true, slug: true },
+        },
+      },
+    });
+
+    return res.status(201).json({ data: template });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return res.status(409).json({ message: "Template name already exists for this template type." });
+    }
+    throw error;
+  }
+});
+
+router.get("/suggest", async (req, res) => {
+  const querySchema = z.object({
+    q: z.string().trim().min(1),
+    topCategory: z.string().optional(),
+  });
+
+  const parsed = querySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid query" });
+  }
+
+  const normalized = normalizeSearchInput(parsed.data.q);
+  if (normalized.length < 2) {
+    return res.json({ data: [] });
+  }
+
+  const inferredQuery = inferQueryCategory(normalized);
+  const searchText = inferredQuery.normalizedQuery;
+  const subCategoryHints = inferSubCategoryHints(searchText);
+  const effectiveTopCategory = parsed.data.topCategory || inferredQuery.inferredTopCategory;
+
+  const ids = await runRankedProductSearch(searchText, {
+    topCategory: effectiveTopCategory,
+    subCategoryHints,
+  });
+
+  const products = ids.length
+    ? await prisma.product.findMany({
+        where: { id: { in: ids.slice(0, 12) } },
+        include: { brand: true },
+      })
+    : [];
+
+  const byId = new Map(products.map((product) => [product.id, product]));
+  const orderedProducts = ids.map((id) => byId.get(id)).filter((product): product is (typeof products)[number] => Boolean(product));
+
+  const correctedQuery = await getCorrectedQuery(searchText);
+
+  const suggestionMap = new Map<string, { id: string; label: string; query: string; topCategory?: string; kind: "query" | "product" }>();
+
+  for (const product of orderedProducts.slice(0, 6)) {
+    suggestionMap.set(`product:${product.id}`, {
+      id: `product:${product.id}`,
+      label: product.name,
+      query: product.name,
+      topCategory: product.topCategory,
+      kind: "product",
+    });
+
+    const categoryPhrase = `${product.subCategory} for ${product.topCategory}`;
+    const categoryKey = `category:${categoryPhrase.toLowerCase()}`;
+    if (!suggestionMap.has(categoryKey)) {
+      suggestionMap.set(categoryKey, {
+        id: categoryKey,
+        label: categoryPhrase,
+        query: product.subCategory,
+        topCategory: product.topCategory,
+        kind: "query",
+      });
+    }
+
+    const productNameTokens = tokenizeSearchQuery(product.name);
+    const matchedColor = productNameTokens.find((token) => colorWords.includes(token));
+    if (matchedColor) {
+      const colorPhrase = `${matchedColor[0].toUpperCase()}${matchedColor.slice(1)} ${product.subCategory}`;
+      const colorKey = `color:${colorPhrase.toLowerCase()}:${product.topCategory}`;
+      if (!suggestionMap.has(colorKey)) {
+        suggestionMap.set(colorKey, {
+          id: colorKey,
+          label: colorPhrase,
+          query: colorPhrase,
+          topCategory: product.topCategory,
+          kind: "query",
+        });
+      }
+    }
+  }
+
+  if (correctedQuery && correctedQuery !== searchText) {
+    suggestionMap.set("did-you-mean", {
+      id: "did-you-mean",
+      label: `Did you mean "${correctedQuery}"?`,
+      query: correctedQuery,
+      kind: "query",
+    });
+  }
+
+  return res.json({ data: Array.from(suggestionMap.values()).slice(0, 10), correctedQuery: correctedQuery || undefined });
+});
+
 router.get("/admin", requireAuth, requireAdmin, async (_req, res) => {
   const products = await prisma.product.findMany({
     include: { brand: true },
@@ -108,8 +930,9 @@ router.get("/admin", requireAuth, requireAdmin, async (_req, res) => {
 });
 
 router.get("/approval/pending", requireAuth, requireAdmin, async (_req, res) => {
+  const pendingWhere: Prisma.ProductWhereInput = { approvalStatus: "PENDING" };
   const products = await prisma.product.findMany({
-    where: { approvalStatus: "PENDING" } as any,
+    where: pendingWhere,
     include: { brand: true },
     orderBy: { createdAt: "desc" },
   });
@@ -142,19 +965,18 @@ router.patch("/:id/approval", requireAuth, requireAdmin, async (req, res) => {
       approvalStatus: parsed.data.approvalStatus,
       isActive: parsed.data.approvalStatus === "APPROVED",
       approvalReviewedAt: new Date(),
-    } as any,
+    } as Prisma.ProductUncheckedUpdateInput,
     include: { brand: true },
   });
 
-  await createNotificationWithChannels({
-    prismaClient: prisma,
-    type: NotificationType.ORDER_STATUS_UPDATED,
-    title: parsed.data.approvalStatus === "APPROVED" ? "Product Approved by Broady" : "Product Rejected by Broady",
-    message:
+  queueNotificationEvent({
+    name:
       parsed.data.approvalStatus === "APPROVED"
-        ? `Broady approved product ${product.name} for ${product.brand.name}.`
-        : `Broady rejected product ${product.name} for ${product.brand.name}.${parsed.data.note ? ` Reason: ${parsed.data.note}` : ""}`,
+        ? notificationEventNames.productApproved
+        : notificationEventNames.productRejected,
+    productId: product.id,
     brandId: product.brandId,
+    note: parsed.data.note,
   });
 
   clearProductCache();
@@ -165,7 +987,6 @@ router.get("/:slug", async (req, res) => {
   const product = await prisma.product.findUnique({
     where: {
       slug: req.params.slug,
-      approvalStatus: "APPROVED",
       isActive: true,
     },
     include: { brand: true },
@@ -179,7 +1000,6 @@ router.get("/id/:id", async (req, res) => {
   const product = await prisma.product.findUnique({
     where: {
       id: String(req.params.id),
-      approvalStatus: "APPROVED",
       isActive: true,
     },
     include: { brand: true },
@@ -196,11 +1016,13 @@ router.post("/", requireAuth, requireAdmin, async (req, res) => {
   }
 
   try {
+    const productData: Prisma.ProductUncheckedCreateInput = {
+      ...parsed.data,
+      approvalStatus: parsed.data.approvalStatus || "APPROVED",
+    };
+
     const product = await prisma.product.create({
-      data: {
-        ...parsed.data,
-        approvalStatus: parsed.data.approvalStatus || "APPROVED",
-      } as any,
+      data: productData,
     });
     clearProductCache();
     return res.status(201).json({ data: product });

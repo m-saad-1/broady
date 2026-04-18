@@ -14,6 +14,7 @@ import {
   updateBrand,
   updateProduct,
 } from "@/lib/api";
+import { buildAdminProductPayload } from "@/lib/product-form";
 import { useToastStore } from "@/stores/toast-store";
 import type { Brand, Product } from "@/types/marketplace";
 
@@ -60,13 +61,6 @@ const defaultProductForm: ProductFormState = {
   stock: "0",
   isActive: true,
 };
-
-function parseSizesCsv(sizes: string): string[] {
-  return sizes
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
 
 function toBrandFormState(brand: Brand): BrandFormState {
   return {
@@ -182,19 +176,7 @@ export function AdminPanelClient() {
     setIsSavingProduct(true);
 
     try {
-      const payload = {
-        brandId: productForm.brandId,
-        name: productForm.name.trim(),
-        slug: productForm.slug.trim(),
-        description: productForm.description.trim(),
-        pricePkr: Number(productForm.pricePkr),
-        topCategory: productForm.topCategory,
-        subCategory: productForm.subCategory.trim(),
-        sizes: parseSizesCsv(productForm.sizes),
-        imageUrl: productForm.imageUrl.trim(),
-        stock: Number(productForm.stock),
-        isActive: productForm.isActive,
-      };
+      const payload = buildAdminProductPayload(productForm as any);
 
       if (editingProductId) {
         await updateProduct(editingProductId, payload);

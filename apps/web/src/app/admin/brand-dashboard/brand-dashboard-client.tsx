@@ -1,12 +1,11 @@
 "use client";
 
-import Image from "next/image";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ConfirmModal } from "@/components/ui/confirm-modal";
-import { approveProduct, getAdminBrandDashboard, rejectProduct, updateAdminOrderStatus } from "@/lib/api";
-import { getOrderStatusOptions } from "@/lib/order-status";
+import { ProductImage } from "@/components/ui/product-image";
+import { approveProduct, getAdminBrandDashboard, rejectProduct } from "@/lib/api";
 import { useToastStore } from "@/stores/toast-store";
-import type { AdminBrandDashboardRecord, OrderStatus } from "@/types/marketplace";
+import type { AdminBrandDashboardRecord } from "@/types/marketplace";
 
 export function AdminBrandDashboardClient() {
   const pushToast = useToastStore((state) => state.pushToast);
@@ -14,10 +13,7 @@ export function AdminBrandDashboardClient() {
   const [selectedBrandId, setSelectedBrandId] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
   const [savingProductId, setSavingProductId] = useState<string | null>(null);
-  const [orderDrafts, setOrderDrafts] = useState<Record<string, { status: OrderStatus; trackingId: string; note: string; customerNote: string }>>({});
-  const [pendingStatusOrderId, setPendingStatusOrderId] = useState<string | null>(null);
 
   const loadData = useCallback(async (mode: "initial" | "refresh" = "initial") => {
     if (mode === "initial") {
@@ -47,46 +43,6 @@ export function AdminBrandDashboardClient() {
     () => entries.find((entry) => entry.brand.id === selectedBrandId) || entries[0] || null,
     [entries, selectedBrandId],
   );
-
-  useEffect(() => {
-    if (!selected) {
-      setOrderDrafts({});
-      return;
-    }
-
-    const drafts: Record<string, { status: OrderStatus; trackingId: string; note: string; customerNote: string }> = {};
-    for (const order of selected.orders) {
-      drafts[order.id] = {
-        status: order.status,
-        trackingId: order.trackingId || "",
-        note: "",
-        customerNote: "",
-      };
-    }
-    setOrderDrafts(drafts);
-  }, [selected]);
-
-  const applyOrderUpdate = async (orderId: string) => {
-    const draft = orderDrafts[orderId];
-    if (!draft) return;
-
-    setSavingOrderId(orderId);
-    try {
-      await updateAdminOrderStatus(orderId, {
-        status: draft.status,
-        trackingId: draft.trackingId.trim() || undefined,
-        note: draft.note.trim() || undefined,
-        customerNote: draft.customerNote.trim() || undefined,
-      });
-      pushToast("Order status updated", "success");
-      await loadData("refresh");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to update order";
-      pushToast(message, "error");
-    } finally {
-      setSavingOrderId(null);
-    }
-  };
 
   const handleApproveProduct = async (productId: string) => {
     setSavingProductId(productId);
@@ -191,10 +147,12 @@ export function AdminBrandDashboardClient() {
                   <article key={product.id} className="space-y-3 border border-zinc-200 p-3">
                     <div className="grid gap-3 md:grid-cols-[80px_2fr_1fr_1fr] md:items-center">
                     <div className="relative h-16 w-16 overflow-hidden border border-zinc-200">
-                      <Image src={product.imageUrl} alt={product.name} fill className="object-cover" />
+                      <ProductImage src={product.imageUrl} alt={product.name} fill className="object-cover" />
                     </div>
                     <div>
-                      <p className="text-sm font-semibold uppercase tracking-[0.08em]">{product.name}</p>
+                      <Link href={`/product/${product.slug}`} className="text-sm font-semibold uppercase tracking-[0.08em] underline decoration-zinc-400 underline-offset-2">
+                        {product.name}
+                      </Link>
                       <p className="text-xs text-zinc-600">{product.topCategory} / {product.subCategory}</p>
                       <p className="mt-1 text-xs text-zinc-600 line-clamp-2">{product.description}</p>
                     </div>
@@ -224,93 +182,18 @@ export function AdminBrandDashboardClient() {
               <div className="space-y-3">
                 {selected.orders.map((order) => (
                   <article key={order.id} className="space-y-3 border border-zinc-200 p-3">
-                    <div className="grid gap-3 md:grid-cols-[1.5fr_1.2fr_1fr_1fr] md:items-center">
+                    <div className="grid gap-3 md:grid-cols-[1.5fr_1fr_1fr_auto] md:items-center">
                       <div>
-                        <p className="text-sm font-semibold uppercase tracking-[0.08em]">Order {order.id.slice(0, 10)}...</p>
+                        <Link href={`/admin/orders/${order.id}`} className="text-sm font-semibold uppercase tracking-[0.08em] underline decoration-zinc-400 underline-offset-2">
+                          Order {order.id.slice(0, 10)}...
+                        </Link>
                         <p className="text-xs text-zinc-600">{order.user.fullName} / {order.user.email}</p>
                       </div>
                       <p className="text-sm">PKR {order.totalPkr.toLocaleString()}</p>
-                      <select
-                        value={orderDrafts[order.id]?.status || order.status}
-                        onChange={(event) => {
-                          const value = event.target.value as OrderStatus;
-                          setOrderDrafts((current) => ({
-                            ...current,
-                            [order.id]: {
-                              status: value,
-                              trackingId: current[order.id]?.trackingId || order.trackingId || "",
-                              note: current[order.id]?.note || "",
-                              customerNote: current[order.id]?.customerNote || "",
-                            },
-                          }));
-                        }}
-                        className="h-9 border border-zinc-300 px-2 text-xs"
-                      >
-                        {getOrderStatusOptions(order.status).map((status) => (
-                          <option key={status} value={status}>{status}</option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => setPendingStatusOrderId(order.id)}
-                        disabled={savingOrderId === order.id}
-                        className="h-9 border border-black bg-black px-3 text-xs font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-50"
-                      >
-                        {savingOrderId === order.id ? "Saving" : "Update"}
-                      </button>
-                    </div>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <input
-                        className="h-9 border border-zinc-300 px-3 text-xs"
-                        placeholder="Tracking ID"
-                        value={orderDrafts[order.id]?.trackingId || ""}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          setOrderDrafts((current) => ({
-                            ...current,
-                            [order.id]: {
-                              status: current[order.id]?.status || order.status,
-                              trackingId: value,
-                              note: current[order.id]?.note || "",
-                              customerNote: current[order.id]?.customerNote || "",
-                            },
-                          }));
-                        }}
-                      />
-                      <input
-                        className="h-9 border border-zinc-300 px-3 text-xs"
-                        placeholder="Internal note"
-                        value={orderDrafts[order.id]?.note || ""}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          setOrderDrafts((current) => ({
-                            ...current,
-                            [order.id]: {
-                              status: current[order.id]?.status || order.status,
-                              trackingId: current[order.id]?.trackingId || order.trackingId || "",
-                              note: value,
-                              customerNote: current[order.id]?.customerNote || "",
-                            },
-                          }));
-                        }}
-                      />
-                      <input
-                        className="h-9 border border-zinc-300 px-3 text-xs md:col-span-2"
-                        placeholder="Customer-visible note"
-                        value={orderDrafts[order.id]?.customerNote || ""}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          setOrderDrafts((current) => ({
-                            ...current,
-                            [order.id]: {
-                              status: current[order.id]?.status || order.status,
-                              trackingId: current[order.id]?.trackingId || order.trackingId || "",
-                              note: current[order.id]?.note || "",
-                              customerNote: value,
-                            },
-                          }));
-                        }}
-                      />
+                      <p className="text-sm font-semibold uppercase tracking-[0.08em]">{order.status}</p>
+                      <Link href={`/admin/orders/${order.id}`} className="h-9 border border-black bg-black px-3 text-xs font-semibold uppercase tracking-[0.12em] text-white leading-9 text-center">
+                        View Details
+                      </Link>
                     </div>
                     <p className="text-xs text-zinc-600">
                       Items: {order.items.map((item) => `${item.product.name} x${item.quantity}`).join(", ")}
@@ -322,26 +205,6 @@ export function AdminBrandDashboardClient() {
           </div>
         ) : null}
       </section>
-
-      <ConfirmModal
-        open={Boolean(pendingStatusOrderId)}
-        title="Confirm Status Update"
-        description={(() => {
-          if (!pendingStatusOrderId || !selected) return "";
-          const targetOrder = selected.orders.find((order) => order.id === pendingStatusOrderId);
-          const draft = targetOrder ? orderDrafts[targetOrder.id] : undefined;
-          if (!targetOrder || !draft) return "";
-          return `Order ${targetOrder.id.slice(0, 10)}... (${targetOrder.user.fullName}) will be updated to ${draft.status}${draft.trackingId ? ` with tracking ${draft.trackingId}` : ""}.`;
-        })()}
-        confirmText="Confirm update"
-        cancelText="Review again"
-        onCancel={() => setPendingStatusOrderId(null)}
-        onConfirm={() => {
-          if (!pendingStatusOrderId) return;
-          void applyOrderUpdate(pendingStatusOrderId);
-          setPendingStatusOrderId(null);
-        }}
-      />
     </div>
   );
 }

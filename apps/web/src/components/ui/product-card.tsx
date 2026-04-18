@@ -1,8 +1,7 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { addWishlistProduct, removeWishlistProduct } from "@/lib/api";
 import { getProductPricing } from "@/lib/pricing";
 import { formatPkr } from "@/lib/utils";
@@ -14,8 +13,10 @@ import type { Product } from "@/types/marketplace";
 import { Button } from "./button";
 import { Card } from "./card";
 import { ConfirmModal } from "./confirm-modal";
+import { ProductImage } from "./product-image";
 
 export function ProductCard({ product }: { product: Product }) {
+  const [hasHydrated, setHasHydrated] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const user = useAuthStore((state) => state.user);
   const addToCart = useCartStore((state) => state.addToCart);
@@ -24,6 +25,7 @@ export function ProductCard({ product }: { product: Product }) {
   const removeWishlistLocal = useWishlistStore((state) => state.removeItem);
   const toggleWishlistLocal = useWishlistStore((state) => state.toggleWishlist);
   const isInWishlist = useWishlistStore((state) => state.isInWishlist(product.id));
+  const wishlistActive = hasHydrated ? isInWishlist : false;
   const pricing = getProductPricing(product);
   const badge = pricing.hasDiscount
     ? `-${pricing.discountPercentage}%`
@@ -42,11 +44,15 @@ export function ProductCard({ product }: { product: Product }) {
           ? "border-amber-700 bg-amber-500 text-black"
           : "border-zinc-700 bg-zinc-800 text-white";
 
+  useEffect(() => {
+    setHasHydrated(true);
+  }, []);
+
   return (
     <Card className="group overflow-hidden">
       <Link href={`/product/${product.slug}`} className="block">
         <div className="relative aspect-[4/5] bg-zinc-100">
-          <Image
+          <ProductImage
             src={product.imageUrl}
             alt={product.name}
             fill
@@ -82,7 +88,7 @@ export function ProductCard({ product }: { product: Product }) {
             variant="ghost"
             size="sm"
             onClick={async () => {
-              if (isInWishlist) {
+              if (wishlistActive) {
                 setConfirmOpen(true);
                 return;
               }
@@ -109,7 +115,7 @@ export function ProductCard({ product }: { product: Product }) {
               pushToast("Added to wishlist", "success");
             }}
           >
-            {isInWishlist ? "Saved" : "Wishlist"}
+            {wishlistActive ? "Saved" : "Wishlist"}
           </Button>
           <Button
             size="sm"

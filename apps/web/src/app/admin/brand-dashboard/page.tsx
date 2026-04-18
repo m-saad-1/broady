@@ -4,7 +4,7 @@ import { AdminBrandDashboardClient } from "./brand-dashboard-client";
 
 export const metadata = {
   title: "Admin Brand Dashboard | BROADY",
-  description: "Centralized brand, product, and order operations view for Broady admins.",
+  description: "Read-only centralized brand and order monitoring view for Broady admins.",
 };
 
 export default async function AdminBrandDashboardPage() {
@@ -28,7 +28,7 @@ export default async function AdminBrandDashboardPage() {
         <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Broady Control Center</p>
         <h1 className="font-heading text-5xl uppercase">Admin Brand Dashboard</h1>
         <p className="max-w-4xl text-sm text-zinc-600">
-          Monitor each brand, its products, all assigned orders, and order status flow from one centralized admin view.
+          Monitor each brand, linked products, and all assigned orders from one centralized admin view. Order updates are handled from dedicated detail pages.
         </p>
       </header>
 

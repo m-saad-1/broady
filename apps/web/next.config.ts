@@ -24,6 +24,14 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: "https",
+        hostname: "classyaf.pk",
+      },
+      {
+        protocol: "https",
+        hostname: "www.classyaf.pk",
+      },
+      {
+        protocol: "https",
         hostname: "example.com",
       },
       {

@@ -4,6 +4,8 @@ import { z } from "zod";
 import { prisma } from "../../config/prisma.js";
 import { requireAdmin, requireAuth } from "../../middleware/auth.js";
 import { createBrandInviteAccount } from "../auth/auth.service.js";
+import { notificationEventNames } from "../notifications/notification.events.js";
+import { queueNotificationEvent } from "../notifications/notification.service.js";
 
 const router = Router();
 
@@ -120,28 +122,24 @@ router.post("/:id/account", requireAuth, requireAdmin, async (req, res) => {
   const brand = await prisma.brand.findUnique({ where: { id: String(req.params.id) }, select: { id: true, name: true, slug: true, contactEmail: true } });
   if (!brand) return res.status(404).json({ message: "Brand not found" });
 
-  try {
-    const invite = await prisma.$transaction(async (tx) =>
-      createBrandInviteAccount({
-        prismaClient: tx,
-        brandId: brand.id,
-        brandName: brand.name,
-        contactEmail: parsed.data.contactEmail || brand.contactEmail,
-        fullName: parsed.data.fullName,
-      }),
-    );
+  const invite = await prisma.$transaction(async (tx) =>
+    createBrandInviteAccount({
+      prismaClient: tx,
+      brandId: brand.id,
+      brandName: brand.name,
+      contactEmail: parsed.data.contactEmail || brand.contactEmail,
+      fullName: parsed.data.fullName,
+    }),
+  );
 
-    return res.status(201).json({
-      data: {
-        account: invite.user,
-        inviteUrl: invite.inviteUrl,
-        brandEmail: invite.brandEmail,
-        brand,
-      },
-    });
-  } catch (error) {
-    throw error;
-  }
+  return res.status(201).json({
+    data: {
+      account: invite.user,
+      inviteUrl: invite.inviteUrl,
+      brandEmail: invite.brandEmail,
+      brand,
+    },
+  });
 });
 
 router.post("/", requireAuth, requireAdmin, async (req, res) => {
@@ -184,10 +182,27 @@ router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
   }
 
   try {
+    const existing = await prisma.brand.findUnique({
+      where: { id: String(req.params.id) },
+      select: { id: true, verified: true },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ message: "Brand not found" });
+    }
+
     const brand = await prisma.brand.update({
       where: { id: String(req.params.id) },
       data: parsed.data,
     });
+
+    if (existing.verified === false && brand.verified === true) {
+      queueNotificationEvent({
+        name: notificationEventNames.brandApproved,
+        brandId: brand.id,
+      });
+    }
+
     return res.json({ data: brand });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {

@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ProductCard } from "@/components/ui/product-card";
 import { getProductPricing } from "@/lib/pricing";
 import { useMockFallback } from "@/lib/runtime-flags";
@@ -41,6 +41,17 @@ function scoreProductMatch(product: Product, query: string) {
 
 async function fetchProducts(params: Record<string, string>) {
   const query = new URLSearchParams(params).toString();
+  const hasActiveFilters = Boolean(
+    params.q ||
+      params.brand ||
+      params.topCategory ||
+      params.productType ||
+      params.subCategory ||
+      params.size ||
+      params.minPrice ||
+      params.maxPrice,
+  );
+
   try {
     const response = await fetch(`${API_BASE}/products${query ? `?${query}` : ""}`);
     if (!response.ok) throw new Error("Failed request");
@@ -48,7 +59,7 @@ async function fetchProducts(params: Record<string, string>) {
     const json = (await response.json()) as { data: Product[] };
     const normalizedApi = json.data.map(normalizeProduct);
     let normalized = normalizedApi;
-    if (useMockFallback) {
+    if (useMockFallback && !hasActiveFilters) {
       const fallback = fallbackProducts.map(normalizeProduct);
       const seen = new Set(normalizedApi.map((item) => item.slug));
       normalized = [...normalizedApi];
@@ -57,19 +68,15 @@ async function fetchProducts(params: Record<string, string>) {
           normalized.push(item);
         }
       }
-    } else if (!normalized.length) {
+    } else if (!normalized.length && !hasActiveFilters) {
       normalized = fallbackProducts.map(normalizeProduct);
     }
-    if (params.q) {
-      normalized = normalized
-        .map((product) => ({ product, score: scoreProductMatch(product, params.q || "") }))
-        .filter((item) => item.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .map((item) => item.product);
-    }
-
     return normalized;
   } catch {
+    if (hasActiveFilters) {
+      return [];
+    }
+
     let normalized = fallbackProducts.map(normalizeProduct);
     if (params.q) {
       normalized = normalized
@@ -88,20 +95,22 @@ async function fetchProducts(params: Record<string, string>) {
 
 export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
   const router = useRouter();
-  const searchBoxRef = useRef<HTMLDivElement | null>(null);
-  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
-  const [q, setQ] = useState(params.q || "");
-  const [liveQuery, setLiveQuery] = useState(params.q || "");
   const [topCategory, setTopCategory] = useState(params.topCategory || "");
   const [productType, setProductType] = useState(params.productType || "");
   const [subCategory, setSubCategory] = useState(params.subCategory || "");
   const [size, setSize] = useState(params.size || "");
   const [sortBy, setSortBy] = useState(params.sortBy || "latest");
 
+  const queryFromRoute = useMemo(() => params.q?.trim() || "", [params.q]);
+  const hasActiveSearch = Boolean(queryFromRoute);
+
   useEffect(() => {
-    const timeout = setTimeout(() => setQ(liveQuery), 180);
-    return () => clearTimeout(timeout);
-  }, [liveQuery]);
+    setTopCategory(params.topCategory || "");
+    setProductType(params.productType || "");
+    setSubCategory(params.subCategory || "");
+    setSize(params.size || "");
+    setSortBy(params.sortBy || "latest");
+  }, [params.topCategory, params.productType, params.subCategory, params.size, params.sortBy]);
 
   const normalizedInitialProducts = useMemo(() => {
     const source = initialProducts.length ? initialProducts : fallbackProducts;
@@ -157,43 +166,20 @@ export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
 
   const runtimeParams = useMemo(() => {
     const next: Record<string, string> = {};
-    if (q.trim()) next.q = q.trim();
+    if (queryFromRoute) next.q = queryFromRoute;
     if (topCategory) next.topCategory = topCategory;
     if (effectiveProductType) next.productType = effectiveProductType;
     if (effectiveSubCategory) next.subCategory = effectiveSubCategory;
     if (effectiveSize) next.size = effectiveSize;
     if (sortBy !== "latest") next.sortBy = sortBy;
     return next;
-  }, [effectiveProductType, effectiveSize, effectiveSubCategory, q, sortBy, topCategory]);
+  }, [effectiveProductType, effectiveSize, effectiveSubCategory, queryFromRoute, sortBy, topCategory]);
 
   const { data: products = initialProducts } = useQuery({
     queryKey: ["products", runtimeParams],
     queryFn: () => fetchProducts(runtimeParams),
     initialData: initialProducts,
   });
-
-  const suggestions = useMemo(() => {
-    const query = liveQuery.trim().toLowerCase();
-    if (query.length < 2) return [] as Product[];
-    return products
-      .map((product) => ({ product, score: scoreProductMatch(product, query) }))
-      .filter((item) => item.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .map((item) => item.product)
-      .slice(0, 6);
-  }, [liveQuery, products]);
-
-  useEffect(() => {
-    const handler = (event: MouseEvent) => {
-      if (!searchBoxRef.current) return;
-      if (!searchBoxRef.current.contains(event.target as Node)) {
-        setSuggestionsOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
 
   const orderedProducts = useMemo(() => {
     const copy = [...products];
@@ -212,56 +198,27 @@ export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
   return (
     <div className="space-y-5">
       <section className="space-y-3 border border-zinc-300 p-4">
-        <div ref={searchBoxRef} className="relative">
-          <div className="relative">
-            <input
-              value={liveQuery}
-              onFocus={() => setSuggestionsOpen(true)}
-              onChange={(event) => {
-                setLiveQuery(event.target.value);
-                setSuggestionsOpen(true);
+        {hasActiveSearch ? (
+          <div className="flex flex-wrap items-center gap-2 border border-zinc-300 bg-zinc-50 px-3 py-2 text-xs uppercase tracking-[0.12em]">
+            <span className="font-semibold">Search: {queryFromRoute}</span>
+            <button
+              type="button"
+              className="ml-auto border border-zinc-300 bg-white px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] hover:border-black"
+              onClick={() => {
+                setTopCategory("");
+                setProductType("");
+                setSubCategory("");
+                setSize("");
+                setSortBy("latest");
+                router.replace("/catalog", { scroll: false });
               }}
-              placeholder="Search products"
-              className="h-11 w-full border border-zinc-300 px-3 pr-12 text-sm uppercase tracking-[0.08em]"
-            />
-            {liveQuery ? (
-              <button
-                type="button"
-                className="absolute right-2 top-1/2 -translate-y-1/2 border border-zinc-300 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em]"
-                onClick={() => {
-                  setLiveQuery("");
-                  setQ("");
-                  setSuggestionsOpen(false);
-                }}
-              >
-                Clear
-              </button>
-            ) : null}
-
-            {suggestionsOpen && liveQuery.trim().length >= 2 ? (
-              <div className="absolute left-0 right-0 top-12 z-20 border border-zinc-300 bg-white">
-                {suggestions.length ? (
-                  suggestions.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className="grid w-full grid-cols-[1fr_auto] border-b border-zinc-200 px-3 py-2 text-left text-sm hover:bg-zinc-50"
-                      onClick={() => {
-                        setSuggestionsOpen(false);
-                        router.push(`/product/${item.slug}`);
-                      }}
-                    >
-                      <span className="uppercase tracking-[0.08em]">{item.name}</span>
-                      <span className="text-[11px] uppercase tracking-[0.12em] text-zinc-500">{item.topCategory}</span>
-                    </button>
-                  ))
-                ) : (
-                  <p className="px-3 py-3 text-sm text-zinc-600">No results found.</p>
-                )}
-              </div>
-            ) : null}
+              aria-label="Clear active search"
+              title="Clear search"
+            >
+              ×
+            </button>
           </div>
-        </div>
+        ) : null}
 
         <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.12em]">
           <select className="h-9 border border-zinc-300 px-2" value={topCategory} onChange={(event) => setTopCategory(event.target.value)}>

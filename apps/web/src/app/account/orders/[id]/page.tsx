@@ -94,7 +94,12 @@ export default async function AccountOrderDetailPage({ params }: AccountOrderDet
           {order.items.map((item) => (
             <article key={item.id} className="grid gap-2 border-b border-zinc-200 py-3 md:grid-cols-[2fr_1fr_1fr]">
               <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.08em]">{item.product.name}</p>
+                <Link
+                  href={`/product/${item.product.slug}`}
+                  className="text-sm font-semibold uppercase tracking-[0.08em] underline decoration-zinc-400 underline-offset-2"
+                >
+                  {item.product.name}
+                </Link>
                 <p className="text-xs text-zinc-600">{item.product.brand?.name || item.brand?.name || "Brand"} / {item.product.topCategory} / {item.product.subCategory}</p>
               </div>
               <p className="text-sm">Qty {item.quantity}</p>

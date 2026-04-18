@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { OrderTrackerClient } from "../order-tracker-client";
 
 export const metadata = {
@@ -14,7 +15,9 @@ export default function AccountOrdersPage() {
         <p className="max-w-3xl text-sm text-zinc-600">Review every order, track its current status, and open the full detail view whenever you need more context.</p>
       </header>
 
-      <OrderTrackerClient />
+      <Suspense fallback={<p className="text-sm text-zinc-600">Loading order history...</p>}>
+        <OrderTrackerClient />
+      </Suspense>
     </main>
   );
 }

@@ -207,6 +207,9 @@ export default function AccountPage() {
               <Link href="/wishlist" className="border border-black px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em]">
                 Wishlist
               </Link>
+              <Link href="/account/reviews" className="border border-black px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em]">
+                Reviews
+              </Link>
             </div>
           </article>
 

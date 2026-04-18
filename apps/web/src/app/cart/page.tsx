@@ -1,16 +1,18 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
+import { ProductImage } from "@/components/ui/product-image";
 import { getProductPricing } from "@/lib/pricing";
 import { formatPkr } from "@/lib/utils";
 import { useCartStore } from "@/stores/cart-store";
 import { useToastStore } from "@/stores/toast-store";
 
 export default function CartPage() {
+  const router = useRouter();
   const items = useCartStore((state) => state.items);
   const removeFromCart = useCartStore((state) => state.removeFromCart);
   const updateQuantity = useCartStore((state) => state.updateQuantity);
@@ -48,9 +50,15 @@ export default function CartPage() {
   );
 
   const previewItem = items.find((item) => getRowKey(item) === previewItemKey) || null;
-  const checkoutHref = selectedRows.length
-    ? `/checkout?items=${encodeURIComponent(selectedRows.join(","))}`
-    : "/checkout";
+  const handleProceedCheckout = () => {
+    if (!selectedRows.length) {
+      pushToast("Select at least one cart item to continue checkout", "error");
+      return;
+    }
+
+    const checkoutHref = `/checkout?items=${encodeURIComponent(selectedRows.join(","))}`;
+    router.push(checkoutHref);
+  };
 
   return (
     <main className="mx-auto w-full max-w-4xl space-y-8 px-4 py-10 lg:px-10">
@@ -86,7 +94,7 @@ export default function CartPage() {
                     aria-label="Preview product image"
                     onClick={() => setPreviewItemKey(rowKey)}
                   >
-                    <Image src={item.product.imageUrl} alt={item.product.name} fill sizes="80px" className="object-cover" />
+                    <ProductImage src={item.product.imageUrl} alt={item.product.name} fill sizes="80px" className="object-cover" />
                   </button>
 
                   <div>
@@ -152,9 +160,13 @@ export default function CartPage() {
         </div>
       </section>
 
-      <Link href={checkoutHref} className="inline-flex h-11 items-center border border-black bg-black px-6 text-xs font-semibold uppercase tracking-[0.15em] text-white">
-        {selectedRows.length ? `Checkout Selected (${selectedRows.length})` : "Proceed to Checkout"}
-      </Link>
+      <button
+        type="button"
+        onClick={handleProceedCheckout}
+        className="inline-flex h-11 items-center border border-black bg-black px-6 text-xs font-semibold uppercase tracking-[0.15em] text-white"
+      >
+        {selectedRows.length ? `Checkout Selected (${selectedRows.length})` : "Select Items to Checkout"}
+      </button>
 
       <ConfirmModal
         open={!!removeTarget}
@@ -189,7 +201,7 @@ export default function CartPage() {
               View Product
             </Link>
             <Link href={`/product/${previewItem.product.slug}`} className="absolute inset-0" aria-label="Open product detail page">
-              <Image src={previewItem.product.imageUrl} alt={`${previewItem.product.name} preview`} fill className="object-contain" sizes="100vw" />
+              <ProductImage src={previewItem.product.imageUrl} alt={`${previewItem.product.name} preview`} fill className="object-contain" sizes="100vw" />
             </Link>
           </div>
         </div>

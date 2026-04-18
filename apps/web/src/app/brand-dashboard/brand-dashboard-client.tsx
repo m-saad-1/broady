@@ -1,8 +1,8 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ProductImage } from "@/components/ui/product-image";
 import {
   getBrandDashboardNotifications,
   getBrandDashboardOrders,
@@ -12,6 +12,7 @@ import {
   updateBrandDashboardProduct,
   updateBrandOrderStatus,
 } from "@/lib/api";
+import { buildBrandProductPayload } from "@/lib/product-form";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { getOrderStatusOptions } from "@/lib/order-status";
 import { useToastStore } from "@/stores/toast-store";
@@ -136,18 +137,7 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
 
     setSavingProductId(productId);
     try {
-      await updateBrandDashboardProduct(productId, {
-        name: draft.name.trim(),
-        slug: draft.slug.trim(),
-        description: draft.description.trim(),
-        imageUrl: draft.imageUrl.trim(),
-        pricePkr: Number(draft.pricePkr),
-        topCategory: draft.topCategory,
-        subCategory: draft.subCategory.trim(),
-        sizes: draft.sizes.split(",").map((item) => item.trim()).filter(Boolean),
-        stock: Number(draft.stock),
-        isActive: draft.isActive,
-      });
+      await updateBrandDashboardProduct(productId, buildBrandProductPayload(draft as any));
       pushToast("Product updated", "success");
       setEditingProductId(null);
       await loadAll();
@@ -164,17 +154,7 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
     setCreatingProduct(true);
 
     try {
-      await submitBrandProduct({
-        name: newProduct.name.trim(),
-        slug: newProduct.slug.trim(),
-        description: newProduct.description.trim(),
-        pricePkr: Number(newProduct.pricePkr),
-        topCategory: newProduct.topCategory,
-        subCategory: newProduct.subCategory.trim(),
-        sizes: newProduct.sizes.split(",").map((item) => item.trim()).filter(Boolean),
-        imageUrl: newProduct.imageUrl.trim(),
-        stock: Number(newProduct.stock),
-      });
+      await submitBrandProduct(buildBrandProductPayload(newProduct as any));
       pushToast("Product submitted for Broady approval", "success");
       setNewProduct({
         name: "",
@@ -413,7 +393,7 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
               <article key={product.id} className="space-y-3 border-b border-zinc-200 py-3">
                 <div className="grid items-center gap-3 md:grid-cols-[72px_2fr_1fr_1fr_auto]">
                   <div className="relative h-16 w-16 overflow-hidden border border-zinc-200">
-                    <Image src={product.imageUrl} alt={product.name} fill className="object-cover" />
+                    <ProductImage src={product.imageUrl} alt={product.name} fill className="object-cover" />
                   </div>
                 <div>
                   <p className="text-sm font-semibold uppercase tracking-[0.08em]">{product.name}</p>

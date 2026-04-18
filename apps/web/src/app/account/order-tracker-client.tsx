@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
-import { cancelUserOrder, getUserNotifications, getUserOrders } from "@/lib/api";
+import { cancelUserOrder, getMyReviews, getUserNotifications, getUserOrders } from "@/lib/api";
 import { formatPkr } from "@/lib/utils";
 import { getOrderStatusLabel, getOrderStatusTone } from "@/lib/order-status";
 import type { NotificationItem, UserOrder } from "@/types/marketplace";
@@ -22,7 +23,9 @@ type OrderTrackerClientProps = {
 };
 
 export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps) {
+  const searchParams = useSearchParams();
   const [orders, setOrders] = useState<UserOrder[]>([]);
+  const [myReviewsByOrderItemId, setMyReviewsByOrderItemId] = useState<Record<string, string>>({});
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -40,9 +43,15 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
     }
 
     try {
-      const [nextOrders, nextNotifications] = await Promise.all([getUserOrders(), getUserNotifications()]);
+      const [nextOrders, nextNotifications, myReviews] = await Promise.all([getUserOrders(), getUserNotifications(), getMyReviews(300, 0)]);
       setOrders(nextOrders);
       setNotifications(nextNotifications);
+      setMyReviewsByOrderItemId(
+        myReviews.reduce<Record<string, string>>((accumulator, review) => {
+          accumulator[review.orderItemId] = review.id;
+          return accumulator;
+        }, {}),
+      );
       setSelectedOrderId((current) => current || nextOrders[0]?.id || "");
     } catch (error) {
       if (mode === "initial" && error instanceof Error && /(401|403)/.test(error.message)) {
@@ -81,6 +90,13 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
 
     return () => window.clearInterval(interval);
   }, [loadOrders]);
+
+  useEffect(() => {
+    const selectedFromQuery = searchParams.get("orderId") || "";
+    if (!selectedFromQuery) return;
+    if (!orders.some((order) => order.id === selectedFromQuery)) return;
+    setSelectedOrderId(selectedFromQuery);
+  }, [orders, searchParams]);
 
   const selectedOrder = useMemo(
     () => orders.find((order) => order.id === selectedOrderId) || orders[0] || null,
@@ -168,7 +184,7 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
 
         <div className="grid gap-3 md:grid-cols-2">
           {orders.map((order) => (
-            <Link key={order.id} href={`/account/orders/${order.id}`} className="block border border-zinc-300 p-4 transition hover:border-black hover:bg-zinc-50">
+            <Link key={order.id} href={`/account/orders?orderId=${order.id}`} className="block border border-zinc-300 p-4 transition hover:border-black hover:bg-zinc-50">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-sm font-semibold uppercase tracking-[0.08em]">Order {order.id.slice(0, 10)}...</p>
                 <p className="text-sm font-semibold">{formatPkr(order.totalPkr)}</p>
@@ -305,8 +321,26 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
                 {selectedOrder.items.map((item) => (
                   <article key={item.id} className="grid gap-3 border-b border-zinc-200 py-3 md:grid-cols-[2fr_1fr_1fr]">
                     <div>
-                      <p className="text-sm font-semibold uppercase tracking-[0.08em]">{item.product.name}</p>
+                      <Link
+                        href={`/product/${item.product.slug}`}
+                        className="text-sm font-semibold uppercase tracking-[0.08em] underline decoration-zinc-400 underline-offset-2"
+                      >
+                        {item.product.name}
+                      </Link>
                       <p className="text-xs text-zinc-600">{item.product.brand?.name || item.brand?.name || "Brand"} / {item.product.topCategory} / {item.product.subCategory}</p>
+                      <div className="mt-2">
+                        {selectedOrder.status === "DELIVERED" ? (
+                          myReviewsByOrderItemId[item.id] ? (
+                            <Link href={`/account/reviews?reviewId=${encodeURIComponent(myReviewsByOrderItemId[item.id])}`} className="inline-flex border border-zinc-300 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]">
+                              View Review
+                            </Link>
+                          ) : (
+                            <Link href={`/account/reviews?orderItemId=${encodeURIComponent(item.id)}`} className="inline-flex border border-black bg-black px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
+                              Write Review
+                            </Link>
+                          )
+                        ) : null}
+                      </div>
                     </div>
                     <p className="text-sm">Qty {item.quantity}</p>
                     <p className="text-sm">{formatPkr(item.unitPricePkr)}</p>

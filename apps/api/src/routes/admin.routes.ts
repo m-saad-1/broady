@@ -1,10 +1,78 @@
 import { Router } from "express";
 import { prisma } from "../config/prisma.js";
 import { requireAdmin, requireAuth } from "../middleware/auth.js";
+import {
+  listNotificationDeadLetters,
+  purgeNotificationDeadLetter,
+  purgeNotificationDeadLetters,
+  requeueNotificationDeadLetter,
+} from "../modules/notifications/notification.queue.js";
+import { getNotificationWorkerStats } from "../modules/notifications/notification.worker.js";
 
 const router = Router();
 
 router.use(requireAuth, requireAdmin);
+
+router.get("/notifications/worker", async (_req, res) => {
+  const stats = await getNotificationWorkerStats();
+  return res.json({ data: stats });
+});
+
+router.get("/notifications/dead-letters", async (req, res) => {
+  const parsedLimit = Number(req.query.limit);
+  const parsedOffset = Number(req.query.offset);
+  const limit = Number.isFinite(parsedLimit) ? parsedLimit : 25;
+  const offset = Number.isFinite(parsedOffset) ? parsedOffset : 0;
+
+  const data = await listNotificationDeadLetters(limit, offset);
+  return res.json({ data });
+});
+
+router.post("/notifications/dead-letters/:jobId/requeue", async (req, res) => {
+  const jobId = String(req.params.jobId);
+  const requeued = await requeueNotificationDeadLetter(jobId);
+
+  if (!requeued) {
+    return res.status(404).json({ message: "Dead-letter job not found or not requeueable" });
+  }
+
+  return res.json({ data: { requeued: true, jobId } });
+});
+
+router.delete("/notifications/dead-letters/:jobId", async (req, res) => {
+  const jobId = String(req.params.jobId);
+  const deleted = await purgeNotificationDeadLetter(jobId);
+
+  if (!deleted) {
+    return res.status(404).json({ message: "Dead-letter job not found" });
+  }
+
+  return res.json({ data: { deleted: true, jobId } });
+});
+
+router.delete("/notifications/dead-letters", async (req, res) => {
+  const confirm = String(req.query.confirm || "").trim();
+  if (confirm !== "purge-dead-letters") {
+    return res.status(400).json({
+      message: "Bulk dead-letter purge requires confirm=purge-dead-letters",
+    });
+  }
+
+  const limit = Number(req.query.limit || 100);
+  const olderThanHours = Number(req.query.olderThanHours || 24);
+  const clampedLimit = Math.max(1, Math.min(Number.isFinite(limit) ? limit : 100, 500));
+  const clampedOlderThanHours = Math.max(Number.isFinite(olderThanHours) ? olderThanHours : 24, 1);
+  const olderThanMs = clampedOlderThanHours * 60 * 60 * 1000;
+
+  const purged = await purgeNotificationDeadLetters(clampedLimit, olderThanMs);
+  return res.json({
+    data: {
+      purged,
+      limit: clampedLimit,
+      olderThanHours: clampedOlderThanHours,
+    },
+  });
+});
 
 router.get("/summary", async (_req, res) => {
   const [brandCount, productCount, orderCount] = await Promise.all([
@@ -33,6 +101,29 @@ router.get("/orders", async (_req, res) => {
   });
 
   return res.json({ data: orders });
+});
+
+router.get("/orders/:orderId", async (req, res) => {
+  const orderId = String(req.params.orderId);
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: {
+      user: { select: { id: true, fullName: true, email: true } },
+      items: {
+        include: {
+          product: { include: { brand: true } },
+          brand: true,
+        },
+      },
+      statusLogs: { orderBy: { createdAt: "desc" } },
+    },
+  });
+
+  if (!order) {
+    return res.status(404).json({ message: "Order not found" });
+  }
+
+  return res.json({ data: order });
 });
 
 router.get("/brand-dashboard", async (_req, res) => {

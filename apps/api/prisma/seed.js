@@ -3,6 +3,89 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
+const fabricProfiles = [
+  "100% Cotton Jersey",
+  "Cotton-Poly Twill",
+  "Premium Vegan Leather",
+  "Stretch Denim Blend",
+  "Linen-Cotton Blend",
+  "Brushed Fleece",
+  "Breathable Knit Mesh",
+  "Satin Viscose Blend",
+  "Wool-Blend Melton",
+  "Recycled Nylon",
+];
+
+const careVariants = [
+  ["Machine wash cold", "Do not bleach", "Tumble dry low", "Warm iron if needed"],
+  ["Hand wash recommended", "Wash with like colors", "Line dry in shade", "Do not wring"],
+  ["Spot clean only", "Keep away from direct heat", "Store in dust bag", "Use leather conditioner monthly"],
+  ["Gentle cycle wash", "Turn inside out before wash", "Do not tumble dry", "Iron on reverse side"],
+  ["Dry clean preferred", "Steam to remove wrinkles", "Do not bleach", "Store on broad hanger"],
+];
+
+const shippingRegions = [
+  ["Karachi", "Lahore", "Islamabad", "Rawalpindi"],
+  ["Faisalabad", "Multan", "Peshawar", "Hyderabad"],
+  ["Gujranwala", "Sialkot", "Quetta", "Sukkur"],
+  ["Abbottabad", "Sargodha", "Bahawalpur", "Mardan"],
+  ["Nationwide", "Northern Areas", "South Punjab", "Balochistan"],
+];
+
+function buildSizeGuide(sizes, index) {
+  const normalized = index % 25;
+  const baseCm = 58 + normalized * 2;
+  return {
+    imageUrl: `https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=1000&sig=size${index}`,
+    entries: sizes.map((size, sizeIndex) => {
+      const cm = baseCm + sizeIndex * 4;
+      return {
+        size,
+        cm: `${cm}-${cm + 3}`,
+        inches: `${(cm / 2.54).toFixed(1)}-${((cm + 3) / 2.54).toFixed(1)}`,
+      };
+    }),
+  };
+}
+
+function buildDeliveriesReturns(index) {
+  const dispatchWindow = 24 + (index % 4) * 12;
+  const returnDays = 7 + (index % 4) * 2;
+  const pickupDays = 2 + (index % 3);
+
+  return {
+    deliveryTime: `Dispatch in ${dispatchWindow}-${dispatchWindow + 12} hours. Delivery in ${2 + (index % 4)}-${4 + (index % 4)} business days.`,
+    returnPolicy: `Returns accepted within ${returnDays} days for unused items with original tags and invoice.`,
+    refundConditions: `Refund processed in ${pickupDays}-${pickupDays + 3} business days after quality check and warehouse receipt.`,
+  };
+}
+
+function buildShippingDelivery(index) {
+  const regionSet = shippingRegions[index % shippingRegions.length];
+  const charge = 180 + (index % 5) * 40;
+
+  return {
+    regions: regionSet,
+    estimatedDeliveryTime: `${2 + (index % 3)}-${5 + (index % 3)} business days`,
+    charges: charge === 180 ? "Free above PKR 4,999, otherwise PKR 180" : `Free above PKR 6,999, otherwise PKR ${charge}`,
+  };
+}
+
+function buildFabricCare(index) {
+  return {
+    fabricType: fabricProfiles[index % fabricProfiles.length],
+    careInstructions: careVariants[index % careVariants.length],
+  };
+}
+
+function stableIndexFromSlug(slug) {
+  let hash = 0;
+  for (let i = 0; i < slug.length; i += 1) {
+    hash = (hash * 31 + slug.charCodeAt(i)) % 100000;
+  }
+  return hash;
+}
+
 async function main() {
   const brands = [
     {
@@ -277,11 +360,45 @@ async function main() {
     },
   ];
 
-  for (const product of products) {
+  for (const [index, product] of products.entries()) {
+    const content = {
+      sizeGuide: buildSizeGuide(product.sizes, index),
+      deliveriesReturns: buildDeliveriesReturns(index),
+      shippingDelivery: buildShippingDelivery(index),
+      fabricCare: buildFabricCare(index),
+    };
+
     await prisma.product.upsert({
       where: { slug: product.slug },
-      update: product,
-      create: product,
+      update: {
+        ...product,
+        ...content,
+      },
+      create: {
+        ...product,
+        ...content,
+      },
+    });
+  }
+
+  const allProducts = await prisma.product.findMany({
+    select: {
+      id: true,
+      slug: true,
+      sizes: true,
+    },
+  });
+
+  for (const product of allProducts) {
+    const index = stableIndexFromSlug(product.slug);
+    await prisma.product.update({
+      where: { id: product.id },
+      data: {
+        sizeGuide: buildSizeGuide(product.sizes, index),
+        deliveriesReturns: buildDeliveriesReturns(index),
+        shippingDelivery: buildShippingDelivery(index),
+        fabricCare: buildFabricCare(index),
+      },
     });
   }
 

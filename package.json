@@ -9,11 +9,14 @@
   "scripts": {
     "dev:web": "npm run dev -w @broady/web",
     "dev:api": "npm run dev -w @broady/api",
+    "dev:worker": "npm run dev:worker -w @broady/api",
     "dev": "concurrently \"npm run dev:web\" \"npm run dev:api\"",
-    "db:up": "docker compose up -d postgres",
+    "dev:all": "concurrently \"npm run dev:web\" \"npm run dev:api\" \"npm run dev:worker\"",
+    "db:up": "docker compose up -d postgres redis",
     "db:down": "docker compose down",
-    "db:logs": "docker compose logs -f postgres",
+    "db:logs": "docker compose logs -f postgres redis",
     "build": "npm run build -w @broady/web && npm run build -w @broady/api",
+    "start:worker": "npm run start:worker -w @broady/api",
     "lint": "npm run lint -w @broady/web && npm run lint -w @broady/api"
   },
   "devDependencies": {
