@@ -1,93 +1,177 @@
-# BROADY
+# Broady
 
-BROADY is a scalable PWA-based multi-brand fashion marketplace for Pakistan focused on premium editorial UX, performance, and SEO.
+Broady is a monorepo for a multi-brand fashion marketplace platform. It combines a Next.js storefront with an Express/Prisma API and an asynchronous notification worker to support editorial commerce, role-based administration, and production-ready operations.
 
-## Stack
-- Frontend: Next.js App Router, TailwindCSS, shadcn/ui-style component architecture, Zustand, TanStack Query, next-pwa
-- Backend: Node.js, Express, Prisma ORM, PostgreSQL, JWT auth + Google OAuth
-- Payments: COD + JazzCash/Easypaisa integration points
-- Infra-ready: Cloudinary/S3-compatible media strategy, Cloudflare CDN-ready asset URLs, Redis-ready cache abstraction
+## Problem Statement
 
-## Implemented MVP
-- Homepage with editorial brand-first layout
-- Brand listing
-- Dedicated brand pages with dynamic routing (/brand/[slug])
-- Product catalog with filters
-- Hierarchical categories: Men, Women, Kids with subcategories
-- Product detail page
-- Wishlist (client-side persisted)
-- Cart (client-side persisted)
-- Checkout screen with payment method selection
-- JWT + httpOnly cookie authentication with role separation (Admin/User)
-- Session-backed JWT validation with revocable DB sessions
-- Google OAuth login with account linking by email
-- Protected routes for wishlist/cart/checkout/admin
-- Basic admin panel UI + backend admin summary/orders endpoints
-- SEO files: metadata, robots, sitemap
-- PWA support: manifest, service worker generation, offline fallback route
+Most marketplace implementations become hard to maintain as they scale because business logic, infrastructure code, and product features are coupled together. Broady is structured to keep domains isolated, keep runtime boundaries explicit, and support growth from MVP to production.
 
-## Monorepo Structure
-- apps/web: customer-facing PWA storefront
-- apps/api: REST API for auth, brands, products, orders, users, admin
-- packages/shared: shared types/contracts
+## Architecture Overview
 
-### Prisma Model Coverage
-Core schema includes:
-- `User` with auth-ready fields (`role`, provider, sessions)
-- `Brand` -> `Product` catalog relationship
-- `Cart` + `CartItem` for scalable cart persistence
-- `Order` + `OrderItem` for checkout lifecycle
-- `Session` + `WishlistItem` for JWT revocation and user personalization
+Broady follows a module-oriented monorepo architecture:
 
-This structure is production-ready for separation into auth/catalog/orders modules, and can be extended for payment gateways, inventory reservation, and event-driven order processing.
+- `apps/web`: Next.js customer and admin-facing web application.
+- `apps/api`: Express API with domain modules, Prisma data access, and auth/authorization middleware.
+- `packages/shared`: shared contracts and cross-app types.
+- `docs`: implementation notes and operational references.
 
-## API Modules (Microservice-ready split)
-- Auth module: /api/auth
-- Catalog module: /api/brands, /api/products
-- Orders module: /api/orders
-- Users module: /api/users
-- Admin module: /api/admin
+At runtime, the system is split into three concerns:
 
-## Notification Queue (Async Jobs)
-- Queue backend is adapter-driven and now defaults to Redis (BullMQ-based worker).
-- Local infra: run `npm run db:up` to start both Postgres and Redis.
-- Worker metrics endpoint (admin only): `GET /api/admin/notifications/worker`
-- Dead-letter operations (admin only):
-   - `GET /api/admin/notifications/dead-letters?limit=25&offset=0`
-   - `POST /api/admin/notifications/dead-letters/:jobId/requeue`
-   - `DELETE /api/admin/notifications/dead-letters/:jobId`
-   - `DELETE /api/admin/notifications/dead-letters?confirm=purge-dead-letters&limit=100&olderThanHours=24`
-- Dedicated worker mode:
-   - API process without embedded worker: `NOTIFICATION_WORKER_EMBEDDED=false npm run dev:api`
-   - Standalone worker process: `npm run dev:worker`
+- HTTP API process (`apps/api/src/server.ts`)
+- Notification worker process (`apps/api/src/notification-worker.ts`) or embedded mode
+- Web process (`apps/web`)
 
-Environment variables:
-- `NOTIFICATION_QUEUE_ADAPTER`: `redis` | `postgres` | `memory` (default: `redis`)
-- `REDIS_URL`: Redis connection URL (default: `redis://127.0.0.1:6379`)
-- `NOTIFICATION_REDIS_QUEUE_NAME`: queue name (default: `broady-notifications`)
-- `NOTIFICATION_REDIS_PREFIX`: key prefix (default: `broady`)
-- `NOTIFICATION_WORKER_CONCURRENCY`: worker concurrency (default: `4`)
-- `NOTIFICATION_WORKER_MAX_ATTEMPTS`: max retry attempts (default: `3`)
-- `NOTIFICATION_WORKER_SHUTDOWN_WAIT_MS`: graceful shutdown wait (default: `5000`)
-- `NOTIFICATION_WORKER_EMBEDDED`: run worker in API process (`true` by default)
-- `NOTIFICATION_WORKER_HEALTH_PORT`: worker-only health port (`0` disables endpoint, use `/healthz` when enabled)
+## Tech Stack
 
-## Authentication Details
-- Local auth:
-   - `POST /api/auth/register`
-   - `POST /api/auth/login`
-   - Passwords are hashed with bcrypt (salt rounds: 12)
-- Google auth:
-   - `POST /api/auth/google` with `{ idToken }`
-   - Verifies ID token server-side using Google OAuth client ID
-   - Creates first-time users and links existing accounts by email
-- Session security:
-   - JWT includes `sessionId` and `tokenId`
-   - Every protected API call validates token signature, expiry, and active DB session
-   - Logout revokes current DB session and clears cookie
-- RBAC:
-   - `USER` and `ADMIN` roles in Prisma
-   - Admin APIs are guarded by `requireAuth` + `requireAdmin`
-   - Client middleware also blocks non-admin access to `/admin`
+- Frontend: Next.js App Router, React, Tailwind CSS, Zustand, TanStack Query
+- Backend: Node.js, Express, Prisma
+- Data: PostgreSQL
+- Queueing: Redis + BullMQ adapter (with fallback adapters)
+- Auth: JWT + session validation + Google OAuth token verification
 
-This modular boundary makes future extraction into independent services straightforward for auth, catalog, orders, and payments while preserving reusable APIs for React Native clients.
+## Repository Structure
+
+```text
+.
+|-- apps/
+|   |-- api/
+|   |   |-- prisma/
+|   |   `-- src/
+|   |       |-- config/
+|   |       |-- middleware/
+|   |       |-- modules/
+|   |       |-- routes/
+|   |       |-- app.ts
+|   |       |-- server.ts
+|   |       `-- notification-worker.ts
+|   `-- web/
+|       `-- src/
+|           |-- app/
+|           |-- components/
+|           |-- lib/
+|           |-- providers/
+|           |-- stores/
+|           `-- types/
+|-- packages/
+|   `-- shared/
+|-- docs/
+|-- docker-compose.yml
+`-- package.json
+```
+
+## Quick Start
+
+### 1. Prerequisites
+
+- Node.js 20+
+- npm 10+
+- Docker (for local PostgreSQL and Redis)
+
+### 2. Install Dependencies
+
+```bash
+npm install
+```
+
+### 3. Configure Environment
+
+- Copy root env template and adjust values:
+
+```bash
+cp .env.example .env
+```
+
+- For API-only environment overrides, also review:
+  - `apps/api/.env.example`
+
+### 4. Start Local Infrastructure
+
+```bash
+npm run db:up
+```
+
+### 5. Run Applications
+
+```bash
+npm run dev:all
+```
+
+Useful alternatives:
+
+- `npm run dev` (web + api)
+- `npm run dev:worker` (standalone worker watch mode)
+
+## Database and Prisma
+
+From `apps/api` workspace scripts:
+
+- `npm run prisma:generate -w @broady/api`
+- `npm run prisma:migrate -w @broady/api`
+- `npm run prisma:seed -w @broady/api`
+
+The API now runs `prisma migrate deploy` during startup before it opens the HTTP port. If you reset the database or add a new migration, the next API start will apply it automatically.
+
+## API Surface (High Level)
+
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/google`
+- `GET /api/brands`
+- `GET /api/products`
+- `POST /api/orders`
+- `GET /api/users/notifications`
+- `GET /api/admin/summary`
+
+Notification administration:
+
+- `GET /api/admin/notifications/worker`
+- `GET /api/admin/notifications/dead-letters`
+- `POST /api/admin/notifications/dead-letters/:jobId/requeue`
+
+## Worker Modes
+
+Broady supports both deployment patterns:
+
+- Embedded worker in API process (default)
+- Standalone worker process via `npm run start:worker -w @broady/api`
+
+Controls:
+
+- `NOTIFICATION_WORKER_EMBEDDED=true|false`
+- `NOTIFICATION_QUEUE_ADAPTER=redis|postgres|memory`
+- `NOTIFICATION_WORKER_HEALTH_PORT=0|<port>`
+
+## Documentation
+
+- `docs/README.md` for documentation map and curation policy.
+- `docs/Github_push_strategy.md` for architecture and contribution standards.
+- `docs/Order_flow.md` for split-order model and fulfillment semantics.
+- `docs/notification_system.md` for event-driven notification architecture.
+
+## Quality and Contribution
+
+- Contribution process: `CONTRIBUTING.md`
+- Repository governance files: `LICENSE`, `.gitignore`, `.env.example`
+- Commit format: Conventional Commits (`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`)
+
+## GitHub Metadata Recommendations
+
+Recommended repository description:
+
+`Monorepo for Broady, a multi-brand fashion marketplace with Next.js storefront, Express/Prisma API, and async notification worker.`
+
+Recommended topics:
+
+- `marketplace`
+- `nextjs`
+- `express`
+- `prisma`
+- `postgresql`
+- `redis`
+- `bullmq`
+- `monorepo`
+- `typescript`
+
+## License
+
+This project is proprietary. See `LICENSE`.

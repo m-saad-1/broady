@@ -4,12 +4,21 @@ node_modules
 .env.development.local
 .env.test.local
 .env.production.local
+.env.*.local
 .next
 dist
 build
 coverage
 *.log
-apps/api/prisma/migrations
-docs/
-images/
-scripts/
+*.pid
+*.tmp
+*.temp
+Thumbs.db
+Desktop.ini
+
+# Workspace outputs
+apps/api/dist
+apps/web/.next
+
+# Local uploads generated during development
+apps/api/uploads
