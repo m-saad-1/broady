@@ -1,10 +1,12 @@
-import { NotificationType, OrderStatus, Prisma } from "@prisma/client";
+import { OrderStatus, PaymentStatus, Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { cache } from "../../config/cache.js";
 import { prisma } from "../../config/prisma.js";
 import { requireAuth } from "../../middleware/auth.js";
-import { createNotificationWithChannels } from "../notifications/notification.service.js";
+import { notificationEventNames } from "../notifications/notification.events.js";
+import { queueNotificationEvent } from "../notifications/notification.service.js";
+import { productBaseSchema } from "../products/product.validation.js";
 
 const router = Router();
 
@@ -12,26 +14,25 @@ function clearProductCache() {
   cache.clear();
 }
 
-const brandProductCreateSchema = z.object({
-  name: z.string().trim().min(2),
-  slug: z.string().trim().min(2),
-  description: z.string().trim().min(10),
-  pricePkr: z.number().int().positive(),
-  topCategory: z.enum(["Men", "Women", "Kids"]),
-  subCategory: z.string().trim().min(2),
-  sizes: z.array(z.string().trim().min(1)).min(1),
-  imageUrl: z.string().url(),
-  stock: z.number().int().min(0),
-});
+const brandProductCreateSchema = productBaseSchema;
 
 const orderTransitionMap: Record<OrderStatus, OrderStatus[]> = {
   PENDING: ["CONFIRMED", "CANCELED"],
   CONFIRMED: ["PACKED", "SHIPPED", "CANCELED"],
   PACKED: ["SHIPPED", "CANCELED"],
+  PARTIALLY_SHIPPED: ["SHIPPED", "DELIVERED", "CANCELED"],
   SHIPPED: ["DELIVERED", "CANCELED"],
   DELIVERED: [],
   CANCELED: [],
 };
+
+type OrderLifecycleEventName =
+  | typeof notificationEventNames.orderPlaced
+  | typeof notificationEventNames.orderConfirmed
+  | typeof notificationEventNames.orderPacked
+  | typeof notificationEventNames.orderShipped
+  | typeof notificationEventNames.orderDelivered
+  | typeof notificationEventNames.orderCancelled;
 
 function normalizeStatus(status: "PENDING" | "CONFIRMED" | "PACKED" | "SHIPPED" | "DELIVERED" | "CANCELED" | "CANCELLED"): OrderStatus {
   return status === "CANCELLED" ? "CANCELED" : status;
@@ -57,25 +58,17 @@ function buildStatusLogNote(params: { internalNote?: string; trackingId?: string
   return `${base} | CUSTOMER_NOTE: ${params.customerNote}`;
 }
 
-function formatOrderItemsSummary(
-  items: Array<{ quantity: number; unitPricePkr: number; product: { name: string } }>,
-) {
-  return items
-    .map((item) => `${item.quantity} x ${item.product.name} @ PKR ${item.unitPricePkr.toLocaleString("en-PK")}`)
-    .join("\n");
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function toHtmlMultiline(value: string) {
-  return escapeHtml(value).replaceAll("\n", "<br/>");
+function deriveParentOrderStatus(subOrderStatuses: OrderStatus[]): OrderStatus {
+  if (subOrderStatuses.length === 0) return OrderStatus.PENDING;
+  if (subOrderStatuses.every((status) => status === OrderStatus.CANCELED)) return OrderStatus.CANCELED;
+  if (subOrderStatuses.every((status) => status === OrderStatus.DELIVERED)) return OrderStatus.DELIVERED;
+  if (subOrderStatuses.every((status) => status === OrderStatus.SHIPPED || status === OrderStatus.DELIVERED)) return OrderStatus.SHIPPED;
+  if (subOrderStatuses.some((status) => status === OrderStatus.SHIPPED || status === OrderStatus.DELIVERED)) {
+    return OrderStatus.PARTIALLY_SHIPPED;
+  }
+  if (subOrderStatuses.every((status) => status === OrderStatus.CONFIRMED)) return OrderStatus.CONFIRMED;
+  if (subOrderStatuses.some((status) => status === OrderStatus.PACKED)) return OrderStatus.PACKED;
+  return OrderStatus.PENDING;
 }
 
 async function restockOrderItems(tx: Prisma.TransactionClient, items: Array<{ productId: string; quantity: number }>) {
@@ -168,41 +161,40 @@ router.get("/overview", async (req, res) => {
   const access = await getBrandAccess(req.auth!.userId);
   if (!access) return res.status(403).json({ message: "Brand access required" });
 
-  const [totalProducts, activeProducts, orderItems, recentOrders] = await Promise.all([
+  const [totalProducts, activeProducts, subOrders, recentSubOrders] = await Promise.all([
     prisma.product.count({ where: { brandId: access.brandId } }),
     prisma.product.count({ where: { brandId: access.brandId, isActive: true } }),
-    prisma.orderItem.findMany({
+    prisma.subOrder.findMany({
+      where: { brandId: access.brandId },
+      include: {
+        items: true,
+        order: { select: { id: true, userId: true } },
+      },
+    }),
+    prisma.subOrder.findMany({
       where: { brandId: access.brandId },
       include: {
         order: {
-          select: {
-            id: true,
-            status: true,
-            paymentMethod: true,
-            paymentStatus: true,
+          include: {
+            user: { select: { id: true, fullName: true, email: true } },
           },
         },
-      },
-    }),
-    prisma.order.findMany({
-      where: { items: { some: { brandId: access.brandId } } },
-      include: {
-        user: { select: { id: true, fullName: true, email: true } },
+        brand: true,
         items: {
-          where: { brandId: access.brandId },
           include: { product: true },
         },
+        statusLogs: { orderBy: { createdAt: "desc" } },
       },
       orderBy: { createdAt: "desc" },
       take: 10,
     }),
   ]);
 
-  const grossPkr = orderItems.reduce((acc, item) => acc + item.quantity * item.unitPricePkr, 0);
+  const grossPkr = subOrders.reduce((acc, subOrder) => acc + subOrder.subtotalPkr, 0);
   const netPkr = Math.round(grossPkr * (1 - access.brand.commissionRate / 100));
 
-  const byStatus = orderItems.reduce<Record<string, number>>((acc, item) => {
-    const key = item.order.status;
+  const byStatus = subOrders.reduce<Record<string, number>>((acc, subOrder) => {
+    const key = subOrder.status;
     acc[key] = (acc[key] || 0) + 1;
     return acc;
   }, {});
@@ -216,10 +208,11 @@ router.get("/overview", async (req, res) => {
         grossPkr,
         estimatedNetPkr: netPkr,
         commissionRate: access.brand.commissionRate,
-        orderItems: orderItems.length,
+        orderItems: subOrders.reduce((count, subOrder) => count + subOrder.items.length, 0),
+        totalSubOrders: subOrders.length,
         byStatus,
       },
-      recentOrders,
+      recentSubOrders,
     },
   });
 });
@@ -238,17 +231,21 @@ router.get("/orders", async (req, res) => {
     return res.status(400).json({ message: "Invalid query", issues: query.error.flatten() });
   }
 
-  const where: Prisma.OrderWhereInput = {
-    items: { some: { brandId: access.brandId } },
+  const where: Prisma.SubOrderWhereInput = {
+    brandId: access.brandId,
     status: query.data.status,
   };
 
-  const orders = await prisma.order.findMany({
+  const orders = await prisma.subOrder.findMany({
     where,
     include: {
-      user: { select: { id: true, fullName: true, email: true } },
+      order: {
+        include: {
+          user: { select: { id: true, fullName: true, email: true } },
+        },
+      },
+      brand: true,
       items: {
-        where: { brandId: access.brandId },
         include: { product: true, brand: true },
       },
       statusLogs: {
@@ -265,15 +262,20 @@ router.get("/orders/:orderId", async (req, res) => {
   const access = await getBrandAccess(req.auth!.userId);
   if (!access) return res.status(403).json({ message: "Brand access required" });
 
-  const order = await prisma.order.findFirst({
+  const order = await prisma.subOrder.findFirst({
     where: {
-      id: String(req.params.orderId),
-      items: { some: { brandId: access.brandId } },
+      orderId: String(req.params.orderId),
+      brandId: access.brandId,
     },
     include: {
-      user: { select: { id: true, fullName: true, email: true } },
+      order: {
+        include: {
+          user: { select: { id: true, fullName: true, email: true } },
+          statusLogs: { orderBy: { createdAt: "desc" } },
+        },
+      },
+      brand: true,
       items: {
-        where: { brandId: access.brandId },
         include: { product: true, brand: true },
       },
       statusLogs: {
@@ -304,13 +306,18 @@ router.patch("/orders/:orderId/status", async (req, res) => {
     return res.status(400).json({ message: "Invalid payload", issues: parsed.error.flatten() });
   }
 
-  const order = await prisma.order.findFirst({
+  const order = await prisma.subOrder.findFirst({
     where: {
-      id: String(req.params.orderId),
-      items: { some: { brandId: access.brandId } },
+      orderId: String(req.params.orderId),
+      brandId: access.brandId,
     },
     include: {
-      user: { select: { id: true, email: true, fullName: true } },
+      order: {
+        include: {
+          user: { select: { id: true, email: true, fullName: true } },
+          subOrders: { select: { id: true, status: true, trackingId: true } },
+        },
+      },
       items: { include: { product: true, brand: true } },
     },
   });
@@ -331,29 +338,24 @@ router.patch("/orders/:orderId/status", async (req, res) => {
   }
 
   const updated = await prisma.$transaction(async (tx) => {
-    const nextOrder = await tx.order.update({
+    await tx.subOrder.update({
       where: { id: order.id },
       data: {
         status,
         trackingId,
-      },
-      include: {
-        user: { select: { id: true, email: true, fullName: true } },
-        items: { where: { brandId: access.brandId }, include: { product: true, brand: true } },
-        statusLogs: { orderBy: { createdAt: "desc" } },
       },
     });
 
     if (status === OrderStatus.CANCELED && order.status !== OrderStatus.CANCELED) {
       await restockOrderItems(
         tx,
-        nextOrder.items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+        order.items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
       );
     }
 
-    await tx.orderStatusLog.create({
+    await tx.subOrderStatusLog.create({
       data: {
-        orderId: order.id,
+        subOrderId: order.id,
         status,
         updatedBy: "BRAND",
         updatedById: req.auth!.userId,
@@ -365,42 +367,79 @@ router.patch("/orders/:orderId/status", async (req, res) => {
       },
     });
 
-    const notificationPreference = await tx.notificationPreference.findUnique({
-      where: { userId: order.userId },
-      select: { orderUpdates: true },
+    const refreshedSubOrders = await tx.subOrder.findMany({
+      where: { orderId: order.orderId },
+      select: { status: true, trackingId: true },
     });
 
-    const statusMessage = `Broady updated order ${order.id} to ${status}${nextOrder.trackingId ? ` (Tracking: ${nextOrder.trackingId})` : ""}.`;
-    const statusItemsSummary = formatOrderItemsSummary(nextOrder.items);
+    const nextParentStatus = deriveParentOrderStatus(refreshedSubOrders.map((subOrder) => subOrder.status));
+    const nextTrackingId =
+      refreshedSubOrders.length === 1
+        ? refreshedSubOrders[0].trackingId
+        : refreshedSubOrders.every((subOrder) => subOrder.trackingId && subOrder.trackingId === refreshedSubOrders[0].trackingId)
+          ? refreshedSubOrders[0].trackingId
+          : null;
 
-    await createNotificationWithChannels({
-      prismaClient: tx,
-      type: NotificationType.ORDER_STATUS_UPDATED,
-      title: "Broady Order Update",
-      message: statusMessage,
-      userId: order.userId,
-      orderId: order.id,
-      emailRecipient: notificationPreference?.orderUpdates === false ? undefined : order.user.email,
-      whatsappRecipient: access.brand.whatsappNumber,
-      emailSubject: `Broady Order ${order.id}: ${status}`,
-      emailText: [
-        `Hi ${nextOrder.user.fullName || "Customer"},`,
-        "",
-        statusMessage,
-        "",
-        "Items from this brand:",
-        statusItemsSummary,
-      ].join("\n"),
-      emailHtml: `<p>Hi ${escapeHtml(nextOrder.user.fullName || "Customer")},</p><p>${escapeHtml(statusMessage)}</p><p><strong>Items from this brand</strong><br/>${toHtmlMultiline(statusItemsSummary)}</p>`,
-      whatsappPayload: {
-        orderId: order.id,
-        status,
-        trackingId: nextOrder.trackingId,
-        brandId: access.brandId,
+    await tx.order.update({
+      where: { id: order.orderId },
+      data: {
+        status: nextParentStatus,
+        trackingId: nextTrackingId,
+        paymentStatus:
+          nextParentStatus === OrderStatus.DELIVERED && order.order.paymentMethod === "COD"
+            ? PaymentStatus.COMPLETED
+            : order.order.paymentStatus,
       },
     });
 
-    return nextOrder;
+    await tx.orderStatusLog.create({
+      data: {
+        orderId: order.orderId,
+        status: nextParentStatus,
+        updatedBy: "BRAND",
+        updatedById: req.auth!.userId,
+        note: buildStatusLogNote({
+          internalNote: parsed.data.note
+            ? `Sub-order (${access.brand.name}) update: ${parsed.data.note}`
+            : `Sub-order (${access.brand.name}) updated to ${status}`,
+          customerNote: parsed.data.customerNote,
+        }),
+      },
+    });
+
+    return tx.subOrder.findUniqueOrThrow({
+      where: { id: order.id },
+      include: {
+        order: {
+          include: {
+            user: { select: { id: true, email: true, fullName: true } },
+            statusLogs: { orderBy: { createdAt: "desc" } },
+          },
+        },
+        brand: true,
+        items: { include: { product: true, brand: true } },
+        statusLogs: { orderBy: { createdAt: "desc" } },
+      },
+    });
+  });
+
+  const orderEventByStatus: Record<OrderStatus, OrderLifecycleEventName> = {
+    PENDING: notificationEventNames.orderPlaced,
+    CONFIRMED: notificationEventNames.orderConfirmed,
+    PACKED: notificationEventNames.orderPacked,
+    PARTIALLY_SHIPPED: notificationEventNames.orderShipped,
+    SHIPPED: notificationEventNames.orderShipped,
+    DELIVERED: notificationEventNames.orderDelivered,
+    CANCELED: notificationEventNames.orderCancelled,
+  };
+
+  queueNotificationEvent({
+    name: orderEventByStatus[status],
+    orderId: order.orderId,
+    userId: order.order.userId,
+    brandId: access.brandId,
+    changedByRole: "BRAND",
+    note: parsed.data.note,
   });
 
   return res.json({ data: updated });
@@ -440,14 +479,11 @@ router.post("/products", async (req, res) => {
     },
   });
 
-  await createNotificationWithChannels({
-    prismaClient: prisma,
-    type: NotificationType.BRAND_ORDER_ASSIGNED,
-    title: "New Product Submitted to Broady",
-    message: `Brand submitted product ${product.name} for Broady approval.`,
+  queueNotificationEvent({
+    name: notificationEventNames.productSubmitted,
+    productId: product.id,
     brandId: access.brandId,
-    emailRecipient: access.brand.contactEmail,
-    whatsappRecipient: access.brand.whatsappNumber,
+    submittedByUserId: req.auth!.userId,
   });
 
   clearProductCache();

@@ -17,6 +17,7 @@
     "prisma:verify-crud": "node prisma/verify-crud.js"
   },
   "dependencies": {
+    "@broady/shared": "*",
     "@prisma/client": "^6.5.0",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.74.1",

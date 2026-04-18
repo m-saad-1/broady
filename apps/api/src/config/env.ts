@@ -18,12 +18,15 @@ export const env = {
   redisUrl: process.env.REDIS_URL || "redis://127.0.0.1:6379",
   notificationRedisQueueName: process.env.NOTIFICATION_REDIS_QUEUE_NAME || "broady-notifications",
   notificationRedisPrefix: process.env.NOTIFICATION_REDIS_PREFIX || "broady",
-  notificationQueueAdapter:
-    process.env.NOTIFICATION_QUEUE_ADAPTER === "memory"
-      ? "memory"
-      : process.env.NOTIFICATION_QUEUE_ADAPTER === "postgres"
-        ? "postgres"
-        : "redis",
+  notificationQueueAdapter: (() => {
+    const configuredAdapter = process.env.NOTIFICATION_QUEUE_ADAPTER;
+
+    if (configuredAdapter === "memory" || configuredAdapter === "postgres" || configuredAdapter === "redis") {
+      return configuredAdapter;
+    }
+
+    return process.env.REDIS_URL ? "redis" : "postgres";
+  })(),
   notificationWorkerPollMs: Number(process.env.NOTIFICATION_WORKER_POLL_MS || 250),
   notificationWorkerConcurrency: Number(process.env.NOTIFICATION_WORKER_CONCURRENCY || 4),
   notificationWorkerLockTimeoutMs: Number(process.env.NOTIFICATION_WORKER_LOCK_TIMEOUT_MS || 30000),

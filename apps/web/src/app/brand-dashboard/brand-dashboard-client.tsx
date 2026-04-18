@@ -13,6 +13,7 @@ import {
   updateBrandOrderStatus,
 } from "@/lib/api";
 import { buildBrandProductPayload } from "@/lib/product-form";
+import type { ProductFormValues } from "@/lib/product-form";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { getOrderStatusOptions } from "@/lib/order-status";
 import { useToastStore } from "@/stores/toast-store";
@@ -36,17 +37,32 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
   const [showAddProductForm, setShowAddProductForm] = useState(false);
   const [orderDrafts, setOrderDrafts] = useState<Record<string, { status: string; trackingId: string; note: string; customerNote: string }>>({});
   const [pendingStatusOrderId, setPendingStatusOrderId] = useState<string | null>(null);
-  const [productDrafts, setProductDrafts] = useState<Record<string, { name: string; slug: string; description: string; pricePkr: string; topCategory: "Men" | "Women" | "Kids"; subCategory: string; sizes: string; stock: string; imageUrl: string; isActive: boolean }>>({});
-  const [newProduct, setNewProduct] = useState({
+  const [productDrafts, setProductDrafts] = useState<Record<string, Omit<ProductFormValues, "brandId">>>({});
+  const [newProduct, setNewProduct] = useState<Omit<ProductFormValues, "brandId">>({
     name: "",
     slug: "",
     description: "",
     pricePkr: "",
-    topCategory: "Men" as "Men" | "Women" | "Kids",
+    topCategory: "Men",
     subCategory: "",
     sizes: "S, M, L",
     imageUrl: "",
+    sizeGuideTemplateId: "",
+    sizeGuideImageUrl: "",
+    sizeGuideRows: [{ size: "S", cm: "", inches: "" }],
+    deliveriesReturnsTemplateId: "",
+    deliveryTime: "3-5 business days",
+    returnPolicy: "Returns accepted within 7 days for unused items.",
+    refundConditions: "Refund to original payment method after inspection.",
+    shippingDeliveryTemplateId: "",
+    shippingRegions: "Pakistan",
+    shippingEstimatedDeliveryTime: "3-5 business days",
+    shippingCharges: "Calculated at checkout",
+    fabricCareTemplateId: "",
+    fabricType: "Cotton",
+    careInstructions: "Machine wash cold, do not bleach",
     stock: "0",
+    isActive: true,
   });
   const showOperationsPanels = mode === "dashboard";
 
@@ -89,7 +105,7 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
   }, [orders]);
 
   useEffect(() => {
-    const drafts: Record<string, { name: string; slug: string; description: string; pricePkr: string; topCategory: "Men" | "Women" | "Kids"; subCategory: string; sizes: string; stock: string; imageUrl: string; isActive: boolean }> = {};
+    const drafts: Record<string, Omit<ProductFormValues, "brandId">> = {};
     for (const product of products) {
       drafts[product.id] = {
         name: product.name,
@@ -99,8 +115,22 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
         topCategory: product.topCategory,
         subCategory: product.subCategory,
         sizes: product.sizes.join(", "),
-        stock: String(product.stock),
         imageUrl: product.imageUrl,
+        sizeGuideTemplateId: product.sizeGuideTemplateId || "",
+        sizeGuideImageUrl: product.sizeGuide?.imageUrl || "",
+        sizeGuideRows: product.sizeGuide?.entries?.length ? product.sizeGuide.entries : [{ size: "S", cm: "", inches: "" }],
+        deliveriesReturnsTemplateId: product.deliveriesReturnsTemplateId || "",
+        deliveryTime: product.deliveriesReturns?.deliveryTime || "3-5 business days",
+        returnPolicy: product.deliveriesReturns?.returnPolicy || "Returns accepted within 7 days for unused items.",
+        refundConditions: product.deliveriesReturns?.refundConditions || "Refund to original payment method after inspection.",
+        shippingDeliveryTemplateId: product.shippingDeliveryTemplateId || "",
+        shippingRegions: (product.shippingDelivery?.regions || ["Pakistan"]).join(", "),
+        shippingEstimatedDeliveryTime: product.shippingDelivery?.estimatedDeliveryTime || "3-5 business days",
+        shippingCharges: product.shippingDelivery?.charges || "",
+        fabricCareTemplateId: product.fabricCareTemplateId || "",
+        fabricType: product.fabricCare?.fabricType || "Cotton",
+        careInstructions: (product.fabricCare?.careInstructions || ["Machine wash cold", "Do not bleach"]).join(", "),
+        stock: String(product.stock),
         isActive: product.isActive,
       };
     }
@@ -137,7 +167,7 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
 
     setSavingProductId(productId);
     try {
-      await updateBrandDashboardProduct(productId, buildBrandProductPayload(draft as any));
+      await updateBrandDashboardProduct(productId, buildBrandProductPayload(draft));
       pushToast("Product updated", "success");
       setEditingProductId(null);
       await loadAll();
@@ -154,7 +184,7 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
     setCreatingProduct(true);
 
     try {
-      await submitBrandProduct(buildBrandProductPayload(newProduct as any));
+      await submitBrandProduct(buildBrandProductPayload(newProduct));
       pushToast("Product submitted for Broady approval", "success");
       setNewProduct({
         name: "",
@@ -165,7 +195,22 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
         subCategory: "",
         sizes: "S, M, L",
         imageUrl: "",
+        sizeGuideTemplateId: "",
+        sizeGuideImageUrl: "",
+        sizeGuideRows: [{ size: "S", cm: "", inches: "" }],
+        deliveriesReturnsTemplateId: "",
+        deliveryTime: "3-5 business days",
+        returnPolicy: "Returns accepted within 7 days for unused items.",
+        refundConditions: "Refund to original payment method after inspection.",
+        shippingDeliveryTemplateId: "",
+        shippingRegions: "Pakistan",
+        shippingEstimatedDeliveryTime: "3-5 business days",
+        shippingCharges: "Calculated at checkout",
+        fabricCareTemplateId: "",
+        fabricType: "Cotton",
+        careInstructions: "Machine wash cold, do not bleach",
         stock: "0",
+        isActive: true,
       });
       await loadAll();
     } catch (error) {

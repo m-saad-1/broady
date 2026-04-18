@@ -15,6 +15,7 @@ import {
   updateProduct,
 } from "@/lib/api";
 import { buildAdminProductPayload } from "@/lib/product-form";
+import type { ProductFormValues } from "@/lib/product-form";
 import { useToastStore } from "@/stores/toast-store";
 import type { Brand, Product } from "@/types/marketplace";
 
@@ -26,19 +27,7 @@ type BrandFormState = {
   verified: boolean;
 };
 
-type ProductFormState = {
-  brandId: string;
-  name: string;
-  slug: string;
-  description: string;
-  pricePkr: string;
-  topCategory: "Men" | "Women" | "Kids";
-  subCategory: string;
-  sizes: string;
-  imageUrl: string;
-  stock: string;
-  isActive: boolean;
-};
+type ProductFormState = Omit<ProductFormValues, "brandId"> & { brandId: string };
 
 const defaultBrandForm: BrandFormState = {
   name: "",
@@ -58,6 +47,20 @@ const defaultProductForm: ProductFormState = {
   subCategory: "",
   sizes: "",
   imageUrl: "",
+  sizeGuideTemplateId: "",
+  sizeGuideImageUrl: "",
+  sizeGuideRows: [{ size: "S", cm: "", inches: "" }],
+  deliveriesReturnsTemplateId: "",
+  deliveryTime: "3-5 business days",
+  returnPolicy: "Returns accepted within 7 days for unused items.",
+  refundConditions: "Refund to original payment method after inspection.",
+  shippingDeliveryTemplateId: "",
+  shippingRegions: "Pakistan",
+  shippingEstimatedDeliveryTime: "3-5 business days",
+  shippingCharges: "Calculated at checkout",
+  fabricCareTemplateId: "",
+  fabricType: "Cotton",
+  careInstructions: "Machine wash cold, do not bleach",
   stock: "0",
   isActive: true,
 };
@@ -73,6 +76,10 @@ function toBrandFormState(brand: Brand): BrandFormState {
 }
 
 function toProductFormState(product: Product): ProductFormState {
+  const sizeGuideEntries = product.sizeGuide?.entries?.length
+    ? product.sizeGuide.entries
+    : [{ size: "S", cm: "", inches: "" }];
+
   return {
     brandId: product.brandId,
     name: product.name,
@@ -83,6 +90,20 @@ function toProductFormState(product: Product): ProductFormState {
     subCategory: product.subCategory,
     sizes: product.sizes.join(", "),
     imageUrl: product.imageUrl,
+    sizeGuideTemplateId: product.sizeGuideTemplateId || "",
+    sizeGuideImageUrl: product.sizeGuide?.imageUrl || "",
+    sizeGuideRows: sizeGuideEntries,
+    deliveriesReturnsTemplateId: product.deliveriesReturnsTemplateId || "",
+    deliveryTime: product.deliveriesReturns?.deliveryTime || "3-5 business days",
+    returnPolicy: product.deliveriesReturns?.returnPolicy || "Returns accepted within 7 days for unused items.",
+    refundConditions: product.deliveriesReturns?.refundConditions || "Refund to original payment method after inspection.",
+    shippingDeliveryTemplateId: product.shippingDeliveryTemplateId || "",
+    shippingRegions: (product.shippingDelivery?.regions || ["Pakistan"]).join(", "),
+    shippingEstimatedDeliveryTime: product.shippingDelivery?.estimatedDeliveryTime || "3-5 business days",
+    shippingCharges: product.shippingDelivery?.charges || "",
+    fabricCareTemplateId: product.fabricCareTemplateId || "",
+    fabricType: product.fabricCare?.fabricType || "Cotton",
+    careInstructions: (product.fabricCare?.careInstructions || ["Machine wash cold", "Do not bleach"]).join(", "),
     stock: String(product.stock),
     isActive: product.isActive,
   };
@@ -176,7 +197,7 @@ export function AdminPanelClient() {
     setIsSavingProduct(true);
 
     try {
-      const payload = buildAdminProductPayload(productForm as any);
+      const payload = buildAdminProductPayload(productForm);
 
       if (editingProductId) {
         await updateProduct(editingProductId, payload);

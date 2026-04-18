@@ -26,6 +26,7 @@ enum OrderStatus {
   PENDING
   CONFIRMED
   PACKED
+  PARTIALLY_SHIPPED
   SHIPPED
   DELIVERED
   CANCELED
@@ -61,6 +62,38 @@ enum NotificationType {
   ORDER_PLACED
   ORDER_STATUS_UPDATED
   BRAND_ORDER_ASSIGNED
+  PRODUCT_REVIEW_SUBMITTED
+  PRODUCT_REVIEW_REPORTED
+  PRODUCT_REVIEW_MODERATED
+  PRODUCT_REVIEW_REPLIED
+}
+
+enum ReviewStatus {
+  VISIBLE
+  HIDDEN
+  FLAGGED
+  REMOVED
+}
+
+enum ReviewReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+enum ReviewReportReason {
+  SPAM
+  INAPPROPRIATE
+  OFFENSIVE_LANGUAGE
+  FAKE_REVIEW
+  OTHER
+}
+
+enum ReviewModerationAction {
+  HIDE
+  UNHIDE
+  FLAG
+  REMOVE
 }
 
 enum NotificationChannel {
@@ -80,6 +113,13 @@ enum ProductApprovalStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum ProductTemplateType {
+  SIZE_GUIDE
+  DELIVERIES_RETURNS
+  SHIPPING_DELIVERY
+  FABRIC_CARE
 }
 
 model User {
@@ -105,6 +145,14 @@ model User {
   notificationPreference NotificationPreference?
   brandMemberships BrandMember[]
   notifications Notification[]
+  reviews      Review[]
+  reviewVotes  ReviewHelpfulnessVote[]
+  reviewReports ReviewReport[]      @relation("ReviewReportsByUser")
+  reviewModerations Review[]        @relation("ReviewModeratedBy")
+  reviewModerationLogs ReviewModerationLog[]
+  resolvedReviewReports ReviewReport[] @relation("ReviewReportsResolvedBy")
+  brandReviewReplies BrandReviewReply[]
+  productTemplates ProductContentTemplate[] @relation("TemplateCreatedBy")
 }
 
 model UserPaymentMethod {
@@ -189,8 +237,12 @@ model Brand {
   products    Product[]
   members     BrandMember[]
   orderItems  OrderItem[]
+  subOrders  SubOrder[]
   notifications Notification[]
   owner       User?         @relation("BrandOwnership")
+  reviews     Review[]
+  reviewReplies BrandReviewReply[]
+  productTemplates ProductContentTemplate[]
 }
 
 model BrandMember {
@@ -213,6 +265,7 @@ model Product {
   approvalStatus ProductApprovalStatus @default(APPROVED)
   approvalReviewedAt DateTime?
   approvalReviewedById String?
+  searchDocument String @default("")
   name        String
   slug        String    @unique
   description String
@@ -221,6 +274,14 @@ model Product {
   subCategory String
   sizes       String[]
   imageUrl    String
+  sizeGuideTemplateId String?
+  sizeGuide   Json?
+  deliveriesReturnsTemplateId String?
+  deliveriesReturns Json?
+  shippingDeliveryTemplateId String?
+  shippingDelivery Json?
+  fabricCareTemplateId String?
+  fabricCare Json?
   stock       Int       @default(0)
   isActive    Boolean   @default(true)
   createdAt   DateTime  @default(now())
@@ -228,10 +289,29 @@ model Product {
   cartItems   CartItem[]
   orderItems  OrderItem[]
   wishlistItems WishlistItem[]
+  reviews     Review[]
+  reviewAggregate ProductReviewAggregate?
 
   @@index([brandId, topCategory, subCategory])
   @@index([topCategory, subCategory])
   @@index([pricePkr])
+}
+
+model ProductContentTemplate {
+  id          String              @id @default(cuid())
+  type        ProductTemplateType
+  name        String
+  content     Json
+  brandId     String?
+  brand       Brand?              @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy   User                @relation("TemplateCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@index([type])
+  @@index([brandId, type])
+  @@unique([name, type, brandId])
 }
 
 model WishlistItem {
@@ -258,6 +338,7 @@ model Order {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   items         OrderItem[]
+  subOrders     SubOrder[]
   statusLogs    OrderStatusLog[]
   notifications Notification[]
 
@@ -268,14 +349,156 @@ model OrderItem {
   id         String   @id @default(cuid())
   orderId    String
   order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  subOrderId String?
+  subOrder   SubOrder? @relation(fields: [subOrderId], references: [id], onDelete: SetNull)
   productId  String
   product    Product  @relation(fields: [productId], references: [id])
   brandId    String
   brand      Brand    @relation(fields: [brandId], references: [id])
   quantity   Int
   unitPricePkr Int
+  review     Review?
 
   @@index([brandId, orderId])
+  @@index([subOrderId])
+}
+
+model SubOrder {
+  id            String        @id @default(cuid())
+  orderId        String
+  order          Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  brandId        String
+  brand          Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  status         OrderStatus   @default(PENDING)
+  subtotalPkr    Int
+  trackingId     String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  items          OrderItem[]
+  statusLogs     SubOrderStatusLog[]
+
+  @@unique([orderId, brandId])
+  @@index([brandId, status])
+  @@index([orderId, createdAt])
+}
+
+model Review {
+  id                String      @id @default(cuid())
+  productId         String
+  product           Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brandId           String
+  brand             Brand       @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  orderItemId       String      @unique
+  orderItem         OrderItem   @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  rating            Int
+  title             String?     @db.VarChar(120)
+  content           String      @db.Text
+  status            ReviewStatus @default(VISIBLE)
+  isVerifiedPurchase Boolean    @default(true)
+  moderatedById     String?
+  moderatedBy       User?       @relation("ReviewModeratedBy", fields: [moderatedById], references: [id], onDelete: SetNull)
+  moderationReason  String?     @db.Text
+  moderatedAt       DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  images            ReviewImage[]
+  helpfulnessVotes  ReviewHelpfulnessVote[]
+  reports           ReviewReport[]
+  moderationLogs    ReviewModerationLog[]
+  brandReply        BrandReviewReply?
+
+  @@index([productId, status, createdAt])
+  @@index([userId, createdAt])
+  @@index([brandId, status, createdAt])
+}
+
+model ReviewImage {
+  id         String   @id @default(cuid())
+  reviewId   String
+  review     Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  url        String
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  @@index([reviewId, sortOrder])
+}
+
+model ReviewHelpfulnessVote {
+  id         String   @id @default(cuid())
+  reviewId   String
+  review     Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isHelpful  Boolean
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([reviewId, userId])
+  @@index([reviewId])
+}
+
+model ReviewReport {
+  id               String             @id @default(cuid())
+  reviewId         String
+  review           Review             @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  reportedByUserId String
+  reportedByUser   User               @relation("ReviewReportsByUser", fields: [reportedByUserId], references: [id], onDelete: Cascade)
+  reason           ReviewReportReason
+  description      String?            @db.Text
+  status           ReviewReportStatus @default(OPEN)
+  resolutionNote   String?            @db.Text
+  resolvedById     String?
+  resolvedBy       User?              @relation("ReviewReportsResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+  resolvedAt       DateTime?
+  createdAt        DateTime           @default(now())
+
+  @@index([reviewId, status, createdAt])
+  @@index([reportedByUserId, createdAt])
+}
+
+model ReviewModerationLog {
+  id           String                 @id @default(cuid())
+  reviewId     String
+  review       Review                 @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  action       ReviewModerationAction
+  moderatorId  String?
+  moderator    User?                  @relation(fields: [moderatorId], references: [id], onDelete: SetNull)
+  reason       String?                @db.Text
+  createdAt    DateTime               @default(now())
+
+  @@index([reviewId, createdAt])
+}
+
+model BrandReviewReply {
+  id         String   @id @default(cuid())
+  reviewId   String   @unique
+  review     Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  brandId    String
+  brand      Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content    String   @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([brandId, createdAt])
+}
+
+model ProductReviewAggregate {
+  id           String   @id @default(cuid())
+  productId    String   @unique
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  averageRating Float   @default(0)
+  totalReviews Int      @default(0)
+  rating1      Int      @default(0)
+  rating2      Int      @default(0)
+  rating3      Int      @default(0)
+  rating4      Int      @default(0)
+  rating5      Int      @default(0)
+  updatedAt    DateTime @updatedAt
 }
 
 model OrderStatusLog {
@@ -289,6 +512,19 @@ model OrderStatusLog {
   createdAt   DateTime             @default(now())
 
   @@index([orderId, createdAt])
+}
+
+model SubOrderStatusLog {
+  id          String               @id @default(cuid())
+  subOrderId  String
+  subOrder    SubOrder             @relation(fields: [subOrderId], references: [id], onDelete: Cascade)
+  status      OrderStatus
+  updatedBy   OrderStatusUpdatedBy
+  updatedById String?
+  note        String?
+  createdAt   DateTime             @default(now())
+
+  @@index([subOrderId, createdAt])
 }
 
 model Notification {

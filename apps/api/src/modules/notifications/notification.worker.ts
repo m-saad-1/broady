@@ -137,9 +137,21 @@ export function startNotificationWorker() {
       }
     })();
   } else {
-    void adapter.initialize?.();
+    void (async () => {
+      try {
+        await adapter.initialize?.();
+      } catch (error) {
+        console.error("[notifications] worker initialization failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    })();
     state.timer = setInterval(() => {
-      void tick();
+      void tick().catch((error) => {
+        console.error("[notifications] worker tick failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
     }, env.notificationWorkerPollMs);
   }
 

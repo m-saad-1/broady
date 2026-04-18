@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { ProductCard } from "@/components/ui/product-card";
 import { getProduct, getProductReviews, getProducts } from "@/lib/api";
 import { ReviewSection } from "@/components/ui/review-section";
+import type { ProductReview } from "@/types/marketplace";
 import { ProductDetailClient } from "./product-detail-client";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
@@ -43,24 +44,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
     };
     averageRating: number;
     totalReviews: number;
-    items: Array<{
-      id: string;
-      rating: number;
-      content: string;
-      user: { fullName: string };
-      images: Array<{ id: string; url: string; sortOrder: number }>;
-      brandReply?: {
-        id: string;
-        brandId: string;
-        userId: string;
-        content: string;
-        createdAt: string;
-        updatedAt: string;
-        user: { id: string; fullName: string };
-      } | null;
-      isVerifiedPurchase: boolean;
-      createdAt: string;
-    }>;
+    items: ProductReview[];
   } = {
     aggregate: {
       averageRating: 0,
@@ -105,7 +89,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         productId={product.id}
         productSlug={product.slug}
         initialAggregate={reviewSummary.aggregate}
-        initialReviews={reviewSummary.items as any}
+        initialReviews={reviewSummary.items}
         initialTotal={reviewSummary.totalReviews}
         pageSize={3}
         showViewAllButton

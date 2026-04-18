@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@broady/shared": "*",
     "@tanstack/react-query": "^5.67.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

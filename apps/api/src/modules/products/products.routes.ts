@@ -15,6 +15,16 @@ import {
   productSizeGuideSchema,
   productTemplateTypes,
 } from "./product.validation.js";
+import {
+  buildPrefixTsQuery,
+  colorWords,
+  detectTopCategoryToken,
+  inferQueryCategory,
+  inferSubCategoryHints,
+  normalizeSearchInput,
+  subCategoryHintMap,
+  tokenizeSearchQuery,
+} from "./products.search-utils.js";
 
 const router = Router();
 
@@ -82,204 +92,6 @@ type ProductSearchFilters = {
   shouldEnforceNameMatch?: boolean;    // If true, require keyword to appear in product name (avoid description-only matches)
   nameMatchTokens?: string[];           // Tokens that should appear in name for category-intent searches
 };
-
-const colorWords = [
-  "black", "white", "navy", "blue", "red", "green", "beige", "brown", "grey", "gray", "olive", "maroon", "cream",
-];
-
-const topCategoryTokenMap: Record<string, "Men" | "Women" | "Kids"> = {
-  men: "Men",
-  mens: "Men",
-  male: "Men",
-  man: "Men",
-  women: "Women",
-  womens: "Women",
-  female: "Women",
-  woman: "Women",
-  kids: "Kids",
-  kid: "Kids",
-  child: "Kids",
-  children: "Kids",
-  boys: "Kids",
-  girls: "Kids",
-};
-
-const searchStopWords = new Set(["for", "and", "the", "a", "an", "of", "to", "in", "on", "with", "by"]);
-
-const subCategoryHintMap: Record<string, string[]> = {
-  shirt: ["T-Shirts", "Polo Shirts", "V-Neck", "Formal Shirts"],
-  tshirt: ["T-Shirts"],
-  tee: ["T-Shirts"],
-  polo: ["Polo Shirts"],
-  vneck: ["V-Neck"],
-  pant: ["Trousers", "Jeans", "Joggers", "Cargo Pants"],
-  trouser: ["Trousers"],
-  jean: ["Jeans"],
-};
-
-function normalizeSearchInput(input?: string) {
-  if (!input) return "";
-  return input.toLowerCase().replace(/\s+/g, " ").trim();
-}
-
-function normalizeSearchToken(token: string) {
-  let normalized = token.toLowerCase().trim();
-
-  if (normalized.endsWith("ies") && normalized.length > 4) {
-    normalized = `${normalized.slice(0, -3)}y`;
-  } else if (normalized.endsWith("es") && normalized.length > 4) {
-    normalized = normalized.slice(0, -2);
-  } else if (normalized.endsWith("s") && normalized.length > 3) {
-    normalized = normalized.slice(0, -1);
-  }
-
-  return normalized;
-}
-
-function tokenizeSearchQuery(query: string) {
-  return (
-    query
-      .toLowerCase()
-      .match(/[a-z0-9]+/g)
-      ?.map((term) => normalizeSearchToken(term))
-      .filter((term) => term.length > 1 && !searchStopWords.has(term)) || []
-  );
-}
-
-/**
- * Calculates what percentage of tokens match a given category type.
- * @param tokens - Normalized search tokens
- * @param categoryType - 'subCategory' or 'topCategory'
- * @returns { coverageRatio: 0-1, matchingTokens: Set of tokens that matched }
- */
-function calculateTokenCoverage(tokens: string[], categoryType: 'subCategory' | 'topCategory') {
-  if (!tokens.length) return { coverageRatio: 0, matchingTokens: new Set<string>() };
-
-  const mapToUse = categoryType === 'subCategory' ? subCategoryHintMap : topCategoryTokenMap;
-  const matchingTokens = new Set<string>();
-
-  for (const token of tokens) {
-    if (token in mapToUse) {
-      matchingTokens.add(token);
-    }
-  }
-
-  const coverageRatio = matchingTokens.size / tokens.length;
-  return { coverageRatio, matchingTokens };
-}
-
-/**
- * Decides if search query should trigger category-specific filtering for subcategories.
- * Requires 50% or more of tokens to map to subcategories.
- */
-function decideIfShouldFilterBySubCategory(query: string, tokens?: string[]) {
-  const searchTokens = tokens ?? tokenizeSearchQuery(query);
-  if (!searchTokens.length) return false;
-
-  const { coverageRatio } = calculateTokenCoverage(searchTokens, 'subCategory');
-  return coverageRatio >= 0.5;
-}
-
-/**
- * Decides if search query should trigger category-specific filtering for top categories.
- * Requires 50% or more of tokens to map to top categories (Men/Women/Kids).
- */
-function decideIfShouldFilterByTopCategory(query: string, tokens?: string[]) {
-  const searchTokens = tokens ?? tokenizeSearchQuery(query);
-  if (!searchTokens.length) return false;
-
-  const { coverageRatio } = calculateTokenCoverage(searchTokens, 'topCategory');
-  return coverageRatio >= 0.5;
-}
-
-function inferSubCategoryHints(query: string) {
-  const tokens = tokenizeSearchQuery(query);
-  if (!tokens.length) return [] as string[];
-
-  // Find all subcategories that match any token
-  const categoryMap = new Map<string, Set<string>>();
-  for (const token of tokens) {
-    const matches = subCategoryHintMap[token];
-    if (matches) {
-      for (const subCategory of matches) {
-        if (!categoryMap.has(subCategory)) {
-          categoryMap.set(subCategory, new Set());
-        }
-        categoryMap.get(subCategory)!.add(token);
-      }
-    }
-  }
-
-  // Find the subcategory (or set of related subcategories) with highest token coverage
-  // If multiple SubCategories are equally matched, return all of them (they form a logical group)
-  let maxCoverage = 0;
-  const bestHints = new Set<string>();
-
-  for (const [subCategory, matchedTokens] of categoryMap) {
-    const coverage = matchedTokens.size / tokens.length;
-    if (coverage > maxCoverage) {
-      maxCoverage = coverage;
-      bestHints.clear();
-      bestHints.add(subCategory);
-    } else if (coverage === maxCoverage) {
-      bestHints.add(subCategory);
-    }
-  }
-
-  return Array.from(bestHints);
-}
-
-function inferQueryCategory(query: string) {
-  const tokens = tokenizeSearchQuery(query);
-  if (!tokens.length) {
-    return { normalizedQuery: query } as { normalizedQuery: string; inferredTopCategory?: "Men" | "Women" | "Kids" };
-  }
-
-  // Count token coverage for each topCategory
-  const categoryTokenCount = new Map<"Men" | "Women" | "Kids", number>();
-  for (const token of tokens) {
-    const mapped = topCategoryTokenMap[token];
-    if (mapped) {
-      categoryTokenCount.set(mapped, (categoryTokenCount.get(mapped) ?? 0) + 1);
-    }
-  }
-
-  // Only infer topCategory if 50%+ of tokens map to THE SAME category
-  let inferredTopCategory: "Men" | "Women" | "Kids" | undefined;
-  const maxCoverage = Math.max(...Array.from(categoryTokenCount.values()), 0);
-  const requiredCoverage = Math.ceil(tokens.length * 0.5);
-
-  if (maxCoverage >= requiredCoverage) {
-    // Find the category with the most matches
-    let bestCategory: "Men" | "Women" | "Kids" | undefined;
-    let bestCount = 0;
-    for (const [category, count] of categoryTokenCount) {
-      if (count > bestCount) {
-        bestCount = count;
-        bestCategory = category;
-      }
-    }
-    inferredTopCategory = bestCategory;
-  }
-
-  const normalizedTokens = inferredTopCategory
-    ? tokens.filter((token) => topCategoryTokenMap[token] !== inferredTopCategory)
-    : tokens;
-
-  return {
-    normalizedQuery: normalizedTokens.join(" ").trim() || query,
-    inferredTopCategory,
-  };
-}
-
-function buildPrefixTsQuery(query: string) {
-  const terms = tokenizeSearchQuery(query);
-  if (!terms.length) {
-    return null;
-  }
-
-  return terms.map((term) => `${term}:*`).join(" & ");
-}
 
 function buildFilterConditions(parsed: {
   brand?: string;
@@ -666,9 +478,7 @@ router.get("/", async (req, res) => {
     
     // IMPORTANT: If user searches with a gender keyword (men, women, kids), apply it as a MANDATORY filter
     // This ensures "men shirt" only returns Men's products (not Women's or Kids')
-    const genderKeyword = tokens
-      .map(t => topCategoryTokenMap[t])
-      .find(cat => cat !== undefined);
+    const genderKeyword = detectTopCategoryToken(tokens);
     
     // Subcategory hints are used for ranking boosts, not as hard filters.
     const subCategoryHints = inferSubCategoryHints(searchText);

@@ -1,54 +1,14 @@
-export type Brand = {
-  id: string;
-  name: string;
-  slug: string;
-  logoUrl?: string;
-  description?: string;
-  verified: boolean;
-  commissionRate?: number;
-  apiEnabled?: boolean;
-  contactEmail?: string | null;
-  whatsappNumber?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
-};
+import type {
+  Brand as SharedBrand,
+  OrderStatus as SharedOrderStatus,
+  PaymentStatus as SharedPaymentStatus,
+  Product as SharedProduct,
+  UserRole,
+} from "@broady/shared";
 
-export type Product = {
-  id: string;
-  brandId: string;
-  createdAt?: string;
-  updatedAt?: string;
-  approvalStatus?: "DRAFT" | "PENDING" | "APPROVED" | "REJECTED";
-  name: string;
-  slug: string;
-  description: string;
-  descriptionLong?: string;
-  pricePkr: number;
-  topCategory: "Men" | "Women" | "Kids";
-  productType?: "Top" | "Bottom" | "Footwear" | "Accessories";
-  subCategory: string;
-  sizes: string[];
-  sizeGuideTemplateId?: string;
-  sizeGuide?: ProductSizeGuide;
-  deliveriesReturnsTemplateId?: string;
-  deliveriesReturns?: ProductDeliveriesReturns;
-  shippingDeliveryTemplateId?: string;
-  shippingDelivery?: ProductShippingDelivery;
-  fabricCareTemplateId?: string;
-  fabricCare?: ProductFabricCare;
-  colors?: string[];
-  badge?: "Sale" | "New" | "Limited" | "Out of Stock";
-  imageUrl: string;
-  stock: number;
-  isActive: boolean;
-  offer?: {
-    percentage: number;
-    isActive?: boolean;
-    startsAt?: string;
-    endsAt?: string;
-  };
-  brand?: Brand;
-};
+export type Brand = SharedBrand;
+
+export type Product = SharedProduct;
 
 export type ProductSizeGuide = {
   imageUrl?: string;
@@ -100,7 +60,7 @@ export type User = {
   id: string;
   fullName: string;
   email: string;
-  role: "USER" | "ADMIN" | "BRAND" | "BRAND_ADMIN" | "BRAND_STAFF" | "SUPER_ADMIN";
+  role: UserRole;
   brandId?: string | null;
 };
 
@@ -129,9 +89,9 @@ export type NotificationPreference = {
   wishlistAlerts: boolean;
 };
 
-export type OrderStatus = "PENDING" | "CONFIRMED" | "PACKED" | "SHIPPED" | "DELIVERED" | "CANCELED";
+export type OrderStatus = SharedOrderStatus;
 
-export type PaymentStatus = "PENDING" | "HELD" | "BRAND_COLLECTS_COD" | "COMPLETED";
+export type PaymentStatus = SharedPaymentStatus;
 
 export type OrderStatusLog = {
   id: string;

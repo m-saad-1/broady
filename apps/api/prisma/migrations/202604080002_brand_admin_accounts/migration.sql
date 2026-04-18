@@ -1,0 +1,11 @@
+-- Add tenant-specific brand admin accounts and expanded roles.
+ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'BRAND_ADMIN';
+ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'BRAND_STAFF';
+ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'SUPER_ADMIN';
+
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "brandId" TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS "User_brandId_key" ON "User"("brandId");
+ALTER TABLE "User"
+  ADD CONSTRAINT "User_brandId_fkey"
+  FOREIGN KEY ("brandId") REFERENCES "Brand"("id")
+  ON DELETE SET NULL ON UPDATE CASCADE;

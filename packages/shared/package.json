@@ -2,6 +2,14 @@
   "name": "@broady/shared",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
+  "description": "Shared contracts and cross-app types for the Broady monorepo",
   "main": "src/index.ts",
-  "types": "src/index.ts"
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  }
 }
