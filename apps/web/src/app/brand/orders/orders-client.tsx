@@ -11,13 +11,27 @@ type BrandOrdersClientProps = {
   mode?: "dashboard" | "orders";
 };
 
-type OrderFilter = "ALL" | "NEW" | "DELIVERED" | "CANCELLED";
+type OrderFilter = "ALL" | "NEW" | "PENDING" | "CONFIRMED" | "SHIPPED" | "DELIVERED" | "CANCELLED";
 
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("en-PK", {
+const currencyFormatter = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 0,
+});
+
+function formatCurrency(value: number) {
+  return currencyFormatter.format(value);
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "N/A";
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "N/A";
+
+  return new Intl.DateTimeFormat("en-GB", {
     dateStyle: "medium",
     timeStyle: "short",
-  }).format(new Date(value));
+    timeZone: "UTC",
+  }).format(parsed);
 }
 
 function getOrderPriority(status: BrandDashboardOrder["status"]) {
@@ -29,9 +43,36 @@ function getOrderPriority(status: BrandDashboardOrder["status"]) {
 const filterOptions: Array<{ key: OrderFilter; label: string }> = [
   { key: "ALL", label: "All" },
   { key: "NEW", label: "New" },
+  { key: "PENDING", label: "Pending" },
+  { key: "CONFIRMED", label: "Confirmed" },
+  { key: "SHIPPED", label: "Shipped" },
   { key: "DELIVERED", label: "Delivered" },
   { key: "CANCELLED", label: "Cancelled" },
 ];
+
+function truncateText(value: string, maxLength: number) {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
+}
+
+function matchesFilter(order: BrandDashboardOrder, filter: OrderFilter) {
+  if (filter === "ALL") return true;
+  if (filter === "NEW") {
+    // New orders are those that were just created (PENDING status)
+    return order.status === "PENDING";
+  }
+  if (filter === "SHIPPED") {
+    return order.status === "SHIPPED" || order.status === "PARTIALLY_SHIPPED";
+  }
+  if (filter === "DELIVERED") {
+    return order.status === "DELIVERED";
+  }
+  if (filter === "CANCELLED") {
+    return order.status === "CANCELED";
+  }
+
+  return order.status === filter;
+}
 
 export function BrandOrdersClient({ title = "Orders", mode = "orders" }: BrandOrdersClientProps) {
   const pushToast = useToastStore((state) => state.pushToast);
@@ -82,14 +123,7 @@ export function BrandOrdersClient({ title = "Orders", mode = "orders" }: BrandOr
   }, [orders]);
 
   const filteredOrders = useMemo(() => {
-    if (activeFilter === "ALL") return sortedOrders;
-    if (activeFilter === "NEW") {
-      return sortedOrders.filter((item) => item.status !== "DELIVERED" && item.status !== "CANCELED");
-    }
-    if (activeFilter === "DELIVERED") {
-      return sortedOrders.filter((item) => item.status === "DELIVERED");
-    }
-    return sortedOrders.filter((item) => item.status === "CANCELED");
+    return sortedOrders.filter((item) => matchesFilter(item, activeFilter));
   }, [activeFilter, sortedOrders]);
 
   const openOrders = useMemo(() => orders.filter((item) => !["DELIVERED", "CANCELED"].includes(item.status)).length, [orders]);
@@ -135,7 +169,7 @@ export function BrandOrdersClient({ title = "Orders", mode = "orders" }: BrandOr
         </article>
         <article className="border border-zinc-300 p-5">
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Gross Sales</p>
-          <p className="mt-3 font-heading text-3xl">PKR {overview.metrics.grossPkr.toLocaleString()}</p>
+          <p className="mt-3 font-heading text-3xl">PKR {formatCurrency(overview.metrics.grossPkr)}</p>
         </article>
         <article className="border border-zinc-300 p-5">
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Live Updates</p>
@@ -170,49 +204,75 @@ export function BrandOrdersClient({ title = "Orders", mode = "orders" }: BrandOr
 
         {filteredOrders.length === 0 ? <p className="text-sm text-zinc-600">No orders found for this filter.</p> : null}
 
-        <div className="space-y-3">
+        <div className="space-y-4">
           {filteredOrders.map((order) => {
             const lastStatusLog = [...order.statusLogs].sort(
               (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
             )[0];
+            const customerName = order.user?.fullName || "Customer";
+            const customerEmail = order.user?.email || "Email unavailable";
 
             return (
-              <article key={order.id} className="space-y-3 border border-zinc-200 p-4">
-                <div className="grid gap-3 md:grid-cols-[2fr_1fr_1fr_auto] md:items-center">
-                  <div>
-                    <Link href={`/brand/orders/${order.id}`} className="text-sm font-semibold uppercase tracking-[0.08em] underline decoration-zinc-400 underline-offset-2">
+              <article key={order.id} className="border border-zinc-200 bg-white p-5 transition hover:border-black hover:shadow-sm">
+                {/* Header: Order ID, Status Badge, and Action Button */}
+                <div className="mb-4 flex flex-col justify-between gap-3 md:flex-row md:items-start md:gap-4">
+                  <div className="flex-1">
+                    <Link href={`/brand/orders/${order.id}`} className="text-base font-semibold uppercase tracking-[0.08em] underline decoration-zinc-400 underline-offset-2">
                       Order {order.id.slice(0, 10)}...
                     </Link>
-                    <p className="text-xs text-zinc-600">{order.user.fullName} / {order.user.email}</p>
+                    <p className="mt-1 text-sm text-zinc-700">
+                      <span className="font-semibold">{customerName}</span> • <span className="text-zinc-600">{customerEmail}</span>
+                    </p>
                     <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">{formatDateTime(order.createdAt)}</p>
                   </div>
-                  <p className="text-sm">PKR {order.totalPkr.toLocaleString()}</p>
-                  <div className="space-y-1">
-                    <p className="text-sm font-semibold uppercase tracking-[0.08em]">{order.status}</p>
-                    <p className="text-xs text-zinc-600">{order.paymentMethod} / {order.paymentStatus}</p>
+                  <div className="flex flex-wrap gap-2 md:flex-col md:items-end">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex border border-black bg-black px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-white">
+                        {order.status}
+                      </span>
+                      <span className="text-xs text-zinc-600">{order.paymentStatus}</span>
+                    </div>
+                    <Link href={`/brand/orders/${order.id}`} className="h-10 border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white text-center leading-10">
+                      View Details
+                    </Link>
                   </div>
-                  <Link href={`/brand/orders/${order.id}`} className="h-9 border border-black bg-black px-3 text-xs font-semibold uppercase tracking-[0.12em] text-white leading-9 text-center">
-                    Open Details
-                  </Link>
                 </div>
 
-                <div className="grid gap-3 text-xs text-zinc-700 md:grid-cols-2">
-                  <p>
-                    <span className="font-semibold uppercase tracking-[0.1em]">Tracking:</span>{" "}
-                    {order.trackingId || "Not assigned"}
-                  </p>
-                  <p>
-                    <span className="font-semibold uppercase tracking-[0.1em]">Delivery:</span>{" "}
-                    {order.deliveryAddress}
-                  </p>
-                  <p className="md:col-span-2">
-                    <span className="font-semibold uppercase tracking-[0.1em]">Items:</span>{" "}
-                    {order.items.map((item) => `${item.product.name} x${item.quantity}`).join(", ")}
-                  </p>
-                  <p className="md:col-span-2">
-                    <span className="font-semibold uppercase tracking-[0.1em]">Last update:</span>{" "}
-                    {lastStatusLog ? `${lastStatusLog.status} at ${formatDateTime(lastStatusLog.createdAt)}` : "No updates"}
-                  </p>
+                {/* Order Details Grid */}
+                <div className="border-t border-zinc-200 pt-4">
+                  <div className="grid gap-4 md:grid-cols-3">
+                    {/* Tracking ID */}
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">Tracking ID</p>
+                      <p className="text-sm text-zinc-700">{order.trackingId || "Not assigned"}</p>
+                    </div>
+
+                    {/* Delivery Address */}
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">Delivery Address</p>
+                      <p className="text-sm text-zinc-700">{truncateText(order.deliveryAddress, 60)}</p>
+                    </div>
+
+                    {/* Last Update */}
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">Last Update</p>
+                      <p className="text-sm text-zinc-700">
+                        {lastStatusLog ? (
+                          <>
+                            <span className="font-semibold">{lastStatusLog.status}</span> • {formatDateTime(lastStatusLog.createdAt)}
+                          </>
+                        ) : (
+                          "No updates"
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Products Section */}
+                  <div className="mt-4 border-t border-zinc-100 pt-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">Products Ordered</p>
+                    <p className="mt-2 text-sm text-zinc-700">{order.items.map((item) => item.product.name).join(", ")}</p>
+                  </div>
                 </div>
               </article>
             );
@@ -226,7 +286,7 @@ export function BrandOrdersClient({ title = "Orders", mode = "orders" }: BrandOr
             <h2 className="font-heading text-3xl uppercase">Recent / Top Products</h2>
             <div className="flex flex-wrap gap-2">
               <Link href="/brand/products" className="inline-flex h-9 items-center border border-black bg-black px-3 text-xs font-semibold uppercase tracking-[0.12em] text-white">
-                Add Product
+                View Products
               </Link>
               <Link href="/brand/products" className="inline-flex h-9 items-center border border-zinc-300 px-3 text-xs font-semibold uppercase tracking-[0.12em]">
                 View All Products
@@ -269,10 +329,10 @@ export function BrandOrdersClient({ title = "Orders", mode = "orders" }: BrandOr
                           <Link href={`/product/${product.slug}`} className="text-sm font-semibold uppercase tracking-[0.08em] underline decoration-zinc-400 underline-offset-2">
                             {product.name}
                           </Link>
-                          <p className="text-xs text-zinc-600">PKR {product.pricePkr.toLocaleString()}</p>
+                          <p className="text-xs text-zinc-600">PKR {formatCurrency(product.pricePkr)}</p>
                         </div>
                         <p className="text-xs uppercase tracking-[0.12em] text-zinc-600">
-                          {formatDateTime(product.updatedAt || product.createdAt || new Date().toISOString())}
+                          {formatDateTime(product.updatedAt || product.createdAt)}
                         </p>
                       </div>
                     </article>

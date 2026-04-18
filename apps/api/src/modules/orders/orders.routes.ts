@@ -61,6 +61,12 @@ function buildStatusLogNote(params: { internalNote?: string; trackingId?: string
   return `${base} | CUSTOMER_NOTE: ${params.customerNote}`;
 }
 
+const ORDER_ACTION_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function isWithinOrderActionWindow(createdAt: Date) {
+  return Date.now() - createdAt.getTime() <= ORDER_ACTION_WINDOW_MS;
+}
+
 function deriveParentOrderStatus(subOrderStatuses: OrderStatus[]): OrderStatus {
   if (subOrderStatuses.length === 0) return OrderStatus.PENDING;
   if (subOrderStatuses.every((status) => status === OrderStatus.CANCELED)) return OrderStatus.CANCELED;
@@ -72,6 +78,27 @@ function deriveParentOrderStatus(subOrderStatuses: OrderStatus[]): OrderStatus {
   if (subOrderStatuses.every((status) => status === OrderStatus.CONFIRMED)) return OrderStatus.CONFIRMED;
   if (subOrderStatuses.some((status) => status === OrderStatus.PACKED)) return OrderStatus.PACKED;
   return OrderStatus.PENDING;
+}
+
+function buildSubOrderUpdateNote(status: OrderStatus, brandName: string, parentStatus: OrderStatus, explicitNote?: string) {
+  if (explicitNote) return explicitNote;
+
+  switch (status) {
+    case OrderStatus.CONFIRMED:
+      return `Your ${brandName} item has been confirmed.`;
+    case OrderStatus.PACKED:
+      return `Your ${brandName} item has been packed.`;
+    case OrderStatus.SHIPPED:
+      return `Your ${brandName} item has been shipped.`;
+    case OrderStatus.DELIVERED:
+      return parentStatus === OrderStatus.DELIVERED
+        ? "Your order has been fully delivered."
+        : `Your ${brandName} item has been delivered.`;
+    case OrderStatus.CANCELED:
+      return `Your ${brandName} item has been canceled.`;
+    default:
+      return `Your ${brandName} item status is now ${status.toLowerCase()}.`;
+  }
 }
 
 async function restockOrderItems(tx: Prisma.TransactionClient, items: Array<{ productId: string; quantity: number }>) {
@@ -105,6 +132,8 @@ router.post("/", requireAuth, async (req, res) => {
         z.object({
           productId: z.string(),
           quantity: z.number().int().min(1),
+          selectedColor: z.string().trim().min(1).max(60).optional(),
+          selectedSize: z.string().trim().min(1).max(40).optional(),
         }),
       )
       .min(1),
@@ -186,7 +215,7 @@ router.post("/", requireAuth, async (req, res) => {
         string,
         {
           subtotalPkr: number;
-          items: Array<{ productId: string; quantity: number; unitPricePkr: number }>;
+          items: Array<{ productId: string; quantity: number; unitPricePkr: number; selectedColor?: string; selectedSize?: string }>;
         }
       >();
 
@@ -201,11 +230,25 @@ router.post("/", requireAuth, async (req, res) => {
         if (!existing) {
           byBrand.set(product.brandId, {
             subtotalPkr: lineSubtotal,
-            items: [{ productId: product.id, quantity: item.quantity, unitPricePkr: product.pricePkr }],
+            items: [
+              {
+                productId: product.id,
+                quantity: item.quantity,
+                unitPricePkr: product.pricePkr,
+                selectedColor: item.selectedColor,
+                selectedSize: item.selectedSize,
+              },
+            ],
           });
         } else {
           existing.subtotalPkr += lineSubtotal;
-          existing.items.push({ productId: product.id, quantity: item.quantity, unitPricePkr: product.pricePkr });
+          existing.items.push({
+            productId: product.id,
+            quantity: item.quantity,
+            unitPricePkr: product.pricePkr,
+            selectedColor: item.selectedColor,
+            selectedSize: item.selectedSize,
+          });
         }
       }
 
@@ -227,6 +270,8 @@ router.post("/", requireAuth, async (req, res) => {
             brandId,
             quantity: item.quantity,
             unitPricePkr: item.unitPricePkr,
+            selectedColor: item.selectedColor || null,
+            selectedSize: item.selectedSize || null,
           })),
         });
 
@@ -236,7 +281,7 @@ router.post("/", requireAuth, async (req, res) => {
             status: OrderStatus.PENDING,
             updatedBy: "SYSTEM",
             updatedById: req.auth!.userId,
-            note: "Sub-order created from checkout",
+            note: "Vendor group created from checkout",
           },
         });
       }
@@ -307,6 +352,7 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
     .object({
       status: brandOrderStatusSchema,
       subOrderId: z.string().trim().min(3).optional(),
+      vendorGroupId: z.string().trim().min(3).optional(),
       trackingId: z.string().trim().min(4).max(120).optional(),
       note: z.string().trim().max(240).optional(),
       customerNote: z.string().trim().max(240).optional(),
@@ -353,14 +399,16 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
     ? order.subOrders
     : order.subOrders.filter((subOrder) => allowedBrands.has(subOrder.brandId));
 
-  const targetSubOrder = parsed.data.subOrderId
-    ? candidateSubOrders.find((subOrder) => subOrder.id === parsed.data.subOrderId)
+  const requestedVendorGroupId = parsed.data.vendorGroupId || parsed.data.subOrderId;
+
+  const targetSubOrder = requestedVendorGroupId
+    ? candidateSubOrders.find((subOrder) => subOrder.id === requestedVendorGroupId)
     : candidateSubOrders.length === 1
       ? candidateSubOrders[0]
       : null;
 
   if (!targetSubOrder) {
-    return res.status(400).json({ message: "A valid subOrderId is required for this status update." });
+    return res.status(400).json({ message: "A valid vendorGroupId is required for this status update." });
   }
 
   const trackingId = parsed.data.trackingId ?? targetSubOrder.trackingId;
@@ -442,8 +490,8 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
         updatedById: req.auth!.userId,
         note: buildStatusLogNote({
           internalNote: parsed.data.note
-            ? `Sub-order (${targetSubOrder.brand.name}) update: ${parsed.data.note}`
-            : `Sub-order (${targetSubOrder.brand.name}) updated to ${status}`,
+            ? `Vendor group (${targetSubOrder.brand.name}) update: ${parsed.data.note}`
+            : `Vendor group (${targetSubOrder.brand.name}) updated to ${status}`,
           trackingId: trackingChanged ? trackingId : undefined,
           customerNote: parsed.data.customerNote,
         }),
@@ -478,13 +526,26 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
     CANCELED: notificationEventNames.orderCancelled,
   };
 
+  const parentStatusAfterUpdate = updated.status;
+  const resolvedEventName: OrderLifecycleEventName =
+    status === OrderStatus.DELIVERED && parentStatusAfterUpdate !== OrderStatus.DELIVERED
+      ? notificationEventNames.orderShipped
+      : orderEventByStatus[status];
+
+  const customerFacingNote = buildSubOrderUpdateNote(
+    status,
+    targetSubOrder.brand.name,
+    parentStatusAfterUpdate,
+    parsed.data.customerNote,
+  );
+
   queueNotificationEvent({
-    name: orderEventByStatus[status],
+    name: resolvedEventName,
     orderId: order.id,
     userId: order.userId,
     brandId: targetSubOrder.brandId,
     changedByRole: actingAsPlatformAdmin ? "ADMIN" : "BRAND",
-    note: parsed.data.note,
+    note: customerFacingNote,
   });
 
   if (status === OrderStatus.DELIVERED && order.paymentMethod === "COD" && order.paymentStatus !== PaymentStatus.COMPLETED) {
@@ -524,6 +585,10 @@ router.post("/me/:orderId/cancel", requireAuth, async (req, res) => {
 
   if (!order) return res.status(404).json({ message: "Order not found" });
 
+  if (!isWithinOrderActionWindow(order.createdAt)) {
+    return res.status(409).json({ message: "Cancel window has expired for this order." });
+  }
+
   const blockingStatuses: OrderStatus[] = [OrderStatus.PACKED, OrderStatus.SHIPPED, OrderStatus.DELIVERED];
   if (order.subOrders.some((subOrder) => blockingStatuses.includes(subOrder.status))) {
     return res.status(409).json({ message: "This order can no longer be canceled." });
@@ -561,7 +626,7 @@ router.post("/me/:orderId/cancel", requireAuth, async (req, res) => {
           status: OrderStatus.CANCELED,
           updatedBy: "SYSTEM",
           updatedById: req.auth!.userId,
-          note: composeStatusNote(payload.data.note || "Sub-order canceled by customer"),
+          note: composeStatusNote(payload.data.note || "Vendor group canceled by customer"),
         },
       });
     }
@@ -603,6 +668,95 @@ router.post("/me/:orderId/cancel", requireAuth, async (req, res) => {
   });
 
   return res.json({ data: canceled });
+});
+
+router.post("/me/:orderId/reorder", requireAuth, async (req, res) => {
+  const order = await prisma.order.findFirst({
+    where: {
+      id: String(req.params.orderId),
+      userId: req.auth!.userId,
+    },
+    include: {
+      items: true,
+    },
+  });
+
+  if (!order) return res.status(404).json({ message: "Order not found" });
+
+  if (!isWithinOrderActionWindow(order.createdAt)) {
+    return res.status(409).json({ message: "Reorder is available only within 24 hours of order placement." });
+  }
+
+  const productIds = Array.from(new Set(order.items.map((item) => item.productId)));
+  const products = await prisma.product.findMany({
+    where: {
+      id: { in: productIds },
+      isActive: true,
+      approvalStatus: "APPROVED",
+    },
+    select: { id: true },
+  });
+
+  const activeProductIds = new Set(products.map((item) => item.id));
+  const reorderItems = order.items.filter((item) => activeProductIds.has(item.productId));
+
+  if (!reorderItems.length) {
+    return res.status(409).json({ message: "None of the items in this order are currently available for reorder." });
+  }
+
+  const cart = await prisma.$transaction(async (tx) => {
+    const ensuredCart = await tx.cart.upsert({
+      where: { userId: req.auth!.userId },
+      create: { userId: req.auth!.userId },
+      update: {},
+      select: { id: true },
+    });
+
+    for (const item of reorderItems) {
+      const variantAwareItem = item as unknown as { selectedColor?: string | null; selectedSize?: string | null };
+      const selectedColor = variantAwareItem.selectedColor || null;
+      const selectedSize = variantAwareItem.selectedSize || null;
+
+      const existing = await tx.cartItem.findFirst({
+        where: {
+          cartId: ensuredCart.id,
+          productId: item.productId,
+          selectedColor,
+          selectedSize,
+        },
+        select: { id: true, quantity: true },
+      });
+
+      if (existing) {
+        await tx.cartItem.update({
+          where: { id: existing.id },
+          data: { quantity: existing.quantity + item.quantity },
+        });
+      } else {
+        await tx.cartItem.create({
+          data: {
+            cartId: ensuredCart.id,
+            productId: item.productId,
+            quantity: item.quantity,
+            selectedColor,
+            selectedSize,
+          },
+        });
+      }
+    }
+
+    return tx.cart.findUniqueOrThrow({
+      where: { id: ensuredCart.id },
+      include: {
+        items: {
+          include: { product: { include: { brand: true } } },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
+  });
+
+  return res.json({ data: cart });
 });
 
 router.get("/me", requireAuth, async (req, res) => {

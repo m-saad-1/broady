@@ -71,6 +71,27 @@ function deriveParentOrderStatus(subOrderStatuses: OrderStatus[]): OrderStatus {
   return OrderStatus.PENDING;
 }
 
+function buildSubOrderUpdateNote(status: OrderStatus, brandName: string, parentStatus: OrderStatus, explicitNote?: string) {
+  if (explicitNote) return explicitNote;
+
+  switch (status) {
+    case OrderStatus.CONFIRMED:
+      return `Your ${brandName} item has been confirmed.`;
+    case OrderStatus.PACKED:
+      return `Your ${brandName} item has been packed.`;
+    case OrderStatus.SHIPPED:
+      return `Your ${brandName} item has been shipped.`;
+    case OrderStatus.DELIVERED:
+      return parentStatus === OrderStatus.DELIVERED
+        ? "Your order has been fully delivered."
+        : `Your ${brandName} item has been delivered.`;
+    case OrderStatus.CANCELED:
+      return `Your ${brandName} item has been canceled.`;
+    default:
+      return `Your ${brandName} item status is now ${status.toLowerCase()}.`;
+  }
+}
+
 async function restockOrderItems(tx: Prisma.TransactionClient, items: Array<{ productId: string; quantity: number }>) {
   await Promise.all(
     items.map((item) =>
@@ -262,10 +283,12 @@ router.get("/orders/:orderId", async (req, res) => {
   const access = await getBrandAccess(req.auth!.userId);
   if (!access) return res.status(403).json({ message: "Brand access required" });
 
+  const orderIdentifier = String(req.params.orderId);
+
   const order = await prisma.subOrder.findFirst({
     where: {
-      orderId: String(req.params.orderId),
       brandId: access.brandId,
+      OR: [{ id: orderIdentifier }, { orderId: orderIdentifier }],
     },
     include: {
       order: {
@@ -293,6 +316,8 @@ router.patch("/orders/:orderId/status", async (req, res) => {
   const access = await getBrandAccess(req.auth!.userId);
   if (!access) return res.status(403).json({ message: "Brand access required" });
 
+  const orderIdentifier = String(req.params.orderId);
+
   const parsed = z
     .object({
       status: z.enum(["PENDING", "CONFIRMED", "PACKED", "SHIPPED", "DELIVERED", "CANCELED", "CANCELLED"]),
@@ -308,8 +333,8 @@ router.patch("/orders/:orderId/status", async (req, res) => {
 
   const order = await prisma.subOrder.findFirst({
     where: {
-      orderId: String(req.params.orderId),
       brandId: access.brandId,
+      OR: [{ id: orderIdentifier }, { orderId: orderIdentifier }],
     },
     include: {
       order: {
@@ -400,8 +425,8 @@ router.patch("/orders/:orderId/status", async (req, res) => {
         updatedById: req.auth!.userId,
         note: buildStatusLogNote({
           internalNote: parsed.data.note
-            ? `Sub-order (${access.brand.name}) update: ${parsed.data.note}`
-            : `Sub-order (${access.brand.name}) updated to ${status}`,
+            ? `Vendor group (${access.brand.name}) update: ${parsed.data.note}`
+            : `Vendor group (${access.brand.name}) updated to ${status}`,
           customerNote: parsed.data.customerNote,
         }),
       },
@@ -433,13 +458,26 @@ router.patch("/orders/:orderId/status", async (req, res) => {
     CANCELED: notificationEventNames.orderCancelled,
   };
 
+  const parentStatusAfterUpdate = updated.order.status;
+  const resolvedEventName: OrderLifecycleEventName =
+    status === OrderStatus.DELIVERED && parentStatusAfterUpdate !== OrderStatus.DELIVERED
+      ? notificationEventNames.orderShipped
+      : orderEventByStatus[status];
+
+  const customerFacingNote = buildSubOrderUpdateNote(
+    status,
+    access.brand.name,
+    parentStatusAfterUpdate,
+    parsed.data.customerNote,
+  );
+
   queueNotificationEvent({
-    name: orderEventByStatus[status],
+    name: resolvedEventName,
     orderId: order.orderId,
     userId: order.order.userId,
     brandId: access.brandId,
     changedByRole: "BRAND",
-    note: parsed.data.note,
+    note: customerFacingNote,
   });
 
   return res.json({ data: updated });

@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
-import { cancelUserOrder, getMyReviews, getUserNotifications, getUserOrders } from "@/lib/api";
+import { cancelUserOrder, getMyReviews, getUserNotifications, getUserOrders, reorderUserOrder } from "@/lib/api";
 import { formatPkr } from "@/lib/utils";
 import { getOrderStatusLabel, getOrderStatusTone } from "@/lib/order-status";
 import type { NotificationItem, UserOrder } from "@/types/marketplace";
@@ -16,13 +16,12 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
-const timelineStatuses: Array<UserOrder["status"]> = ["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELED"];
-
 type OrderTrackerClientProps = {
   compact?: boolean;
 };
 
 export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [orders, setOrders] = useState<UserOrder[]>([]);
   const [myReviewsByOrderItemId, setMyReviewsByOrderItemId] = useState<Record<string, string>>({});
@@ -32,8 +31,10 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
   const [refreshing, setRefreshing] = useState(false);
   const [hasAccess, setHasAccess] = useState(true);
   const [cancelingOrderId, setCancelingOrderId] = useState<string | null>(null);
+  const [reorderingOrderId, setReorderingOrderId] = useState<string | null>(null);
   const [cancelFeedback, setCancelFeedback] = useState<string>("");
   const [cancelConfirmOrderId, setCancelConfirmOrderId] = useState<string | null>(null);
+  const [visibleNotificationCount, setVisibleNotificationCount] = useState(5);
 
   const loadOrders = useCallback(async (mode: "initial" | "refresh" = "initial") => {
     if (mode === "initial") {
@@ -82,6 +83,20 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
     }
   }, [loadOrders]);
 
+  const handleReorder = useCallback(async (orderId: string) => {
+    setCancelFeedback("");
+    setReorderingOrderId(orderId);
+    try {
+      await reorderUserOrder(orderId);
+      setCancelFeedback("Items from this order were added to your cart.");
+      router.push("/cart");
+    } catch (error) {
+      setCancelFeedback(error instanceof Error ? error.message : "Unable to reorder this order right now.");
+    } finally {
+      setReorderingOrderId(null);
+    }
+  }, [router]);
+
   useEffect(() => {
     void loadOrders("initial");
     const interval = window.setInterval(() => {
@@ -111,7 +126,9 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
     [notifications, selectedOrder],
   );
 
-  const canCancelSelectedOrder = !!selectedOrder && ["PENDING", "CONFIRMED"].includes(selectedOrder.status);
+  const isInActionWindow = !!selectedOrder && Date.now() - new Date(selectedOrder.createdAt).getTime() <= 24 * 60 * 60 * 1000;
+  const canCancelSelectedOrder = !!selectedOrder && isInActionWindow && ["PENDING", "CONFIRMED"].includes(selectedOrder.status);
+  const canReorderSelectedOrder = !!selectedOrder && isInActionWindow;
 
   const openOrders = useMemo(
     () => orders.filter((order) => !["DELIVERED", "CANCELED"].includes(order.status)).length,
@@ -121,11 +138,23 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
   const deliveredOrders = useMemo(() => orders.filter((order) => order.status === "DELIVERED").length, [orders]);
   const unreadNotifications = useMemo(() => notifications.filter((notification) => !notification.readAt).length, [notifications]);
   const totalSpent = useMemo(() => orders.reduce((sum, order) => sum + order.totalPkr, 0), [orders]);
-  const recentNotifications = useMemo(() => {
+  const sortedNotifications = useMemo(() => {
     return [...selectedNotifications]
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 3);
-  }, [selectedNotifications]);
+      .slice(0, visibleNotificationCount);
+  }, [selectedNotifications, visibleNotificationCount]);
+
+  const selectedSubOrderEvents = useMemo(() => {
+    if (!selectedOrder) return [];
+    return selectedOrder.subOrders
+      .flatMap((subOrder) =>
+        subOrder.statusLogs.map((log) => ({
+          ...log,
+          brandName: subOrder.brand?.name || "Brand",
+        })),
+      )
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [selectedOrder]);
 
   if (loading) {
     return <p className="text-sm text-zinc-600">Loading your order tracker...</p>;
@@ -189,8 +218,10 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
                 <p className="text-sm font-semibold uppercase tracking-[0.08em]">Order {order.id.slice(0, 10)}...</p>
                 <p className="text-sm font-semibold">{formatPkr(order.totalPkr)}</p>
               </div>
-              <p className={`mt-3 inline-flex border px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${getOrderStatusTone(order.status)}`}>
-                {getOrderStatusLabel(order.status)}
+              <p className="mt-3 text-xs text-zinc-600">{order.items.length} items</p>
+              <p className="mt-1 text-xs text-zinc-600">
+                {order.items.slice(0, 2).map((item) => item.product.name).join(", ")}
+                {order.items.length > 2 ? ` + ${order.items.length - 2} more` : ""}
               </p>
               <p className="mt-3 text-xs uppercase tracking-[0.12em] text-zinc-500">{formatDateTime(order.createdAt)}</p>
             </Link>
@@ -244,12 +275,15 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold uppercase tracking-[0.08em]">Order {order.id.slice(0, 10)}...</p>
-                  <p className={`mt-2 inline-flex border px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${selectedOrder?.id === order.id ? "border-white/30 bg-white/10 text-white" : getOrderStatusTone(order.status)}`}>{getOrderStatusLabel(order.status)}</p>
+                  <p className="mt-2 text-xs uppercase tracking-[0.12em] opacity-80">{order.items.length} items</p>
                 </div>
                 <p className="text-sm font-semibold">{formatPkr(order.totalPkr)}</p>
               </div>
               <p className="mt-3 text-xs uppercase tracking-[0.12em] opacity-80">{formatDateTime(order.createdAt)}</p>
-              <p className="mt-2 text-sm opacity-90">{order.items.map((item) => item.product.brand?.name || item.brand?.name || "Brand").join(" · ")}</p>
+              <p className="mt-2 text-sm opacity-90">
+                {order.items.slice(0, 2).map((item) => item.product.name).join(", ")}
+                {order.items.length > 2 ? ` + ${order.items.length - 2} more` : ""}
+              </p>
             </button>
           ))}
         </aside>
@@ -263,9 +297,9 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
                 <p className="mt-1 text-sm text-zinc-600">Placed {formatDateTime(selectedOrder.createdAt)}</p>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Status</p>
-                <p className={`mt-2 inline-flex border px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] ${getOrderStatusTone(selectedOrder.status)}`}>{getOrderStatusLabel(selectedOrder.status)}</p>
-                <p className="mt-2 text-sm text-zinc-600">Tracking ID: {selectedOrder.trackingId || "Pending assignment"}</p>
+                <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Vendor Groups</p>
+                <p className="mt-2 text-sm font-semibold">{selectedOrder.subOrders?.length || 0} vendor groups</p>
+                <p className="mt-2 text-sm text-zinc-600">Tracking IDs are managed per vendor group card.</p>
                 {canCancelSelectedOrder ? (
                   <button
                     type="button"
@@ -274,6 +308,16 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
                     className="mt-3 inline-flex h-10 items-center justify-center border border-black px-3 text-[11px] font-semibold uppercase tracking-[0.12em] disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {cancelingOrderId === selectedOrder.id ? "Canceling..." : "Cancel order"}
+                  </button>
+                ) : null}
+                {canReorderSelectedOrder ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleReorder(selectedOrder.id)}
+                    disabled={reorderingOrderId === selectedOrder.id}
+                    className="mt-3 ml-2 inline-flex h-10 items-center justify-center border border-zinc-300 px-3 text-[11px] font-semibold uppercase tracking-[0.12em] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {reorderingOrderId === selectedOrder.id ? "Reordering..." : "Reorder"}
                   </button>
                 ) : null}
               </div>
@@ -285,6 +329,10 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
                 <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Delivery Address</p>
                 <p className="mt-2 text-sm text-zinc-700">{selectedOrder.deliveryAddress}</p>
               </div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Order Total</p>
+                <p className="mt-2 text-sm font-semibold">{formatPkr(selectedOrder.totalPkr)}</p>
+              </div>
             </section>
 
             {cancelFeedback ? (
@@ -295,66 +343,64 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
 
             <section className="space-y-3 border border-zinc-300 p-5">
               <div className="flex items-end justify-between gap-4">
-                <h3 className="font-heading text-3xl uppercase">Progress</h3>
-                <Link href={`/account/orders/${selectedOrder.id}`} className="text-xs font-semibold uppercase tracking-[0.15em] text-zinc-600">
-                  View details
-                </Link>
+                <h3 className="font-heading text-3xl uppercase">Vendor Groups</h3>
               </div>
-              <div className="grid gap-3 md:grid-cols-5">
-                {timelineStatuses.map((status) => {
-                  const active = status === selectedOrder.status || (selectedOrder.status === "PACKED" && status === "CONFIRMED");
-                  const completed = timelineStatuses.indexOf(status) <= timelineStatuses.indexOf(selectedOrder.status === "PACKED" ? "CONFIRMED" : selectedOrder.status);
-                  return (
-                    <div key={status} className={`border p-3 text-sm ${completed ? "border-black bg-black text-white" : "border-zinc-200 text-zinc-600"}`}>
-                      <p className="text-[10px] uppercase tracking-[0.12em] opacity-80">Step</p>
-                      <p className="mt-2 font-semibold uppercase tracking-[0.08em]">{getOrderStatusLabel(status)}</p>
-                      <p className="mt-2 text-[11px] uppercase tracking-[0.12em]">{active ? "Current" : completed ? "Completed" : "Upcoming"}</p>
+              <div className="grid gap-3 md:grid-cols-2">
+                {(selectedOrder.subOrders || []).map((subOrder) => (
+                  <Link
+                    key={subOrder.id}
+                    href={`/account/orders/${selectedOrder.id}/groups/${subOrder.id}`}
+                    className="block border border-zinc-200 p-4 transition hover:border-black hover:bg-zinc-50"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold uppercase tracking-[0.08em]">{subOrder.brand?.name || "Brand"}</p>
+                        <p className="mt-1 text-xs uppercase tracking-[0.12em] text-zinc-500">Group {subOrder.id.slice(0, 10)}...</p>
+                      </div>
+                      <p className={`inline-flex border px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${getOrderStatusTone(subOrder.status)}`}>
+                        {getOrderStatusLabel(subOrder.status)}
+                      </p>
                     </div>
-                  );
-                })}
+
+                    <div className="mt-3 space-y-1 text-sm text-zinc-700">
+                      <p>{formatPkr(subOrder.subtotalPkr)}</p>
+                      <p>{formatDateTime(subOrder.createdAt)}</p>
+                      <p className="line-clamp-2 text-xs text-zinc-600">{subOrder.items.slice(0, 2).map((item) => item.product.name).join(", ")} - {subOrder.items.length} Items</p>
+                    </div>
+                  </Link>
+                ))}
               </div>
             </section>
 
             <section className="space-y-3 border border-zinc-300 p-5">
-              <h3 className="font-heading text-3xl uppercase">Items</h3>
+              <h3 className="font-heading text-3xl uppercase">Order Items</h3>
               <div className="space-y-3">
                 {selectedOrder.items.map((item) => (
-                  <article key={item.id} className="grid gap-3 border-b border-zinc-200 py-3 md:grid-cols-[2fr_1fr_1fr]">
-                    <div>
-                      <Link
-                        href={`/product/${item.product.slug}`}
-                        className="text-sm font-semibold uppercase tracking-[0.08em] underline decoration-zinc-400 underline-offset-2"
-                      >
-                        {item.product.name}
-                      </Link>
-                      <p className="text-xs text-zinc-600">{item.product.brand?.name || item.brand?.name || "Brand"} / {item.product.topCategory} / {item.product.subCategory}</p>
-                      <div className="mt-2">
-                        {selectedOrder.status === "DELIVERED" ? (
-                          myReviewsByOrderItemId[item.id] ? (
-                            <Link href={`/account/reviews?reviewId=${encodeURIComponent(myReviewsByOrderItemId[item.id])}`} className="inline-flex border border-zinc-300 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]">
-                              View Review
-                            </Link>
-                          ) : (
-                            <Link href={`/account/reviews?orderItemId=${encodeURIComponent(item.id)}`} className="inline-flex border border-black bg-black px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
-                              Write Review
-                            </Link>
-                          )
-                        ) : null}
-                      </div>
+                  <article key={item.id} className="border border-zinc-200 p-3 text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-semibold uppercase tracking-[0.08em]">{item.product.name}</p>
+                      {myReviewsByOrderItemId[item.id] ? (
+                        <Link href={`/account/reviews?reviewId=${encodeURIComponent(myReviewsByOrderItemId[item.id])}`} className="inline-flex border border-zinc-300 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]">
+                          View Review
+                        </Link>
+                      ) : (
+                        <Link href={`/account/reviews?orderItemId=${encodeURIComponent(item.id)}`} className="inline-flex border border-black bg-black px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
+                          Write Review
+                        </Link>
+                      )}
                     </div>
-                    <p className="text-sm">Qty {item.quantity}</p>
-                    <p className="text-sm">{formatPkr(item.unitPricePkr)}</p>
+                    <p className="mt-1 text-zinc-600">Qty {item.quantity} · {formatPkr(item.unitPricePkr)}</p>
                   </article>
                 ))}
               </div>
             </section>
 
             <section className="space-y-3 border border-zinc-300 p-5">
-              <h3 className="font-heading text-3xl uppercase">Order Events</h3>
+              <h3 className="font-heading text-3xl uppercase">Vendor Group Events</h3>
               <div className="space-y-3">
-                {selectedOrder.statusLogs.map((log) => (
+                {selectedSubOrderEvents.map((log) => (
                   <article key={log.id} className="border border-zinc-200 p-3 text-sm">
-                    <p className="font-semibold uppercase tracking-[0.08em]">{getOrderStatusLabel(log.status)}</p>
+                    <p className="font-semibold uppercase tracking-[0.08em]">{log.brandName} - {getOrderStatusLabel(log.status)}</p>
                     <p className="text-zinc-600">
                       {log.updatedBy}
                       {log.note ? ` - ${log.note}` : ""}
@@ -387,7 +433,7 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
                   </Link>
                 </div>
                 <div className="space-y-3">
-                  {recentNotifications.map((notification) => (
+                  {sortedNotifications.map((notification) => (
                     <article key={notification.id} className="border border-zinc-200 p-3 text-sm">
                       <p className="font-semibold uppercase tracking-[0.08em]">{notification.title}</p>
                       <p className="text-zinc-600">{notification.message}</p>
@@ -395,6 +441,15 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
                     </article>
                   ))}
                 </div>
+                {selectedNotifications.length > visibleNotificationCount ? (
+                  <button
+                    type="button"
+                    onClick={() => setVisibleNotificationCount((current) => current + 5)}
+                    className="inline-flex h-10 items-center border border-zinc-300 px-4 text-xs font-semibold uppercase tracking-[0.12em]"
+                  >
+                    Load More
+                  </button>
+                ) : null}
               </section>
             ) : null}
           </div>

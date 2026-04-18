@@ -193,19 +193,38 @@ export async function createBrandInviteAccount(input: {
   const brandInviteTokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   const brandEmail = input.contactEmail?.trim().toLowerCase() || `brand.${input.brandName.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "") || input.brandId}@broady.local`;
 
-  const account = await input.prismaClient.user.create({
-    data: {
-      email: brandEmail,
-      fullName: input.fullName || `${input.brandName} Brand Admin`,
-      role: "BRAND_ADMIN" as any,
-      brandId: input.brandId,
-      authProvider: "LOCAL",
-      password: null,
-      brandInviteTokenHash: inviteTokenHash,
-      brandInviteTokenExpiresAt,
-    } as any,
-    select: { id: true, email: true, fullName: true, role: true, brandId: true } as any,
+  const existingBrandAccount = await input.prismaClient.user.findUnique({
+    where: { brandId: input.brandId } as any,
+    select: { id: true, fullName: true } as any,
   });
+
+  const account = existingBrandAccount
+    ? await input.prismaClient.user.update({
+        where: { id: existingBrandAccount.id },
+        data: {
+          email: brandEmail,
+          fullName: input.fullName || existingBrandAccount.fullName || `${input.brandName} Brand Admin`,
+          role: "BRAND_ADMIN" as any,
+          authProvider: "LOCAL",
+          brandInviteTokenHash: inviteTokenHash,
+          brandInviteTokenExpiresAt,
+          brandInviteAcceptedAt: null,
+        } as any,
+        select: { id: true, email: true, fullName: true, role: true, brandId: true } as any,
+      })
+    : await input.prismaClient.user.create({
+        data: {
+          email: brandEmail,
+          fullName: input.fullName || `${input.brandName} Brand Admin`,
+          role: "BRAND_ADMIN" as any,
+          brandId: input.brandId,
+          authProvider: "LOCAL",
+          password: null,
+          brandInviteTokenHash: inviteTokenHash,
+          brandInviteTokenExpiresAt,
+        } as any,
+        select: { id: true, email: true, fullName: true, role: true, brandId: true } as any,
+      });
 
   const accountData = account as any;
 

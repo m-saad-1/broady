@@ -23,7 +23,10 @@ export const productImageUrlSchema = z
     message: "Image URL must be an absolute http(s) URL or a root-relative asset path",
   });
 
-const optionalTemplateIdSchema = z.string().trim().min(1).optional();
+const optionalTemplateIdSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z.string().trim().min(1).optional(),
+);
 
 export const productSizeGuideSchema = z.object({
   imageUrl: productImageUrlSchema.optional(),

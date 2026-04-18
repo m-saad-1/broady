@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getBrandSession } from "../_lib/brand-session";
-import { BrandProductsClient } from "./brand-products-client";
+import { BrandProductsListClient } from "./brand-products-list-client";
 
 export const metadata = {
   title: "Brand Products | BROADY",
@@ -20,13 +20,16 @@ export default async function BrandProductsPage() {
           <Link href="/brand/dashboard" className="inline-flex h-10 items-center border border-zinc-300 px-4 text-xs font-semibold uppercase tracking-[0.12em]">
             Back to Dashboard
           </Link>
+          <Link href="/brand/products/new" className="inline-flex h-10 items-center border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white">
+            Add Product
+          </Link>
           <Link href="/brand/orders" className="inline-flex h-10 items-center border border-zinc-300 px-4 text-xs font-semibold uppercase tracking-[0.12em]">
             View Orders
           </Link>
         </div>
       </header>
 
-      <BrandProductsClient />
+      <BrandProductsListClient />
     </main>
   );
 }

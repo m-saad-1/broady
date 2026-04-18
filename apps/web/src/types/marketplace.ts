@@ -117,6 +117,8 @@ export type BrandDashboardOrder = {
     id: string;
     quantity: number;
     unitPricePkr: number;
+    selectedColor?: string | null;
+    selectedSize?: string | null;
     product: Product;
     brand?: Brand;
   }>;
@@ -138,8 +140,31 @@ export type UserOrder = {
     id: string;
     quantity: number;
     unitPricePkr: number;
+    selectedColor?: string | null;
+    selectedSize?: string | null;
     product: Product;
     brand?: Brand;
+  }>;
+  subOrders: Array<{
+    id: string;
+    orderId: string;
+    brandId: string;
+    status: OrderStatus;
+    subtotalPkr: number;
+    trackingId?: string | null;
+    createdAt: string;
+    updatedAt: string;
+    brand: Brand;
+    items: Array<{
+      id: string;
+      quantity: number;
+      unitPricePkr: number;
+      selectedColor?: string | null;
+      selectedSize?: string | null;
+      product: Product;
+      brand?: Brand;
+    }>;
+    statusLogs: OrderStatusLog[];
   }>;
   statusLogs: OrderStatusLog[];
 };
@@ -284,6 +309,11 @@ export type ProductReview = {
     name: string;
     slug: string;
     imageUrl?: string;
+  };
+  orderItem?: {
+    id: string;
+    selectedColor?: string | null;
+    selectedSize?: string | null;
   };
   images: Array<{
     id: string;

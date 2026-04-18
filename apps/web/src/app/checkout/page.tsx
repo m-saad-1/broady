@@ -65,6 +65,8 @@ function CheckoutPageContent() {
         items: checkoutItems.map((item) => ({
           productId: item.product.id,
           quantity: item.quantity,
+          selectedColor: item.selectedColor,
+          selectedSize: item.selectedSize,
         })),
       });
 

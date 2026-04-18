@@ -105,7 +105,15 @@ router.get("/product/:productId", async (req, res) => {
     where,
     include: {
       user: { select: { id: true, fullName: true } },
+      product: { select: { id: true, name: true, slug: true, imageUrl: true } },
       images: { orderBy: { sortOrder: "asc" } },
+      orderItem: {
+        select: {
+          id: true,
+          selectedColor: true,
+          selectedSize: true,
+        },
+      },
       brandReply: {
         include: {
           user: { select: { id: true, fullName: true } },

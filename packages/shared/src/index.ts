@@ -12,7 +12,7 @@ export type PaymentMethod = "COD" | "JAZZCASH" | "EASYPAISA";
 
 export type PaymentStatus = "PENDING" | "HELD" | "BRAND_COLLECTS_COD" | "COMPLETED";
 
-export type OrderStatus = "PENDING" | "CONFIRMED" | "PACKED" | "SHIPPED" | "DELIVERED" | "CANCELED";
+export type OrderStatus = "PENDING" | "CONFIRMED" | "PACKED" | "PARTIALLY_SHIPPED" | "SHIPPED" | "DELIVERED" | "CANCELED";
 
 export type Brand = {
   id: string;

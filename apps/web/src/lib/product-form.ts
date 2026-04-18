@@ -61,6 +61,11 @@ function formatValidationIssues(error: z.ZodError) {
   return error.issues.map((issue) => issue.message).join(" ");
 }
 
+const optionalTemplateIdSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z.string().trim().min(1).optional(),
+);
+
 const productFormSchema = z.object({
   brandId: z.string().trim().min(1).optional(),
   name: z.string().trim().min(2, "Product name must be at least 2 characters"),
@@ -77,7 +82,7 @@ const productFormSchema = z.object({
     .refine(isProductAssetUrl, {
       message: "Image URL must be an absolute http(s) URL or a root-relative asset path",
     }),
-  sizeGuideTemplateId: z.string().trim().min(1).optional(),
+  sizeGuideTemplateId: optionalTemplateIdSchema,
   sizeGuideImageUrl: z
     .string()
     .trim()
@@ -94,15 +99,15 @@ const productFormSchema = z.object({
       }),
     )
     .min(1, "Add at least one size guide row"),
-  deliveriesReturnsTemplateId: z.string().trim().min(1).optional(),
+  deliveriesReturnsTemplateId: optionalTemplateIdSchema,
   deliveryTime: z.string().trim().min(2, "Delivery time is required"),
   returnPolicy: z.string().trim().min(2, "Return policy is required"),
   refundConditions: z.string().trim().min(2, "Refund conditions are required"),
-  shippingDeliveryTemplateId: z.string().trim().min(1).optional(),
+  shippingDeliveryTemplateId: optionalTemplateIdSchema,
   shippingRegions: z.string().trim().min(2, "Shipping regions are required"),
   shippingEstimatedDeliveryTime: z.string().trim().min(2, "Estimated delivery time is required"),
   shippingCharges: z.string().trim().optional(),
-  fabricCareTemplateId: z.string().trim().min(1).optional(),
+  fabricCareTemplateId: optionalTemplateIdSchema,
   fabricType: z.string().trim().min(2, "Fabric type is required"),
   careInstructions: z.string().trim().min(2, "Care instructions are required"),
   stock: z.coerce.number().int().min(0, "Stock cannot be negative"),

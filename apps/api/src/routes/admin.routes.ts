@@ -75,10 +75,11 @@ router.delete("/notifications/dead-letters", async (req, res) => {
 });
 
 router.get("/summary", async (_req, res) => {
-  const [brandCount, productCount, orderCount] = await Promise.all([
+  const [brandCount, productCount, orderCount, subOrderCount] = await Promise.all([
     prisma.brand.count(),
     prisma.product.count(),
     prisma.order.count(),
+    prisma.subOrder.count(),
   ]);
 
   return res.json({
@@ -86,6 +87,7 @@ router.get("/summary", async (_req, res) => {
       brandCount,
       productCount,
       orderCount,
+      subOrderCount,
     },
   });
 });
@@ -94,7 +96,16 @@ router.get("/orders", async (_req, res) => {
   const orders = await prisma.order.findMany({
     include: {
       user: { select: { id: true, fullName: true, email: true } },
-      items: { include: { product: true } },
+      items: { include: { product: true, brand: true } },
+      subOrders: {
+        include: {
+          brand: true,
+          items: { include: { product: true, brand: true } },
+          statusLogs: { orderBy: { createdAt: "desc" } },
+        },
+        orderBy: { createdAt: "asc" },
+      },
+      statusLogs: { orderBy: { createdAt: "desc" } },
     },
     orderBy: { createdAt: "desc" },
     take: 50,
@@ -115,6 +126,14 @@ router.get("/orders/:orderId", async (req, res) => {
           brand: true,
         },
       },
+      subOrders: {
+        include: {
+          brand: true,
+          items: { include: { product: true, brand: true } },
+          statusLogs: { orderBy: { createdAt: "desc" } },
+        },
+        orderBy: { createdAt: "asc" },
+      },
       statusLogs: { orderBy: { createdAt: "desc" } },
     },
   });
@@ -132,7 +151,7 @@ router.get("/brand-dashboard", async (_req, res) => {
       products: {
         orderBy: { createdAt: "desc" },
       },
-      orderItems: {
+      subOrders: {
         include: {
           order: {
             include: {
@@ -140,85 +159,53 @@ router.get("/brand-dashboard", async (_req, res) => {
               statusLogs: { orderBy: { createdAt: "desc" } },
             },
           },
-          product: true,
+          items: {
+            include: {
+              product: true,
+              brand: true,
+            },
+          },
+          statusLogs: { orderBy: { createdAt: "desc" } },
         },
       },
     },
     orderBy: { name: "asc" },
   });
 
-  const data = brands.map((brand: any) => {
-    const orderMap = new Map<string, {
-      id: string;
-      status: string;
-      paymentMethod: string;
-      paymentStatus: string;
-      trackingId: string | null;
-      totalPkr: number;
-      createdAt: Date;
-      user: { id: string; fullName: string; email: string };
-      statusLogs: Array<{
-        id: string;
-        status: string;
-        updatedBy: string;
-        updatedById: string | null;
-        note: string | null;
-        createdAt: Date;
-      }>;
-      items: Array<{
-        id: string;
-        quantity: number;
-        unitPricePkr: number;
-        createdAt: Date;
-        product: {
-          id: string;
-          name: string;
-          slug: string;
-          imageUrl: string;
-        };
-      }>;
-    }>();
+  const data = brands.map((brand) => {
+    const orders = brand.subOrders
+      .map((subOrder) => ({
+        id: subOrder.order.id,
+        subOrderId: subOrder.id,
+        status: subOrder.status,
+        paymentMethod: subOrder.order.paymentMethod,
+        paymentStatus: subOrder.order.paymentStatus,
+        trackingId: subOrder.trackingId,
+        subtotalPkr: subOrder.subtotalPkr,
+        totalPkr: subOrder.order.totalPkr,
+        createdAt: subOrder.createdAt,
+        user: subOrder.order.user,
+        statusLogs: subOrder.statusLogs,
+        parentStatusLogs: subOrder.order.statusLogs,
+        items: subOrder.items.map((item) => ({
+          id: item.id,
+          quantity: item.quantity,
+          unitPricePkr: item.unitPricePkr,
+          product: {
+            id: item.product.id,
+            name: item.product.name,
+            slug: item.product.slug,
+            imageUrl: item.product.imageUrl,
+          },
+        })),
+      }))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
-    for (const item of brand.orderItems) {
-      const existing = orderMap.get(item.orderId);
-      const baseItem = {
-        id: item.id,
-        quantity: item.quantity,
-        unitPricePkr: item.unitPricePkr,
-        createdAt: item.createdAt,
-        product: {
-          id: item.product.id,
-          name: item.product.name,
-          slug: item.product.slug,
-          imageUrl: item.product.imageUrl,
-        },
-      };
-
-      if (!existing) {
-        orderMap.set(item.orderId, {
-          id: item.order.id,
-          status: item.order.status,
-          paymentMethod: item.order.paymentMethod,
-          paymentStatus: item.order.paymentStatus,
-          trackingId: item.order.trackingId,
-          totalPkr: item.order.totalPkr,
-          createdAt: item.order.createdAt,
-          user: item.order.user,
-          statusLogs: item.order.statusLogs,
-          items: [baseItem],
-        });
-        continue;
-      }
-
-      existing.items.push(baseItem);
-    }
-
-    const orders = Array.from(orderMap.values()).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     const statusCounts = orders.reduce<Record<string, number>>((acc, order) => {
       acc[order.status] = (acc[order.status] || 0) + 1;
       return acc;
     }, {});
-    const grossPkr = brand.orderItems.reduce((sum: number, item: any) => sum + item.quantity * item.unitPricePkr, 0);
+    const grossPkr = brand.subOrders.reduce((sum, subOrder) => sum + subOrder.subtotalPkr, 0);
 
     return {
       brand: {
@@ -238,9 +225,10 @@ router.get("/brand-dashboard", async (_req, res) => {
       orders,
       metrics: {
         totalProducts: brand.products.length,
-        activeProducts: brand.products.filter((product: any) => product.isActive).length,
-        pendingProducts: brand.products.filter((product: any) => product.approvalStatus === "PENDING").length,
+        activeProducts: brand.products.filter((product) => product.isActive).length,
+        pendingProducts: brand.products.filter((product) => product.approvalStatus === "PENDING").length,
         totalOrders: orders.length,
+        totalSubOrders: brand.subOrders.length,
         grossPkr,
         statusCounts,
       },
@@ -252,11 +240,11 @@ router.get("/brand-dashboard", async (_req, res) => {
 
 router.get("/brand-dashboard/:brandId", async (req, res) => {
   const brandId = String(req.params.brandId);
-  const dashboard = await prisma.brand.findUnique({
+  const brand = await prisma.brand.findUnique({
     where: { id: brandId },
     include: {
       products: { orderBy: { createdAt: "desc" } },
-      orderItems: {
+      subOrders: {
         include: {
           order: {
             include: {
@@ -264,17 +252,85 @@ router.get("/brand-dashboard/:brandId", async (req, res) => {
               statusLogs: { orderBy: { createdAt: "desc" } },
             },
           },
-          product: true,
+          items: {
+            include: {
+              product: true,
+              brand: true,
+            },
+          },
+          statusLogs: { orderBy: { createdAt: "desc" } },
         },
       },
     },
   });
 
-  if (!dashboard) {
+  if (!brand) {
     return res.status(404).json({ message: "Brand not found" });
   }
 
-  return res.json({ data: dashboard });
+  const orders = brand.subOrders
+    .map((subOrder) => ({
+      id: subOrder.order.id,
+      subOrderId: subOrder.id,
+      status: subOrder.status,
+      paymentMethod: subOrder.order.paymentMethod,
+      paymentStatus: subOrder.order.paymentStatus,
+      trackingId: subOrder.trackingId,
+      subtotalPkr: subOrder.subtotalPkr,
+      totalPkr: subOrder.order.totalPkr,
+      createdAt: subOrder.createdAt,
+      user: subOrder.order.user,
+      statusLogs: subOrder.statusLogs,
+      parentStatusLogs: subOrder.order.statusLogs,
+      items: subOrder.items.map((item) => ({
+        id: item.id,
+        quantity: item.quantity,
+        unitPricePkr: item.unitPricePkr,
+        product: {
+          id: item.product.id,
+          name: item.product.name,
+          slug: item.product.slug,
+          imageUrl: item.product.imageUrl,
+        },
+      })),
+    }))
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+  const statusCounts = orders.reduce<Record<string, number>>((acc, order) => {
+    acc[order.status] = (acc[order.status] || 0) + 1;
+    return acc;
+  }, {});
+
+  const grossPkr = brand.subOrders.reduce((sum, subOrder) => sum + subOrder.subtotalPkr, 0);
+
+  return res.json({
+    data: {
+      brand: {
+        id: brand.id,
+        name: brand.name,
+        slug: brand.slug,
+        logoUrl: brand.logoUrl,
+        description: brand.description,
+        verified: brand.verified,
+        contactEmail: brand.contactEmail,
+        whatsappNumber: brand.whatsappNumber,
+        commissionRate: brand.commissionRate,
+        apiEnabled: brand.apiEnabled,
+        createdAt: brand.createdAt,
+      },
+      products: brand.products,
+      orders,
+      metrics: {
+        totalProducts: brand.products.length,
+        activeProducts: brand.products.filter((product) => product.isActive).length,
+        pendingProducts: brand.products.filter((product) => product.approvalStatus === "PENDING").length,
+        totalOrders: orders.length,
+        totalSubOrders: brand.subOrders.length,
+        grossPkr,
+        statusCounts,
+      },
+    },
+  });
 });
 
 export default router;

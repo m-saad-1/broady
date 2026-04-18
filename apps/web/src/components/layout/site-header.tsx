@@ -14,6 +14,9 @@ import {
   getWishlistProducts,
   syncUserCartItems,
 } from "@/lib/api";
+import { fallbackProducts } from "@/lib/mock-data";
+import { filterProductsBySubCategoryContains, isEligibleSearchQuery } from "@/lib/search-fallback";
+import { normalizeProduct } from "@/lib/taxonomy";
 import { useAuthStore } from "@/stores/auth-store";
 import { useCartStore } from "@/stores/cart-store";
 import { useWishlistStore } from "@/stores/wishlist-store";
@@ -318,7 +321,18 @@ export function SiteHeader() {
         if (!active) return;
         setSuggestions(suggestionResult.suggestions.slice(0, 8));
         setSuggestionsCorrection(suggestionResult.correctedQuery || null);
-        setLiveResults(productResult.slice(0, 6));
+        const apiLiveResults = productResult.slice(0, 6);
+        if (apiLiveResults.length) {
+          setLiveResults(apiLiveResults);
+        } else if (isEligibleSearchQuery(q)) {
+          const fallbackLive = filterProductsBySubCategoryContains(
+            fallbackProducts.map(normalizeProduct),
+            q,
+          ).slice(0, 6);
+          setLiveResults(fallbackLive);
+        } else {
+          setLiveResults([]);
+        }
         setActiveSuggestionIndex(-1);
       } catch {
         if (!active) return;

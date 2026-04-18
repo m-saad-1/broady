@@ -6,6 +6,11 @@ import { useEffect, useMemo, useState } from "react";
 import { ProductCard } from "@/components/ui/product-card";
 import { getProductPricing } from "@/lib/pricing";
 import { useMockFallback } from "@/lib/runtime-flags";
+import {
+  filterProductsBySubCategoryContains,
+  isEligibleSearchQuery,
+  normalizeSearchQuery,
+} from "@/lib/search-fallback";
 import { fallbackProducts } from "../../lib/mock-data";
 import { normalizeProduct } from "@/lib/taxonomy";
 import type { Product } from "@/types/marketplace";
@@ -103,6 +108,10 @@ export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
 
   const queryFromRoute = useMemo(() => params.q?.trim() || "", [params.q]);
   const hasActiveSearch = Boolean(queryFromRoute);
+  const normalizedQueryFromRoute = useMemo(
+    () => normalizeSearchQuery(queryFromRoute),
+    [queryFromRoute],
+  );
 
   useEffect(() => {
     setTopCategory(params.topCategory || "");
@@ -181,13 +190,28 @@ export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
     initialData: initialProducts,
   });
 
+  const fallbackCatalogProducts = useMemo(() => {
+    if (products.length > 0 || !isEligibleSearchQuery(normalizedQueryFromRoute)) {
+      return [];
+    }
+
+    return filterProductsBySubCategoryContains(
+      normalizedInitialProducts,
+      normalizedQueryFromRoute,
+    );
+  }, [normalizedInitialProducts, normalizedQueryFromRoute, products.length]);
+
+  const productsForRendering = products.length
+    ? products
+    : fallbackCatalogProducts;
+
   const orderedProducts = useMemo(() => {
-    const copy = [...products];
+    const copy = [...productsForRendering];
     if (sortBy === "price-asc") return copy.sort((a, b) => getProductPricing(a).finalPrice - getProductPricing(b).finalPrice);
     if (sortBy === "price-desc") return copy.sort((a, b) => getProductPricing(b).finalPrice - getProductPricing(a).finalPrice);
     if (sortBy === "name") return copy.sort((a, b) => a.name.localeCompare(b.name));
     return copy;
-  }, [products, sortBy]);
+  }, [productsForRendering, sortBy]);
 
   useEffect(() => {
     const next = new URLSearchParams(runtimeParams);

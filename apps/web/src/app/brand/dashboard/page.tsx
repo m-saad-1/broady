@@ -18,7 +18,7 @@ export default async function BrandDashboardPage() {
         <p className="max-w-3xl text-sm text-zinc-600">Everything in this workspace is filtered by your brand account. Orders, notifications, and inventory updates stay tenant-scoped.</p>
         <div className="flex flex-wrap gap-2">
           <Link href="/brand/products" className="inline-flex h-10 items-center border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white">
-            Add Product
+            View Products
           </Link>
           <Link href="/brand/orders" className="inline-flex h-10 items-center border border-zinc-300 px-4 text-xs font-semibold uppercase tracking-[0.12em]">
             View All Orders

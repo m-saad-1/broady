@@ -122,24 +122,31 @@ router.post("/:id/account", requireAuth, requireAdmin, async (req, res) => {
   const brand = await prisma.brand.findUnique({ where: { id: String(req.params.id) }, select: { id: true, name: true, slug: true, contactEmail: true } });
   if (!brand) return res.status(404).json({ message: "Brand not found" });
 
-  const invite = await prisma.$transaction(async (tx) =>
-    createBrandInviteAccount({
-      prismaClient: tx,
-      brandId: brand.id,
-      brandName: brand.name,
-      contactEmail: parsed.data.contactEmail || brand.contactEmail,
-      fullName: parsed.data.fullName,
-    }),
-  );
+  try {
+    const invite = await prisma.$transaction(async (tx) =>
+      createBrandInviteAccount({
+        prismaClient: tx,
+        brandId: brand.id,
+        brandName: brand.name,
+        contactEmail: parsed.data.contactEmail || brand.contactEmail,
+        fullName: parsed.data.fullName,
+      }),
+    );
 
-  return res.status(201).json({
-    data: {
-      account: invite.user,
-      inviteUrl: invite.inviteUrl,
-      brandEmail: invite.brandEmail,
-      brand,
-    },
-  });
+    return res.status(201).json({
+      data: {
+        account: invite.user,
+        inviteUrl: invite.inviteUrl,
+        brandEmail: invite.brandEmail,
+        brand,
+      },
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return res.status(409).json({ message: "Invite email is already used by another account" });
+    }
+    throw error;
+  }
 });
 
 router.post("/", requireAuth, requireAdmin, async (req, res) => {

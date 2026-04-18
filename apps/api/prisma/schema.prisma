@@ -357,6 +357,8 @@ model OrderItem {
   brand      Brand    @relation(fields: [brandId], references: [id])
   quantity   Int
   unitPricePkr Int
+  selectedColor String?
+  selectedSize String?
   review     Review?
 
   @@index([brandId, orderId])

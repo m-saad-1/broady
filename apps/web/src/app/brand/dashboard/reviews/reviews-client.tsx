@@ -1,18 +1,24 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import { ProductImage } from "@/components/ui/product-image";
 import { getBrandReviews, replyToReview } from "@/lib/api";
 import { useToastStore } from "@/stores/toast-store";
 import type { ProductReview } from "@/types/marketplace";
 
-export function BrandReviewsClient() {
+type BrandReviewsClientProps = {
+  brandName: string;
+};
+
+export function BrandReviewsClient({ brandName }: BrandReviewsClientProps) {
   const [reviews, setReviews] = useState<ProductReview[]>([]);
   const [loading, setLoading] = useState(true);
   const [replyByReview, setReplyByReview] = useState<Record<string, string>>({});
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const pushToast = useToastStore((state) => state.pushToast);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const data = await getBrandReviews(50, 0);
@@ -22,11 +28,11 @@ export function BrandReviewsClient() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [pushToast]);
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
 
   const onReply = async (event: FormEvent<HTMLFormElement>, reviewId: string) => {
     event.preventDefault();
@@ -49,6 +55,11 @@ export function BrandReviewsClient() {
     }
   };
 
+  const resolveProductImageSrc = (imageUrl?: string) => {
+    const normalized = (imageUrl || "").trim();
+    return normalized || "/window.svg";
+  };
+
   if (loading) {
     return <p className="text-sm text-zinc-700">Loading reviews...</p>;
   }
@@ -65,18 +76,36 @@ export function BrandReviewsClient() {
     <section className="space-y-4">
       {reviews.map((review) => (
         <article key={review.id} className="border border-zinc-300 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">
-              {review.product?.name || "Product"} • {review.rating}/5 • {review.status}
-            </p>
-            <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">{review.user.fullName}</p>
-          </div>
+          <Link href={review.product?.slug ? `/product/${review.product.slug}/reviews` : "/brand/dashboard/reviews"} className="block">
+            <div className="flex flex-wrap items-start gap-3">
+              {review.product?.imageUrl ? (
+                <div className="relative h-16 w-16 overflow-hidden border border-zinc-200 bg-zinc-50">
+                  <ProductImage
+                    src={resolveProductImageSrc(review.product.imageUrl)}
+                    alt={review.product.name || "Product"}
+                    fill
+                    sizes="64px"
+                    className="object-cover"
+                  />
+                </div>
+              ) : null}
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">
+                    {review.product?.name || "Product"} • {review.rating}/5 • {review.status}
+                  </p>
+                  <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">View Reviews</p>
+                </div>
+                <p className="mt-1 text-xs uppercase tracking-[0.12em] text-zinc-500">Customer: {review.user.fullName}</p>
+              </div>
+            </div>
+          </Link>
 
           <p className="mt-2 text-sm leading-7 text-zinc-700">{review.content}</p>
 
           {review.brandReply ? (
             <div className="mt-3 border border-zinc-200 bg-zinc-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-600">Current brand reply</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-600">Reply from {brandName}</p>
               <p className="mt-2 text-sm text-zinc-700">{review.brandReply.content}</p>
             </div>
           ) : null}

@@ -14,7 +14,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "node prisma/seed.js",
-    "prisma:verify-crud": "node prisma/verify-crud.js"
+    "prisma:verify-crud": "node prisma/verify-crud.js",
+    "search:smoke": "node prisma/search-subcategory-smoke.js"
   },
   "dependencies": {
     "@broady/shared": "*",

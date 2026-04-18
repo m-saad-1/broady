@@ -6,7 +6,8 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "search:fallback:smoke": "node --experimental-strip-types scripts/search-fallback-smoke.mjs"
   },
   "dependencies": {
     "@broady/shared": "*",

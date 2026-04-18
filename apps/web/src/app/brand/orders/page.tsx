@@ -21,7 +21,7 @@ export default async function BrandOrdersPage() {
             Back to Dashboard
           </Link>
           <Link href="/brand/products" className="inline-flex h-10 items-center border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white">
-            Manage Products
+            View Products
           </Link>
         </div>
       </header>

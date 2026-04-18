@@ -35,24 +35,25 @@ export function buildNotificationTemplate(event: NotificationEvent, audience: No
     event.name === "OrderCancelled"
   ) {
     const status = orderLabel(event.name);
+    const noteSuffix = event.note ? ` ${event.note}` : "";
 
     if (audience === "USER") {
       return {
         title: event.name === "OrderPlaced" ? "Order Confirmed" : "Order Update",
-        message: `Your order ${event.orderId} has been ${status} on Broady.`,
+        message: `Your order ${event.orderId} has been ${status} on Broady.${noteSuffix}`,
       };
     }
 
     if (audience === "BRAND_MEMBERS") {
       return {
         title: "Order Workflow Update",
-        message: `Order ${event.orderId} has been ${status} on Broady.`,
+        message: `Order ${event.orderId} has been ${status} on Broady.${noteSuffix}`,
       };
     }
 
     return {
       title: "Order Event Observed",
-      message: `Order ${event.orderId} has been ${status} on Broady.`,
+      message: `Order ${event.orderId} has been ${status} on Broady.${noteSuffix}`,
     };
   }
 

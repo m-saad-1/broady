@@ -16,6 +16,8 @@ export function getOrderStatusLabel(status: OrderStatus) {
       return "Confirmed";
     case "PACKED":
       return "Packed";
+    case "PARTIALLY_SHIPPED":
+      return "Partially Shipped";
     case "SHIPPED":
       return "Shipped";
     case "DELIVERED":
@@ -35,6 +37,8 @@ export function getOrderStatusTone(status: OrderStatus) {
       return "border-sky-300 bg-sky-50 text-sky-700";
     case "PACKED":
       return "border-indigo-300 bg-indigo-50 text-indigo-700";
+    case "PARTIALLY_SHIPPED":
+      return "border-fuchsia-300 bg-fuchsia-50 text-fuchsia-700";
     case "SHIPPED":
       return "border-violet-300 bg-violet-50 text-violet-700";
     case "DELIVERED":

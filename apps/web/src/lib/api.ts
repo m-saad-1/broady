@@ -36,6 +36,44 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 type ApiEnvelope<T> = { data: T };
 type ApiErrorBody = { message?: string; code?: string };
 
+function normalizeBrandDashboardOrder(order: unknown): BrandDashboardOrder {
+  const orderRecord = (order && typeof order === "object" ? order : {}) as Record<string, unknown>;
+  const nestedOrder = (orderRecord.order && typeof orderRecord.order === "object" ? orderRecord.order : {}) as Record<string, unknown>;
+
+  const fallbackTimestamp = "1970-01-01T00:00:00.000Z";
+  const resolvedCreatedAt =
+    typeof orderRecord.createdAt === "string"
+      ? orderRecord.createdAt
+      : typeof nestedOrder.createdAt === "string"
+        ? nestedOrder.createdAt
+        : fallbackTimestamp;
+
+  return {
+    ...(orderRecord as object),
+    paymentMethod: (orderRecord.paymentMethod as string) || (nestedOrder.paymentMethod as string) || "COD",
+    paymentStatus: (orderRecord.paymentStatus as string) || (nestedOrder.paymentStatus as string) || "PENDING",
+    totalPkr: typeof orderRecord.totalPkr === "number" ? orderRecord.totalPkr : typeof orderRecord.subtotalPkr === "number" ? orderRecord.subtotalPkr : 0,
+    deliveryAddress: (orderRecord.deliveryAddress as string) || (nestedOrder.deliveryAddress as string) || "Address unavailable",
+    createdAt: resolvedCreatedAt,
+    updatedAt:
+      typeof orderRecord.updatedAt === "string"
+        ? orderRecord.updatedAt
+        : typeof nestedOrder.updatedAt === "string"
+          ? nestedOrder.updatedAt
+          : resolvedCreatedAt,
+    user: (orderRecord.user as BrandDashboardOrder["user"]) || (nestedOrder.user as BrandDashboardOrder["user"]) || {
+      id: (nestedOrder.userId as string) || "unknown-user",
+      fullName: "Customer",
+      email: "not-provided@broady.local",
+    },
+    statusLogs: Array.isArray(orderRecord.statusLogs)
+      ? (orderRecord.statusLogs as BrandDashboardOrder["statusLogs"])
+      : Array.isArray(nestedOrder.statusLogs)
+        ? (nestedOrder.statusLogs as BrandDashboardOrder["statusLogs"])
+        : [],
+  } as BrandDashboardOrder;
+}
+
 export class ApiRequestError extends Error {
   status: number;
   code?: string;
@@ -329,7 +367,7 @@ export async function syncUserCartItems(
 type CreateOrderPayload = {
   paymentMethod: "COD" | "JAZZCASH" | "EASYPAISA";
   deliveryAddress: string;
-  items: Array<{ productId: string; quantity: number }>;
+  items: Array<{ productId: string; quantity: number; selectedColor?: string; selectedSize?: string }>;
 };
 
 type CreateOrderResponse = {
@@ -364,6 +402,33 @@ export async function cancelUserOrder(orderId: string, note?: string): Promise<U
     body: JSON.stringify(note ? { note } : {}),
   });
   return response.data;
+}
+
+type ReorderResponse = {
+  data: {
+    id: string;
+    userId: string;
+    items: Array<{
+      id: string;
+      quantity: number;
+      selectedColor?: string | null;
+      selectedSize?: string | null;
+      product: Product;
+    }>;
+  };
+};
+
+export async function reorderUserOrder(orderId: string): Promise<ReorderResponse["data"]> {
+  const response = await authFetch<ReorderResponse>(`/orders/me/${orderId}/reorder`, {
+    method: "POST",
+  });
+  return {
+    ...response.data,
+    items: response.data.items.map((item) => ({
+      ...item,
+      product: normalizeProduct(item.product),
+    })),
+  };
 }
 
 export async function getAdminBrands(): Promise<Brand[]> {
@@ -608,14 +673,14 @@ export async function getBrandDashboardOrders(status?: string): Promise<BrandDas
   const response = await authFetch<ApiEnvelope<BrandDashboardOrder[]>>(`/brand-dashboard/orders${query}`, {
     method: "GET",
   });
-  return response.data;
+  return response.data.map(normalizeBrandDashboardOrder);
 }
 
 export async function getBrandDashboardOrder(orderId: string): Promise<BrandDashboardOrder> {
   const response = await authFetch<ApiEnvelope<BrandDashboardOrder>>(`/brand-dashboard/orders/${orderId}`, {
     method: "GET",
   });
-  return response.data;
+  return normalizeBrandDashboardOrder(response.data);
 }
 
 export async function updateBrandOrderStatus(
@@ -626,7 +691,7 @@ export async function updateBrandOrderStatus(
     method: "PATCH",
     body: JSON.stringify(payload),
   });
-  return response.data;
+  return normalizeBrandDashboardOrder(response.data);
 }
 
 export async function updateAdminOrderStatus(

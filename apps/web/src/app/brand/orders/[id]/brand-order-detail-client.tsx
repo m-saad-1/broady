@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
+import { ProductImage } from "@/components/ui/product-image";
 import { getBrandDashboardOrder, updateBrandOrderStatus } from "@/lib/api";
 import { getOrderStatusLabel, getOrderStatusOptions, getOrderStatusTone } from "@/lib/order-status";
 import { formatPkr } from "@/lib/utils";
@@ -13,11 +14,22 @@ type BrandOrderDetailClientProps = {
   orderId: string;
 };
 
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("en-PK", {
+function formatDateTime(value?: string | null) {
+  if (!value) return "N/A";
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "N/A";
+
+  return new Intl.DateTimeFormat("en-GB", {
     dateStyle: "medium",
     timeStyle: "short",
-  }).format(new Date(value));
+    timeZone: "UTC",
+  }).format(parsed);
+}
+
+function resolveProductImageSrc(imageUrl?: string | null) {
+  const normalized = (imageUrl || "").trim();
+  return normalized || "/window.svg";
 }
 
 export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps) {
@@ -95,13 +107,16 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
     );
   }
 
+  const customerName = order.user?.fullName || "Customer";
+  const customerEmail = order.user?.email || "Email unavailable";
+
   return (
     <div className="space-y-8">
       <section className="grid gap-4 border border-zinc-300 p-5 md:grid-cols-2">
         <div>
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Customer</p>
-          <p className="mt-2 text-sm font-semibold">{order.user.fullName}</p>
-          <p className="text-sm text-zinc-600">{order.user.email}</p>
+          <p className="mt-2 text-sm font-semibold">{customerName}</p>
+          <p className="text-sm text-zinc-600">{customerEmail}</p>
         </div>
         <div>
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Current Status</p>
@@ -169,16 +184,26 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
         <h2 className="font-heading text-3xl uppercase">Items</h2>
         <div className="space-y-3">
           {order.items.map((item) => (
-            <article key={item.id} className="grid gap-2 border-b border-zinc-200 py-3 md:grid-cols-[2fr_1fr_1fr_auto]">
-              <div>
+            <article key={item.id} className="grid gap-4 border-b border-zinc-200 py-3 md:grid-cols-[80px_1fr_auto] md:items-center">
+              <div className="relative h-20 w-20 overflow-hidden border border-zinc-200 bg-zinc-50">
+                <ProductImage
+                  src={resolveProductImageSrc(item.product.imageUrl)}
+                  alt={item.product.name || "Product image"}
+                  fill
+                  sizes="80px"
+                  className="object-cover"
+                />
+              </div>
+              <div className="space-y-1">
                 <Link href={`/product/${item.product.slug}`} className="text-sm font-semibold uppercase tracking-[0.08em] underline decoration-zinc-400 underline-offset-2">
                   {item.product.name}
                 </Link>
-                <p className="text-xs text-zinc-600">{item.product.topCategory} / {item.product.subCategory}</p>
+                <p className="text-xs text-zinc-600">Size: {item.selectedSize || "Not specified"}</p>
+                <p className="text-xs text-zinc-600">Color: {item.selectedColor || "Not specified"}</p>
+                <p className="text-xs text-zinc-600">Quantity: {item.quantity}</p>
+                <p className="text-xs text-zinc-600">Price: {formatPkr(item.unitPricePkr)}</p>
               </div>
-              <p className="text-sm">Qty {item.quantity}</p>
-              <p className="text-sm">{formatPkr(item.unitPricePkr)}</p>
-              <Link href={`/product/${item.product.slug}`} className="h-9 border border-zinc-300 px-3 text-xs font-semibold uppercase tracking-[0.12em] leading-9 text-center">
+              <Link href={`/product/${item.product.slug}`} className="inline-flex h-9 items-center border border-zinc-300 px-3 text-xs font-semibold uppercase tracking-[0.12em] leading-9 text-center">
                 Product
               </Link>
             </article>

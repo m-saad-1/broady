@@ -466,6 +466,11 @@ router.get("/", async (req, res) => {
 
   const q = normalizeSearchInput(parsed.data.q);
 
+  if (q && q.length < 3) {
+    cache.set(cacheKey, []);
+    return res.json({ data: [], correctedQuery: null });
+  }
+
   if (q) {
     const inferredQuery = inferQueryCategory(q);
     const searchText = inferredQuery.normalizedQuery;
