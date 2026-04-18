@@ -1,4 +1,5 @@
-name: CI
+name: Broady CI
+run-name: Broady CI | ${{ github.event_name }} on ${{ github.ref_name }}
 
 on:
   pull_request:
@@ -9,6 +10,7 @@ on:
 
 jobs:
   lint-and-build:
+    name: Broady Lint and Build
     runs-on: ubuntu-latest
 
     steps:
