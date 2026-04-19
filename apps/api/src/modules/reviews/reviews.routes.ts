@@ -112,6 +112,11 @@ router.get("/product/:productId", async (req, res) => {
           id: true,
           selectedColor: true,
           selectedSize: true,
+          order: {
+            select: {
+              id: true,
+            },
+          },
         },
       },
       brandReply: {
@@ -582,6 +587,18 @@ router.get("/brand", async (req, res) => {
     include: {
       user: { select: { id: true, fullName: true } },
       product: { select: { id: true, name: true, slug: true, imageUrl: true } },
+      orderItem: {
+        select: {
+          id: true,
+          selectedColor: true,
+          selectedSize: true,
+          order: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      },
       images: { orderBy: { sortOrder: "asc" } },
       brandReply: {
         include: {

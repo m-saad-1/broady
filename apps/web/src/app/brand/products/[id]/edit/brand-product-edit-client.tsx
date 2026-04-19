@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { updateBrandDashboardProduct } from "@/lib/api";
+import { updateBrandDashboardProduct, uploadBrandProductImages } from "@/lib/api";
 import { buildBrandProductPayload } from "@/lib/product-form";
 import { useToastStore } from "@/stores/toast-store";
 import type { Product } from "@/types/marketplace";
@@ -49,6 +49,39 @@ export function BrandProductEditClient({ product }: BrandProductEditClientProps)
   const router = useRouter();
   const [form, setForm] = useState<ProductEditForm>(productToFormValues(product));
   const [saving, setSaving] = useState(false);
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>(product.imageUrl ? [product.imageUrl] : []);
+
+  const handleProductImageSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(event.target.files || []);
+    event.currentTarget.value = "";
+
+    if (!selectedFiles.length) {
+      return;
+    }
+
+    setUploadingImages(true);
+    try {
+      const uploadedUrls = await uploadBrandProductImages(selectedFiles);
+      setUploadedImageUrls((current) => Array.from(new Set([...current, ...uploadedUrls])));
+      if (!form.imageUrl && uploadedUrls[0]) {
+        setForm((current) => ({ ...current, imageUrl: uploadedUrls[0] }));
+      }
+      pushToast("Image uploaded", "success");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to upload images";
+      pushToast(message, "error");
+    } finally {
+      setUploadingImages(false);
+    }
+  };
+
+  const updateSizeRow = (index: number, field: keyof ProductEditForm["sizeGuideRows"][number], value: string) => {
+    setForm((current) => ({
+      ...current,
+      sizeGuideRows: current.sizeGuideRows.map((entry, entryIndex) => (entryIndex === index ? { ...entry, [field]: value } : entry)),
+    }));
+  };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -91,6 +124,25 @@ export function BrandProductEditClient({ product }: BrandProductEditClientProps)
             </select>
             <input className="h-10 border border-zinc-300 px-3" placeholder="Sub category" value={form.subCategory} onChange={(event) => setForm((current) => ({ ...current, subCategory: event.target.value }))} required />
             <input className="h-10 border border-zinc-300 px-3 md:col-span-2" placeholder="Image URL" value={form.imageUrl} onChange={(event) => setForm((current) => ({ ...current, imageUrl: event.target.value }))} required />
+            <label className="inline-flex h-10 cursor-pointer items-center justify-center border border-zinc-300 px-3 text-xs font-semibold uppercase tracking-[0.12em] md:col-span-2">
+              {uploadingImages ? "Uploading images..." : "Upload from file or folder"}
+              <input type="file" accept="image/*" multiple className="hidden" onChange={(event) => void handleProductImageSelection(event)} disabled={uploadingImages} />
+            </label>
+            {uploadedImageUrls.length ? (
+              <div className="grid gap-2 md:col-span-2 sm:grid-cols-2">
+                {uploadedImageUrls.map((url) => (
+                  <button
+                    key={url}
+                    type="button"
+                    onClick={() => setForm((current) => ({ ...current, imageUrl: url }))}
+                    className={`border p-2 text-left text-xs ${form.imageUrl === url ? "border-black bg-zinc-50" : "border-zinc-300"}`}
+                  >
+                    <img src={url} alt="Uploaded product" className="h-28 w-full border border-zinc-200 object-cover" />
+                    <span className="mt-2 block truncate uppercase tracking-[0.08em]">Use this image</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
         </section>
 
@@ -100,6 +152,17 @@ export function BrandProductEditClient({ product }: BrandProductEditClientProps)
           <div className="grid gap-3 md:grid-cols-2">
             <input className="h-10 border border-zinc-300 px-3 md:col-span-2" placeholder="Sizes (comma separated)" value={form.sizes} onChange={(event) => setForm((current) => ({ ...current, sizes: event.target.value }))} required />
             <input className="h-10 border border-zinc-300 px-3 md:col-span-2" placeholder="Size guide image URL" value={form.sizeGuideImageUrl} onChange={(event) => setForm((current) => ({ ...current, sizeGuideImageUrl: event.target.value }))} />
+          </div>
+          <div className="space-y-2">
+            {form.sizeGuideRows.map((row, index) => (
+              <div key={`size-row-${index}`} className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
+                <input className="h-9 border border-zinc-300 px-2 text-xs" placeholder="Size" value={row.size} onChange={(event) => updateSizeRow(index, "size", event.target.value)} />
+                <input className="h-9 border border-zinc-300 px-2 text-xs" placeholder="CM" value={row.cm} onChange={(event) => updateSizeRow(index, "cm", event.target.value)} />
+                <input className="h-9 border border-zinc-300 px-2 text-xs" placeholder="Inches" value={row.inches} onChange={(event) => updateSizeRow(index, "inches", event.target.value)} />
+                <button type="button" onClick={() => setForm((current) => ({ ...current, sizeGuideRows: current.sizeGuideRows.filter((_, entryIndex) => entryIndex !== index) }))} disabled={form.sizeGuideRows.length <= 1} className="h-9 border border-zinc-300 px-2 text-[10px] font-semibold uppercase tracking-[0.12em] disabled:opacity-40">Remove</button>
+              </div>
+            ))}
+            <button type="button" onClick={() => setForm((current) => ({ ...current, sizeGuideRows: [...current.sizeGuideRows, { size: "", cm: "", inches: "" }] }))} className="h-9 border border-zinc-300 px-3 text-[10px] font-semibold uppercase tracking-[0.12em]">Add row</button>
           </div>
         </section>
 

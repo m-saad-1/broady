@@ -1,4 +1,4 @@
-import { getBrandSession } from "@/lib/auth";
+import { getBrandSession } from "../../../_lib/brand-session";
 import { getBrandDashboardProducts } from "@/lib/api";
 import { notFound } from "next/navigation";
 import { BrandProductEditClient } from "./brand-product-edit-client";

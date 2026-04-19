@@ -11,7 +11,7 @@ type BrandOrdersClientProps = {
   mode?: "dashboard" | "orders";
 };
 
-type OrderFilter = "ALL" | "NEW" | "PENDING" | "CONFIRMED" | "SHIPPED" | "DELIVERED" | "CANCELLED";
+type OrderFilter = "ALL" | "NEW" | "DELIVERED" | "CANCELLED";
 
 const currencyFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
@@ -34,18 +34,9 @@ function formatDateTime(value?: string | null) {
   }).format(parsed);
 }
 
-function getOrderPriority(status: BrandDashboardOrder["status"]) {
-  if (status === "DELIVERED") return 1;
-  if (status === "CANCELED") return 2;
-  return 0;
-}
-
 const filterOptions: Array<{ key: OrderFilter; label: string }> = [
   { key: "ALL", label: "All" },
   { key: "NEW", label: "New" },
-  { key: "PENDING", label: "Pending" },
-  { key: "CONFIRMED", label: "Confirmed" },
-  { key: "SHIPPED", label: "Shipped" },
   { key: "DELIVERED", label: "Delivered" },
   { key: "CANCELLED", label: "Cancelled" },
 ];
@@ -60,9 +51,6 @@ function matchesFilter(order: BrandDashboardOrder, filter: OrderFilter) {
   if (filter === "NEW") {
     // New orders are those that were just created (PENDING status)
     return order.status === "PENDING";
-  }
-  if (filter === "SHIPPED") {
-    return order.status === "SHIPPED" || order.status === "PARTIALLY_SHIPPED";
   }
   if (filter === "DELIVERED") {
     return order.status === "DELIVERED";
@@ -116,8 +104,6 @@ export function BrandOrdersClient({ title = "Orders", mode = "orders" }: BrandOr
 
   const sortedOrders = useMemo(() => {
     return [...orders].sort((a, b) => {
-      const priorityGap = getOrderPriority(a.status) - getOrderPriority(b.status);
-      if (priorityGap !== 0) return priorityGap;
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
   }, [orders]);
@@ -209,44 +195,42 @@ export function BrandOrdersClient({ title = "Orders", mode = "orders" }: BrandOr
             const lastStatusLog = [...order.statusLogs].sort(
               (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
             )[0];
+            const deliveryLabel = order.deliveryAddress.length > 72 ? `${order.deliveryAddress.slice(0, 72).trimEnd()}...` : order.deliveryAddress;
+            const itemsSummary = order.items.map((item) => `${item.product.name} x${item.quantity}`).join(", ");
 
             return (
-              <article key={order.id} className="space-y-3 border border-zinc-200 p-4">
-                <div className="grid gap-3 md:grid-cols-[2fr_1fr_1fr_auto] md:items-center">
+              <article key={order.id} className="space-y-4 border border-zinc-200 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <Link href={`/brand/orders/${order.id}`} className="text-sm font-semibold uppercase tracking-[0.08em] underline decoration-zinc-400 underline-offset-2">
                       Order {order.id.slice(0, 10)}...
                     </Link>
                     <p className="text-xs text-zinc-600">{order.user.fullName} / {order.user.email}</p>
-                    <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">{formatDateTime(order.createdAt)}</p>
-                  </div>
-                  <p className="text-sm">PKR {order.totalPkr.toLocaleString()}</p>
-                  <div className="space-y-1">
-                    <p className="text-sm font-semibold uppercase tracking-[0.08em]">{order.status}</p>
-                    <p className="text-xs text-zinc-600">{order.paymentMethod} / {order.paymentStatus}</p>
                   </div>
                   <Link href={`/brand/orders/${order.id}`} className="h-9 border border-black bg-black px-3 text-xs font-semibold uppercase tracking-[0.12em] text-white leading-9 text-center">
                     Open Details
                   </Link>
                 </div>
 
-                <div className="grid gap-3 text-xs text-zinc-700 md:grid-cols-2">
-                  <p>
-                    <span className="font-semibold uppercase tracking-[0.1em]">Tracking:</span>{" "}
-                    {order.trackingId || "Not assigned"}
-                  </p>
-                  <p>
-                    <span className="font-semibold uppercase tracking-[0.1em]">Delivery:</span>{" "}
-                    {order.deliveryAddress}
-                  </p>
-                  <p className="md:col-span-2">
-                    <span className="font-semibold uppercase tracking-[0.1em]">Items:</span>{" "}
-                    {order.items.map((item) => `${item.product.name} x${item.quantity}`).join(", ")}
-                  </p>
-                  <p className="md:col-span-2">
-                    <span className="font-semibold uppercase tracking-[0.1em]">Last update:</span>{" "}
-                    {lastStatusLog ? `${lastStatusLog.status} at ${formatDateTime(lastStatusLog.createdAt)}` : "No updates"}
-                  </p>
+                <div className="flex flex-wrap gap-3 border-b border-zinc-200 pb-3 text-xs uppercase tracking-[0.1em] text-zinc-700">
+                  <span>
+                    <span className="font-semibold">Tracking:</span> {order.trackingId || "Not assigned"}
+                  </span>
+                  <span>
+                    <span className="font-semibold">Delivery:</span> {deliveryLabel}
+                  </span>
+                  <span>
+                    <span className="font-semibold">Last Update:</span> {lastStatusLog ? `${lastStatusLog.status} · ${formatDateTime(lastStatusLog.createdAt)}` : formatDateTime(order.updatedAt)}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 text-xs uppercase tracking-[0.1em] text-zinc-600">
+                  <span>
+                    <span className="font-semibold text-zinc-700">Items:</span> {itemsSummary}
+                  </span>
+                  <span>
+                    {order.status} · PKR {order.totalPkr.toLocaleString()}
+                  </span>
                 </div>
               </article>
             );

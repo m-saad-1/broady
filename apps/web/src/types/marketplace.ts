@@ -314,6 +314,9 @@ export type ProductReview = {
     id: string;
     selectedColor?: string | null;
     selectedSize?: string | null;
+    order?: {
+      id: string;
+    };
   };
   images: Array<{
     id: string;

@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ProductImage } from "@/components/ui/product-image";
-import { getBrandDashboardProducts } from "@/lib/api";
+import { getBrandDashboardOrders, getBrandDashboardProducts, getBrandReviews } from "@/lib/api";
 import { useToastStore } from "@/stores/toast-store";
-import type { Product } from "@/types/marketplace";
+import type { BrandDashboardOrder, Product, ProductReview } from "@/types/marketplace";
 
 const approvalTone: Record<string, string> = {
   PENDING: "border-amber-300 bg-amber-50 text-amber-700",
@@ -26,13 +26,21 @@ function resolveProductImageSrc(imageUrl?: string | null) {
 export function BrandProductsListClient() {
   const pushToast = useToastStore((state) => state.pushToast);
   const [products, setProducts] = useState<Product[]>([]);
+  const [orders, setOrders] = useState<BrandDashboardOrder[]>([]);
+  const [reviews, setReviews] = useState<ProductReview[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadProducts = useCallback(async () => {
     setLoading(true);
     try {
-      const nextProducts = await getBrandDashboardProducts();
+      const [nextProducts, nextOrders, nextReviews] = await Promise.all([
+        getBrandDashboardProducts(),
+        getBrandDashboardOrders(),
+        getBrandReviews(100, 0),
+      ]);
       setProducts(nextProducts);
+      setOrders(nextOrders);
+      setReviews(nextReviews);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to load products";
       pushToast(message, "error");
@@ -53,6 +61,26 @@ export function BrandProductsListClient() {
     }),
     [products],
   );
+
+  const productCounts = useMemo(() => {
+    const orderCounts = new Map<string, Set<string>>();
+    const reviewCounts = new Map<string, number>();
+
+    for (const order of orders) {
+      for (const item of order.items) {
+        const productId = item.product.id;
+        const existing = orderCounts.get(productId) || new Set<string>();
+        existing.add(order.id);
+        orderCounts.set(productId, existing);
+      }
+    }
+
+    for (const review of reviews) {
+      reviewCounts.set(review.productId, (reviewCounts.get(review.productId) || 0) + 1);
+    }
+
+    return { orderCounts, reviewCounts };
+  }, [orders, reviews]);
 
   if (loading) {
     return <p className="text-sm text-zinc-600">Loading products...</p>;
@@ -110,9 +138,17 @@ export function BrandProductsListClient() {
                           {product.topCategory} / {product.subCategory}
                         </p>
                       </div>
-                      <span className={`inline-flex w-fit border px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${approvalTone[product.approvalStatus || "APPROVED"] || approvalTone.APPROVED}`}>
-                        {product.approvalStatus || "APPROVED"}
-                      </span>
+                      <div className="flex flex-col items-end gap-2">
+                        <span className={`inline-flex w-fit border px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${approvalTone[product.approvalStatus || "APPROVED"] || approvalTone.APPROVED}`}>
+                          {product.approvalStatus || "APPROVED"}
+                        </span>
+                        <Link
+                          href={`/brand/products/${product.id}/edit`}
+                          className="inline-flex h-8 items-center border border-zinc-300 px-3 text-xs font-semibold uppercase tracking-[0.12em] hover:border-black hover:bg-black hover:text-white"
+                        >
+                          Edit
+                        </Link>
+                      </div>
                     </div>
 
                     <div className="flex flex-wrap gap-3 text-xs uppercase tracking-[0.1em] text-zinc-600">
@@ -123,15 +159,9 @@ export function BrandProductsListClient() {
 
                     <p className="text-xs text-zinc-500">Sizes: {product.sizes.join(", ")}</p>
 
-                    {/* Note: Orders count and Reviews count can be added here when API is extended to include these metrics */}
-
-                    <div className="flex flex-wrap gap-2 pt-2">
-                      <Link
-                        href={`/brand/products/${product.id}/edit`}
-                        className="inline-flex h-8 items-center border border-zinc-300 px-3 text-xs font-semibold uppercase tracking-[0.12em] hover:border-black hover:bg-black hover:text-white"
-                      >
-                        Edit
-                      </Link>
+                    <div className="flex flex-wrap gap-3 text-xs uppercase tracking-[0.1em] text-zinc-600">
+                      <span>Orders {productCounts.orderCounts.get(product.id)?.size || 0}</span>
+                      <span>Reviews {productCounts.reviewCounts.get(product.id) || 0}</span>
                     </div>
                   </div>
                 </div>

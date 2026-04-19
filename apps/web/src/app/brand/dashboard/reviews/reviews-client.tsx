@@ -7,11 +7,7 @@ import { getBrandReviews, replyToReview } from "@/lib/api";
 import { useToastStore } from "@/stores/toast-store";
 import type { ProductReview } from "@/types/marketplace";
 
-type BrandReviewsClientProps = {
-  brandName: string;
-};
-
-export function BrandReviewsClient({ brandName }: BrandReviewsClientProps) {
+export function BrandReviewsClient() {
   const [reviews, setReviews] = useState<ProductReview[]>([]);
   const [loading, setLoading] = useState(true);
   const [replyByReview, setReplyByReview] = useState<Record<string, string>>({});
@@ -76,7 +72,7 @@ export function BrandReviewsClient({ brandName }: BrandReviewsClientProps) {
     <section className="space-y-4">
       {reviews.map((review) => (
         <article key={review.id} className="border border-zinc-300 p-4">
-          <Link href={review.product?.slug ? `/product/${review.product.slug}/reviews` : "/brand/dashboard/reviews"} className="block">
+          <Link href={review.orderItem?.order?.id ? `/brand/orders/${review.orderItem.order.id}` : "/brand/orders"} className="block">
             <div className="flex flex-wrap items-start gap-3">
               {review.product?.imageUrl ? (
                 <div className="relative h-16 w-16 overflow-hidden border border-zinc-200 bg-zinc-50">
@@ -94,7 +90,7 @@ export function BrandReviewsClient({ brandName }: BrandReviewsClientProps) {
                   <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">
                     {review.product?.name || "Product"} • {review.rating}/5 • {review.status}
                   </p>
-                  <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">View Reviews</p>
+                  <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Open Order</p>
                 </div>
                 <p className="mt-1 text-xs uppercase tracking-[0.12em] text-zinc-500">Customer: {review.user.fullName}</p>
               </div>
@@ -105,7 +101,7 @@ export function BrandReviewsClient({ brandName }: BrandReviewsClientProps) {
 
           {review.brandReply ? (
             <div className="mt-3 border border-zinc-200 bg-zinc-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-600">Reply from {brandName}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-600">Brand reply</p>
               <p className="mt-2 text-sm text-zinc-700">{review.brandReply.content}</p>
             </div>
           ) : null}

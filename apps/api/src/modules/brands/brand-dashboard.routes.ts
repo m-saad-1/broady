@@ -1,5 +1,8 @@
 import { OrderStatus, PaymentStatus, Prisma } from "@prisma/client";
 import { Router } from "express";
+import fs from "node:fs";
+import path from "node:path";
+import multer from "multer";
 import { z } from "zod";
 import { cache } from "../../config/cache.js";
 import { prisma } from "../../config/prisma.js";
@@ -9,6 +12,31 @@ import { queueNotificationEvent } from "../notifications/notification.service.js
 import { productBaseSchema } from "../products/product.validation.js";
 
 const router = Router();
+
+const productUploadsDir = path.resolve(process.cwd(), "uploads", "products");
+fs.mkdirSync(productUploadsDir, { recursive: true });
+
+const productImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, callback) => callback(null, productUploadsDir),
+    filename: (_req, file, callback) => {
+      const ext = path.extname(file.originalname || "").toLowerCase();
+      const safeExt = ext && /^[.]([a-z0-9]{2,5})$/.test(ext) ? ext : ".jpg";
+      callback(null, `product-${Date.now()}-${Math.round(Math.random() * 1e9)}${safeExt}`);
+    },
+  }),
+  limits: {
+    files: 12,
+    fileSize: 5 * 1024 * 1024,
+  },
+  fileFilter: (_req, file, callback) => {
+    if (!file.mimetype.startsWith("image/")) {
+      callback(new Error("Only image files are allowed"));
+      return;
+    }
+    callback(null, true);
+  },
+});
 
 function clearProductCache() {
   cache.clear();
@@ -493,6 +521,24 @@ router.get("/products", async (req, res) => {
   });
 
   return res.json({ data: products });
+});
+
+router.post("/products/uploads", productImageUpload.array("images", 12), async (req, res) => {
+  const access = await getBrandAccess(req.auth!.userId);
+  if (!access) return res.status(403).json({ message: "Brand access required" });
+
+  if (!access.canManageProducts) {
+    return res.status(403).json({ message: "You cannot manage products for this brand" });
+  }
+
+  const files = (req.files as Express.Multer.File[] | undefined) || [];
+  if (!files.length) {
+    return res.status(400).json({ message: "No image files uploaded" });
+  }
+
+  const baseUrl = `${req.protocol}://${req.get("host") || "localhost:4000"}`;
+  const urls = files.map((file) => `${baseUrl}/uploads/products/${file.filename}`);
+  return res.status(201).json({ data: { urls } });
 });
 
 router.post("/products", async (req, res) => {

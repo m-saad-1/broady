@@ -7,13 +7,7 @@ export const metadata = {
 };
 
 export default async function BrandReviewsPage() {
-  const { token } = await getBrandSession();
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api"}/brand-dashboard/overview`, {
-    headers: { Cookie: `broady_token=${token}` },
-    cache: "no-store",
-  });
-
-  const overview = response.ok ? ((await response.json()) as { data: { brand: { name: string } } }).data : null;
+  await getBrandSession();
 
   return (
     <main className="mx-auto w-full max-w-7xl space-y-8 px-4 py-10 lg:px-10">
@@ -23,7 +17,7 @@ export default async function BrandReviewsPage() {
         <p className="max-w-3xl text-sm text-zinc-600">Monitor customer sentiment, inspect reports, and respond publicly from your brand workspace.</p>
       </header>
 
-      <BrandReviewsClient brandName={overview?.brand.name || "Your Brand"} />
+      <BrandReviewsClient />
     </main>
   );
 }

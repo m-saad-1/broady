@@ -32,6 +32,27 @@ function StarDisplay({ rating }: { rating: number }) {
   );
 }
 
+function resolveReviewImageSrc(imageUrl: string) {
+  const normalized = imageUrl.trim();
+  if (!normalized) return "/window.svg";
+  if (normalized.startsWith("http://") || normalized.startsWith("https://")) return normalized;
+
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+  return new URL(normalized, apiBase).toString();
+}
+
+function RatingPipes({ count, total }: { count: number; total: number }) {
+  const filledPipes = total > 0 ? Math.round((count / total) * 20) : 0;
+
+  return (
+    <div className="flex h-2 flex-1 gap-0.5 overflow-hidden border border-zinc-300 bg-white" aria-hidden="true">
+      {Array.from({ length: 20 }, (_, index) => (
+        <span key={index} className={`flex-1 ${index < filledPipes ? "bg-black" : "bg-zinc-100"}`} />
+      ))}
+    </div>
+  );
+}
+
 export function ReviewSection({
   productId,
   productSlug,
@@ -240,16 +261,10 @@ export function ReviewSection({
             {([5, 4, 3, 2, 1] as const).map((rating) => {
               const total = aggregate.totalReviews || 1;
               const count = aggregate[`rating${rating}` as keyof ProductReviewAggregate] as number;
-              // Calculate width as percentage with proper precision
-              // This ensures equal counts produce equal widths
-              const percentage = total > 0 ? (count / total) * 100 : 0;
-              const width = percentage > 0 ? `${Math.max(percentage, 0.5)}%` : "0%";
               return (
                 <div key={rating} className="flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-zinc-500">
                   <span className="w-4">{rating}</span>
-                  <div className="h-2 flex-1 border border-zinc-300 bg-white">
-                    {count > 0 ? <div className="h-full bg-black" style={{ width }} /> : null}
-                  </div>
+                  <RatingPipes count={count} total={total} />
                   <span className="w-10 text-right">{count}</span>
                 </div>
               );
@@ -270,6 +285,7 @@ export function ReviewSection({
                   <p className="text-sm font-semibold">{review.user.fullName}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-3">
                     <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">{review.isVerifiedPurchase ? "Verified Purchase" : "Review"}</p>
+                    {review.product?.name ? <span className="text-xs uppercase tracking-[0.12em] text-zinc-500">Product: {review.product.name}</span> : null}
                     {review.orderItem?.selectedColor && (
                       <span className="text-xs text-zinc-600">
                         Color: <span className="font-semibold">{review.orderItem.selectedColor}</span>
@@ -280,6 +296,11 @@ export function ReviewSection({
                         Size: <span className="font-semibold">{review.orderItem.selectedSize}</span>
                       </span>
                     )}
+                    {review.orderItem?.order?.id ? (
+                      <span className="text-xs text-zinc-600">
+                        Order: <span className="font-semibold">{review.orderItem.order.id.slice(0, 10)}...</span>
+                      </span>
+                    ) : null}
                   </div>
                 </div>
                 <div className="text-right">
@@ -296,24 +317,17 @@ export function ReviewSection({
                     <button
                       key={image.id}
                       type="button"
-                      onClick={() => setActiveImage({ url: image.url, alt: "Review attachment" })}
+                        onClick={() => setActiveImage({ url: resolveReviewImageSrc(image.url), alt: "Review attachment" })}
                       className="relative h-24 w-full overflow-hidden border border-zinc-200 bg-zinc-50"
                     >
                       <img
-                        src={image.url}
+                        src={resolveReviewImageSrc(image.url)}
                         alt="Review attachment"
                         className="h-full w-full object-cover"
                         loading="lazy"
                         onError={(e) => {
                           const img = e.target as HTMLImageElement;
-                          // If it's a relative path, try as-is
-                          if (img.src === image.url && !image.url.startsWith("http")) {
-                            // Already a relative path that failed
-                            img.src = "/window.svg";
-                          } else if (image.url.startsWith("http")) {
-                            // Absolute URL failed, use fallback
-                            img.src = "/window.svg";
-                          }
+                          img.src = "/window.svg";
                         }}
                       />
                     </button>

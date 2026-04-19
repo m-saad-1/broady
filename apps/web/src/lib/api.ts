@@ -712,6 +712,24 @@ export async function getBrandDashboardProducts(): Promise<Product[]> {
   return response.data.map(normalizeProduct);
 }
 
+export async function uploadBrandProductImages(files: File[]): Promise<string[]> {
+  if (!files.length) {
+    return [];
+  }
+
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append("images", file);
+  }
+
+  const response = await authFetch<ApiEnvelope<{ urls: string[] }>>("/brand-dashboard/products/uploads", {
+    method: "POST",
+    body: formData,
+  });
+
+  return response.data.urls;
+}
+
 export async function updateBrandDashboardProduct(
   productId: string,
   payload: Partial<
