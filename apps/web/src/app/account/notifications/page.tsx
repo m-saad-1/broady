@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getUserNotifications } from "@/lib/api";
+import { getNotificationHref } from "@/lib/notification-routing";
 import type { NotificationItem } from "@/types/marketplace";
 
 function formatDateTime(value: string) {
@@ -19,8 +20,6 @@ export default function AccountNotificationsPage() {
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
-    setError(null);
 
     getUserNotifications()
       .then((items) => {
@@ -65,11 +64,9 @@ export default function AccountNotificationsPage() {
                 </div>
                 <p className="mt-2 text-zinc-700">{item.message}</p>
                 <p className="mt-2 text-xs uppercase tracking-[0.12em] text-zinc-500">{formatDateTime(item.createdAt)}</p>
-                {item.order?.id ? (
-                  <Link href={`/account/orders/${item.order.id}`} className="mt-3 inline-flex border border-zinc-300 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em]">
-                    Open order
-                  </Link>
-                ) : null}
+                <Link href={getNotificationHref(item)} className="mt-3 inline-flex border border-zinc-300 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em]">
+                  Open details
+                </Link>
               </article>
             ))}
           </section>

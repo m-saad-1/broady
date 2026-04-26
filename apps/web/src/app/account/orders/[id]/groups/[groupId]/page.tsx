@@ -4,8 +4,10 @@ import { notFound, redirect } from "next/navigation";
 import { ProductImage } from "@/components/ui/product-image";
 import { formatPkr } from "@/lib/utils";
 import { getOrderStatusLabel, getOrderStatusTone } from "@/lib/order-status";
-import type { NotificationItem, UserOrder } from "@/types/marketplace";
+import { resolveMediaUrl } from "@/lib/media-url";
+import type { NotificationItem, ProductReview, UserOrder } from "@/types/marketplace";
 import { NotificationsLoadMore } from "./notifications-load-more";
+import { GroupActions } from "./group-actions";
 
 type VendorGroupDetailPageProps = {
   params: Promise<{ id: string; groupId: string }>;
@@ -45,6 +47,23 @@ async function fetchOrderNotifications(orderId: string, token: string): Promise<
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
+async function fetchMyReviews(token: string): Promise<Record<string, { id: string; createdAt: string }>> {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api"}/reviews/me?limit=300&skip=0`, {
+    headers: { Cookie: `broady_token=${token}` },
+    cache: "no-store",
+  });
+
+  if (response.status === 401 || response.status === 403 || !response.ok) {
+    return {};
+  }
+
+  const json = (await response.json()) as { data: ProductReview[] };
+  return (json.data || []).reduce<Record<string, { id: string; createdAt: string }>>((accumulator, review) => {
+    accumulator[review.orderItemId] = { id: review.id, createdAt: review.createdAt };
+    return accumulator;
+  }, {});
+}
+
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("en-PK", {
     dateStyle: "medium",
@@ -53,8 +72,7 @@ function formatDateTime(value: string) {
 }
 
 function resolveProductImageSrc(imageUrl?: string | null) {
-  const normalized = (imageUrl || "").trim();
-  return normalized || "/window.svg";
+  return resolveMediaUrl(imageUrl);
 }
 
 export default async function VendorGroupDetailPage({ params }: VendorGroupDetailPageProps) {
@@ -62,7 +80,11 @@ export default async function VendorGroupDetailPage({ params }: VendorGroupDetai
   if (!token) redirect("/login?next=/account/orders");
 
   const { id, groupId } = await params;
-  const [order, notifications] = await Promise.all([fetchOrder(id, token), fetchOrderNotifications(id, token)]);
+  const [order, notifications, myReviewsByOrderItemId] = await Promise.all([
+    fetchOrder(id, token),
+    fetchOrderNotifications(id, token),
+    fetchMyReviews(token),
+  ]);
 
   const group = order.subOrders.find((item) => item.id === groupId);
   if (!group) {
@@ -75,13 +97,17 @@ export default async function VendorGroupDetailPage({ params }: VendorGroupDetai
     const brandName = group.brand?.name?.toLowerCase() || "";
     return brandName ? message.includes(brandName) || title.includes(brandName) : true;
   });
+  const canWriteReview = group.status === "DELIVERED";
+  const canCancelGroup = ["PENDING", "CONFIRMED"].includes(group.status);
+  const canReorderGroup = ["DELIVERED", "CANCELED"].includes(group.status);
 
   return (
     <main className="mx-auto w-full max-w-5xl space-y-8 px-4 py-10 lg:px-10">
       <header className="space-y-3 border-b border-zinc-300 pb-5">
         <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Order Detail</p>
         <h1 className="font-heading text-5xl uppercase">{group.brand?.name || "Brand"} Group</h1>
-        <p className="text-sm text-zinc-600">Group {group.id.slice(0, 10)}... in order {order.id.slice(0, 10)}...</p>
+        <p className="text-sm text-zinc-700"><span className="font-semibold">Order ID:</span> {order.id}</p>
+        <p className="text-sm text-zinc-700"><span className="font-semibold">Group ID:</span> {group.id}</p>
       </header>
 
       <section className="grid gap-4 border border-zinc-300 p-5 md:grid-cols-2">
@@ -105,6 +131,15 @@ export default async function VendorGroupDetailPage({ params }: VendorGroupDetai
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Order Metadata</p>
           <p className="mt-2 text-sm text-zinc-700">Payment: {order.paymentMethod} / {order.paymentStatus}</p>
           <p className="mt-2 text-sm text-zinc-700">Delivery: {order.deliveryAddress}</p>
+        </div>
+        <div className="md:col-span-2">
+          <GroupActions
+            orderId={order.id}
+            subOrderId={group.id}
+            brandName={group.brand?.name || "Brand"}
+            canCancel={canCancelGroup}
+            canReorder={canReorderGroup}
+          />
         </div>
       </section>
 
@@ -130,18 +165,39 @@ export default async function VendorGroupDetailPage({ params }: VendorGroupDetai
                 >
                   {item.product.name}
                 </Link>
-                <p className="mt-1 text-xs text-zinc-600">Size: {item.selectedSize || "Not specified"}</p>
-                <p className="text-xs text-zinc-600">Color: {item.selectedColor || "Not specified"}</p>
-                <p className="text-xs text-zinc-600">Quantity: {item.quantity}</p>
-                <p className="text-xs text-zinc-600">Price: {formatPkr(item.unitPricePkr)}</p>
+                <div className="mt-1 flex flex-wrap gap-3 text-xs text-zinc-700">
+                  <p className="font-semibold">Size: {item.selectedSize || "Not specified"}</p>
+                  <p className="font-semibold">Color: {item.selectedColor || "Not specified"}</p>
+                  <p className="font-semibold">Quantity: {item.quantity}</p>
+                  <p className="font-semibold">Price: {formatPkr(item.unitPricePkr)}</p>
+                </div>
               </div>
 
-              <Link
-                href={`/account/reviews?orderItemId=${encodeURIComponent(item.id)}`}
-                className="inline-flex h-9 items-center border border-black bg-black px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-white"
-              >
-                Review
-              </Link>
+              {canWriteReview ? (
+                myReviewsByOrderItemId[item.id] ? (
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      href={`/account/reviews?reviewId=${encodeURIComponent(myReviewsByOrderItemId[item.id].id)}`}
+                      className="inline-flex h-9 items-center border border-zinc-300 px-3 text-[10px] font-semibold uppercase tracking-[0.12em]"
+                    >
+                      View Review
+                    </Link>
+                    <Link
+                      href={`/account/reviews?editReviewId=${encodeURIComponent(myReviewsByOrderItemId[item.id].id)}`}
+                      className="inline-flex h-9 items-center border border-black bg-black px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-white"
+                    >
+                      Edit Review
+                    </Link>
+                  </div>
+                ) : (
+                  <Link
+                    href={`/account/reviews?orderItemId=${encodeURIComponent(item.id)}&formOpen=1`}
+                    className="inline-flex h-9 items-center border border-black bg-black px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-white"
+                  >
+                    Write Review
+                  </Link>
+                )
+              ) : null}
             </article>
           ))}
         </div>

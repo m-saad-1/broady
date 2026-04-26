@@ -22,5 +22,8 @@
   "devDependencies": {
     "concurrently": "^9.1.2",
     "pm2": "^6.0.14"
+  },
+  "dependencies": {
+    "docx": "^9.6.1"
   }
 }

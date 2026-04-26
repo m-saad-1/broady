@@ -8,6 +8,8 @@ import { cache } from "../../config/cache.js";
 import { prisma } from "../../config/prisma.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { notificationEventNames } from "../notifications/notification.events.js";
+import { normalizeOrderNotificationPresentation } from "../notifications/notification.presentation.js";
+import { resolveNotificationTargetPath } from "../notifications/notification.targets.js";
 import { queueNotificationEvent } from "../notifications/notification.service.js";
 import { productBaseSchema } from "../products/product.validation.js";
 
@@ -64,6 +66,18 @@ type OrderLifecycleEventName =
 
 function normalizeStatus(status: "PENDING" | "CONFIRMED" | "PACKED" | "SHIPPED" | "DELIVERED" | "CANCELED" | "CANCELLED"): OrderStatus {
   return status === "CANCELLED" ? "CANCELED" : status;
+}
+
+const OPEN_ORDER_STATUSES: OrderStatus[] = [
+  OrderStatus.PENDING,
+  OrderStatus.CONFIRMED,
+  OrderStatus.PACKED,
+  OrderStatus.PARTIALLY_SHIPPED,
+  OrderStatus.SHIPPED,
+];
+
+function isOpenOrderStatus(status: OrderStatus) {
+  return OPEN_ORDER_STATUSES.includes(status);
 }
 
 function composeStatusNote(note?: string, trackingId?: string | null) {
@@ -210,14 +224,20 @@ router.get("/overview", async (req, res) => {
   const access = await getBrandAccess(req.auth!.userId);
   if (!access) return res.status(403).json({ message: "Brand access required" });
 
-  const [totalProducts, activeProducts, subOrders, recentSubOrders] = await Promise.all([
-    prisma.product.count({ where: { brandId: access.brandId } }),
-    prisma.product.count({ where: { brandId: access.brandId, isActive: true } }),
+  const [products, subOrders, recentOrders] = await Promise.all([
+    prisma.product.findMany({
+      where: { brandId: access.brandId },
+      select: {
+        approvalStatus: true,
+        isActive: true,
+        stock: true,
+      },
+    }),
     prisma.subOrder.findMany({
       where: { brandId: access.brandId },
-      include: {
-        items: true,
-        order: { select: { id: true, userId: true } },
+      select: {
+        status: true,
+        subtotalPkr: true,
       },
     }),
     prisma.subOrder.findMany({
@@ -239,8 +259,20 @@ router.get("/overview", async (req, res) => {
     }),
   ]);
 
-  const grossPkr = subOrders.reduce((acc, subOrder) => acc + subOrder.subtotalPkr, 0);
-  const netPkr = Math.round(grossPkr * (1 - access.brand.commissionRate / 100));
+  const totalProducts = products.length;
+  const activeProducts = products.filter((product) => product.isActive && product.approvalStatus === "APPROVED").length;
+  const pendingProducts = products.filter((product) => product.approvalStatus === "PENDING").length;
+  const outOfStockProducts = products.filter(
+    (product) => product.isActive && product.approvalStatus === "APPROVED" && product.stock <= 0,
+  ).length;
+  const totalOrders = subOrders.length;
+  const openOrders = subOrders.filter((subOrder) => isOpenOrderStatus(subOrder.status)).length;
+  const deliveredOrders = subOrders.filter((subOrder) => subOrder.status === OrderStatus.DELIVERED).length;
+  const cancelledOrders = subOrders.filter((subOrder) => subOrder.status === OrderStatus.CANCELED).length;
+  const totalSalesPkr = subOrders.reduce(
+    (acc, subOrder) => acc + (subOrder.status === OrderStatus.DELIVERED ? subOrder.subtotalPkr : 0),
+    0,
+  );
 
   const byStatus = subOrders.reduce<Record<string, number>>((acc, subOrder) => {
     const key = subOrder.status;
@@ -254,14 +286,16 @@ router.get("/overview", async (req, res) => {
       metrics: {
         totalProducts,
         activeProducts,
-        grossPkr,
-        estimatedNetPkr: netPkr,
-        commissionRate: access.brand.commissionRate,
-        orderItems: subOrders.reduce((count, subOrder) => count + subOrder.items.length, 0),
-        totalSubOrders: subOrders.length,
+        pendingProducts,
+        outOfStockProducts,
+        totalOrders,
+        openOrders,
+        deliveredOrders,
+        cancelledOrders,
+        totalSalesPkr,
         byStatus,
       },
-      recentSubOrders,
+      recentOrders,
     },
   });
 });
@@ -386,6 +420,10 @@ router.patch("/orders/:orderId/status", async (req, res) => {
     return res.status(409).json({ message: `Order status cannot move from ${order.status} to ${status}.` });
   }
 
+  if (status === OrderStatus.SHIPPED && !trackingId?.trim()) {
+    return res.status(400).json({ message: "Tracking ID is required when setting status to SHIPPED." });
+  }
+
   if (!statusChanged && !trackingChanged && !parsed.data.note && !parsed.data.customerNote) {
     return res.json({ data: order });
   }
@@ -487,10 +525,6 @@ router.patch("/orders/:orderId/status", async (req, res) => {
   };
 
   const parentStatusAfterUpdate = updated.order.status;
-  const resolvedEventName: OrderLifecycleEventName =
-    status === OrderStatus.DELIVERED && parentStatusAfterUpdate !== OrderStatus.DELIVERED
-      ? notificationEventNames.orderShipped
-      : orderEventByStatus[status];
 
   const customerFacingNote = buildSubOrderUpdateNote(
     status,
@@ -499,14 +533,19 @@ router.patch("/orders/:orderId/status", async (req, res) => {
     parsed.data.customerNote,
   );
 
-  queueNotificationEvent({
-    name: resolvedEventName,
-    orderId: order.orderId,
-    userId: order.order.userId,
-    brandId: access.brandId,
-    changedByRole: "BRAND",
-    note: customerFacingNote,
-  });
+  if (statusChanged) {
+    queueNotificationEvent({
+      name: orderEventByStatus[status],
+      orderId: order.orderId,
+      subOrderId: order.id,
+      userId: order.order.userId,
+      brandId: access.brandId,
+      brandName: access.brand.name,
+      changedByRole: "BRAND",
+      note: customerFacingNote,
+      notifyAdmin: true,
+    });
+  }
 
   return res.json({ data: updated });
 });
@@ -627,7 +666,25 @@ router.get("/notifications", async (req, res) => {
     take: 100,
   });
 
-  return res.json({ data: notifications });
+  return res.json({
+    data: notifications.map((item) => ({
+      ...normalizeOrderNotificationPresentation(
+        {
+          ...item,
+          orderId: item.order?.id,
+        },
+        "BRAND",
+      ),
+      targetPath: resolveNotificationTargetPath({
+        type: item.type,
+        orderId: item.order?.id,
+        title: item.title,
+        message: item.message,
+        role: req.auth?.role,
+        isBrandContext: true,
+      }),
+    })),
+  });
 });
 
 export default router;

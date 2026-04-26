@@ -17,81 +17,246 @@ export const notificationChannelPreference = {
 export type NotificationChannelPreference =
   (typeof notificationChannelPreference)[keyof typeof notificationChannelPreference];
 
-export type NotificationEventRule = {
-  audiences: NotificationAudience[];
+export type NotificationAudienceRule = {
+  audience: NotificationAudience;
   channels: NotificationChannelPreference[];
+};
+
+export type NotificationEventRule = {
+  audienceRules: NotificationAudienceRule[];
   priority: "HIGH" | "LOW";
 };
 
 export const notificationRules: Record<NotificationEventName, NotificationEventRule> = {
   OrderPlaced: {
-    audiences: [notificationAudience.user, notificationAudience.admin, notificationAudience.brandMembers],
-    channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+      {
+        audience: notificationAudience.brandMembers,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.whatsapp],
+      },
+      {
+        audience: notificationAudience.admin,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+    ],
     priority: "HIGH",
   },
   OrderConfirmed: {
-    audiences: [notificationAudience.user, notificationAudience.admin, notificationAudience.brandMembers],
-    channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+      {
+        audience: notificationAudience.brandMembers,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+    ],
     priority: "HIGH",
   },
   OrderPacked: {
-    audiences: [notificationAudience.user, notificationAudience.admin, notificationAudience.brandMembers],
-    channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+      {
+        audience: notificationAudience.brandMembers,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+    ],
     priority: "HIGH",
   },
   OrderShipped: {
-    audiences: [notificationAudience.user, notificationAudience.admin, notificationAudience.brandMembers],
-    channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+      {
+        audience: notificationAudience.brandMembers,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+    ],
     priority: "HIGH",
   },
   OrderDelivered: {
-    audiences: [notificationAudience.user, notificationAudience.admin, notificationAudience.brandMembers],
-    channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+      {
+        audience: notificationAudience.brandMembers,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+      {
+        audience: notificationAudience.admin,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+    ],
     priority: "HIGH",
   },
   OrderCancelled: {
-    audiences: [notificationAudience.user, notificationAudience.admin, notificationAudience.brandMembers],
-    channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+      {
+        audience: notificationAudience.brandMembers,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.whatsapp],
+      },
+      {
+        audience: notificationAudience.admin,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+    ],
     priority: "HIGH",
   },
   PaymentInitiated: {
-    audiences: [notificationAudience.user, notificationAudience.admin],
-    channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+      {
+        audience: notificationAudience.admin,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+    ],
     priority: "HIGH",
   },
   PaymentSuccess: {
-    audiences: [notificationAudience.user, notificationAudience.admin],
-    channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+      {
+        audience: notificationAudience.admin,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+    ],
     priority: "HIGH",
   },
   PaymentFailed: {
-    audiences: [notificationAudience.user, notificationAudience.admin],
-    channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+      {
+        audience: notificationAudience.admin,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+    ],
     priority: "HIGH",
   },
   RefundProcessed: {
-    audiences: [notificationAudience.user, notificationAudience.admin],
-    channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+      {
+        audience: notificationAudience.admin,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+    ],
     priority: "HIGH",
   },
   ProductSubmitted: {
-    audiences: [notificationAudience.admin],
-    channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+    audienceRules: [
+      {
+        audience: notificationAudience.admin,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+    ],
     priority: "HIGH",
   },
   ProductApproved: {
-    audiences: [notificationAudience.brandMembers],
-    channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+    audienceRules: [
+      {
+        audience: notificationAudience.brandMembers,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+    ],
     priority: "HIGH",
   },
   ProductRejected: {
-    audiences: [notificationAudience.brandMembers],
-    channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+    audienceRules: [
+      {
+        audience: notificationAudience.brandMembers,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+    ],
     priority: "HIGH",
   },
   BrandApproved: {
-    audiences: [notificationAudience.brandMembers],
-    channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+    audienceRules: [
+      {
+        audience: notificationAudience.brandMembers,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+    ],
+    priority: "HIGH",
+  },
+  ReviewSubmitted: {
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+      {
+        audience: notificationAudience.brandMembers,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+      {
+        audience: notificationAudience.admin,
+        channels: [notificationChannelPreference.dashboard],
+      },
+    ],
+    priority: "HIGH",
+  },
+  ReviewHelpfulVoted: {
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard],
+      },
+    ],
+    priority: "LOW",
+  },
+  ReviewReported: {
+    audienceRules: [
+      {
+        audience: notificationAudience.admin,
+        channels: [notificationChannelPreference.dashboard],
+      },
+    ],
+    priority: "HIGH",
+  },
+  ReviewModerated: {
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+    ],
+    priority: "HIGH",
+  },
+  ReviewReplied: {
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+    ],
     priority: "HIGH",
   },
 };

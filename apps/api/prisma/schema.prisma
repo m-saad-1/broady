@@ -122,6 +122,15 @@ enum ProductTemplateType {
   FABRIC_CARE
 }
 
+enum UserActivityEventType {
+  PRODUCT_VIEW
+  PRODUCT_ADDED_TO_CART
+  PRODUCT_PURCHASED
+  SEARCH_QUERY
+  CATEGORY_BROWSE
+  WISHLIST_ADDED
+}
+
 model User {
   id          String         @id @default(cuid())
   email       String         @unique
@@ -153,6 +162,7 @@ model User {
   resolvedReviewReports ReviewReport[] @relation("ReviewReportsResolvedBy")
   brandReviewReplies BrandReviewReply[]
   productTemplates ProductContentTemplate[] @relation("TemplateCreatedBy")
+  activities   UserActivity[]
 }
 
 model UserPaymentMethod {
@@ -291,6 +301,7 @@ model Product {
   wishlistItems WishlistItem[]
   reviews     Review[]
   reviewAggregate ProductReviewAggregate?
+  activities  UserActivity[]
 
   @@index([brandId, topCategory, subCategory])
   @@index([topCategory, subCategory])
@@ -559,4 +570,23 @@ model NotificationChannelLog {
   createdAt      DateTime                   @default(now())
 
   @@index([notificationId])
+}
+
+model UserActivity {
+  id          String                @id @default(cuid())
+  userId      String
+  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product?              @relation(fields: [productId], references: [id], onDelete: SetNull)
+  eventType   UserActivityEventType
+  searchQuery String?
+  topCategory String?
+  subCategory String?
+  weight      Float                 @default(0)
+  metadata    Json?
+  createdAt   DateTime              @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, eventType, createdAt])
+  @@index([productId, eventType, createdAt])
 }

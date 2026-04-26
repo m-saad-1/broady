@@ -1,4 +1,4 @@
-import { NotificationType, Prisma, ReviewModerationAction, ReviewReportReason, ReviewReportStatus, ReviewStatus, Role } from "@prisma/client";
+import { Prisma, ReviewModerationAction, ReviewReportReason, ReviewReportStatus, ReviewStatus } from "@prisma/client";
 import { Router } from "express";
 import fs from "node:fs";
 import path from "node:path";
@@ -6,11 +6,15 @@ import multer from "multer";
 import { z } from "zod";
 import { prisma } from "../../config/prisma.js";
 import { requireAdmin, requireAuth } from "../../middleware/auth.js";
-import { createNotificationWithChannels } from "../notifications/notification.service.js";
+import { createUserAndIpRateLimiters } from "../../middleware/rate-limit.js";
+import { notificationEventNames } from "../notifications/notification.events.js";
+import { queueNotificationEvent } from "../notifications/notification.service.js";
 import { productImageUrlSchema } from "../products/product.validation.js";
 import { getBrandAccessForUser, recomputeProductReviewAggregate } from "./reviews.service.js";
 
 const router = Router();
+const [reviewUploadIpLimit, reviewUploadUserLimit] = createUserAndIpRateLimiters("reviews-upload", 60_000, 15, 40);
+const [reviewCreateIpLimit, reviewCreateUserLimit] = createUserAndIpRateLimiters("reviews-create", 5 * 60_000, 8, 20);
 
 const createReviewSchema = z.object({
   orderItemId: z.string().trim().min(1),
@@ -167,7 +171,7 @@ router.get("/product/:productId", async (req, res) => {
 
 router.use(requireAuth);
 
-router.post("/uploads", reviewImageUpload.array("images", 6), async (req, res) => {
+router.post("/uploads", reviewUploadIpLimit, reviewUploadUserLimit, reviewImageUpload.array("images", 6), async (req, res) => {
   const files = (req.files as Express.Multer.File[] | undefined) || [];
   if (!files.length) {
     return res.status(400).json({ message: "No image files uploaded" });
@@ -206,7 +210,7 @@ router.get("/me", async (req, res) => {
   return res.json({ data: items });
 });
 
-router.post("/", async (req, res) => {
+router.post("/", reviewCreateIpLimit, reviewCreateUserLimit, async (req, res) => {
   const parsed = createReviewSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ message: "Invalid payload", issues: parsed.error.flatten() });
@@ -219,6 +223,10 @@ router.post("/", async (req, res) => {
         select: {
           id: true,
           userId: true,
+        },
+      },
+      subOrder: {
+        select: {
           status: true,
         },
       },
@@ -250,8 +258,8 @@ router.post("/", async (req, res) => {
     return res.status(403).json({ message: "You can only review your own purchases" });
   }
 
-  if (orderItem.order.status !== "DELIVERED") {
-    return res.status(409).json({ message: "You can review only delivered orders" });
+  if (orderItem.subOrder?.status !== "DELIVERED") {
+    return res.status(409).json({ message: "You can review only delivered items" });
   }
 
   if (!orderItem.product.isActive || orderItem.product.approvalStatus !== "APPROVED") {
@@ -294,64 +302,18 @@ router.post("/", async (req, res) => {
 
     await recomputeProductReviewAggregate(orderItem.product.id, tx);
 
-    await createNotificationWithChannels({
-      prismaClient: tx,
-      type: NotificationType.PRODUCT_REVIEW_SUBMITTED,
-      title: "Review submitted",
-      message: `Thanks for reviewing ${orderItem.product.name} on Broady.`,
-      userId: req.auth!.userId,
-      orderId: orderItem.order.id,
-      emailRecipient: created.user.email,
-      emailSubject: `Review received for ${orderItem.product.name}`,
-      emailText: `Thanks for sharing your feedback on ${orderItem.product.name}.`,
-    });
-
-    const members = await tx.brandMember.findMany({
-      where: { brandId: orderItem.brand.id },
-      include: {
-        user: { select: { id: true, email: true } },
-      },
-    });
-
-    for (const member of members) {
-      await createNotificationWithChannels({
-        prismaClient: tx,
-        type: NotificationType.PRODUCT_REVIEW_SUBMITTED,
-        title: "New product review",
-        message: `A customer reviewed ${orderItem.product.name} on Broady.`,
-        userId: member.user.id,
-        brandId: orderItem.brand.id,
-        orderId: orderItem.order.id,
-        emailRecipient: member.user.email || orderItem.brand.contactEmail,
-      });
-    }
-
-    const admins = await tx.user.findMany({
-      where: {
-        role: {
-          in: [Role.ADMIN, Role.SUPER_ADMIN],
-        },
-      },
-      select: {
-        id: true,
-        email: true,
-      },
-    });
-
-    for (const admin of admins) {
-      await createNotificationWithChannels({
-        prismaClient: tx,
-        type: NotificationType.PRODUCT_REVIEW_SUBMITTED,
-        title: "Review tracking event",
-        message: `New review submitted for ${orderItem.product.name}.`,
-        userId: admin.id,
-        brandId: orderItem.brand.id,
-        orderId: orderItem.order.id,
-        emailRecipient: admin.email,
-      });
-    }
-
     return created;
+  });
+
+  queueNotificationEvent({
+    name: notificationEventNames.reviewSubmitted,
+    reviewId: review.id,
+    orderId: orderItem.order.id,
+    userId: req.auth!.userId,
+    brandId: orderItem.brand.id,
+    productId: orderItem.product.id,
+    productName: orderItem.product.name,
+    brandName: orderItem.brand.name,
   });
 
   return res.status(201).json({ data: review });
@@ -462,7 +424,13 @@ router.post("/item/:reviewId/helpfulness", async (req, res) => {
 
   const review = await prisma.review.findUnique({
     where: { id: String(req.params.reviewId) },
-    select: { id: true, status: true, userId: true },
+    select: {
+      id: true,
+      status: true,
+      userId: true,
+      productId: true,
+      product: { select: { name: true } },
+    },
   });
 
   if (!review || review.status !== ReviewStatus.VISIBLE) {
@@ -489,6 +457,16 @@ router.post("/item/:reviewId/helpfulness", async (req, res) => {
       isHelpful: parsed.data.isHelpful,
     },
   });
+
+  if (parsed.data.isHelpful) {
+    queueNotificationEvent({
+      name: notificationEventNames.reviewHelpfulVoted,
+      reviewId: review.id,
+      userId: review.userId,
+      productId: review.productId,
+      productName: review.product.name,
+    });
+  }
 
   return res.json({ data: vote });
 });
@@ -531,38 +509,15 @@ router.post("/item/:reviewId/report", async (req, res) => {
       },
     });
 
-    await createNotificationWithChannels({
-      prismaClient: tx,
-      type: NotificationType.PRODUCT_REVIEW_REPORTED,
-      title: "Review reported",
-      message: `A review for ${review.product.name} was reported and needs moderation.`,
-      userId: req.auth!.userId,
-    });
-
-    const admins = await tx.user.findMany({
-      where: {
-        role: {
-          in: [Role.ADMIN, Role.SUPER_ADMIN],
-        },
-      },
-      select: {
-        id: true,
-        email: true,
-      },
-    });
-
-    for (const admin of admins) {
-      await createNotificationWithChannels({
-        prismaClient: tx,
-        type: NotificationType.PRODUCT_REVIEW_REPORTED,
-        title: "Review report requires moderation",
-        message: `A review for ${review.product.name} was reported by a customer.`,
-        userId: admin.id,
-        emailRecipient: admin.email,
-      });
-    }
-
     return created;
+  });
+
+  queueNotificationEvent({
+    name: notificationEventNames.reviewReported,
+    reviewId: review.id,
+    productId: review.productId,
+    productName: review.product.name,
+    brandId: review.brandId,
   });
 
   return res.status(201).json({ data: report });
@@ -634,6 +589,7 @@ router.post("/item/:reviewId/reply", async (req, res) => {
     include: {
       product: { select: { name: true } },
       user: { select: { id: true, email: true } },
+      brand: { select: { name: true } },
     },
   });
 
@@ -663,16 +619,17 @@ router.post("/item/:reviewId/reply", async (req, res) => {
       },
     });
 
-    await createNotificationWithChannels({
-      prismaClient: tx,
-      type: NotificationType.PRODUCT_REVIEW_REPLIED,
-      title: "Brand replied to your review",
-      message: `A brand replied to your review for ${review.product.name}.`,
-      userId: review.user.id,
-      emailRecipient: review.user.email,
-    });
-
     return upserted;
+  });
+
+  queueNotificationEvent({
+    name: notificationEventNames.reviewReplied,
+    reviewId: review.id,
+    userId: review.user.id,
+    productId: review.productId,
+    productName: review.product.name,
+    brandId: access.brandId,
+    brandName: review.brand.name,
   });
 
   return res.status(201).json({ data: reply });
@@ -811,16 +768,16 @@ router.patch("/admin/:reviewId/moderate", requireAdmin, async (req, res) => {
 
     await recomputeProductReviewAggregate(review.productId, tx);
 
-    await createNotificationWithChannels({
-      prismaClient: tx,
-      type: NotificationType.PRODUCT_REVIEW_MODERATED,
-      title: "Your review was moderated",
-      message: `Your review for ${review.product.name} is now ${statusByAction[parsed.data.action].toLowerCase()}.`,
-      userId: review.user.id,
-      emailRecipient: review.user.email,
-    });
-
     return updatedReview;
+  });
+
+  queueNotificationEvent({
+    name: notificationEventNames.reviewModerated,
+    reviewId: review.id,
+    userId: review.user.id,
+    productId: review.productId,
+    productName: review.product.name,
+    moderationStatus: statusByAction[parsed.data.action],
   });
 
   return res.json({ data: updated });

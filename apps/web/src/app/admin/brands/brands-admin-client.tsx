@@ -8,6 +8,7 @@ import {
   getAdminBrands,
   updateBrand,
 } from "@/lib/api";
+import { useFormSubmission } from "@/hooks/use-form-submission";
 import { useToastStore } from "@/stores/toast-store";
 import type { Brand } from "@/types/marketplace";
 
@@ -49,9 +50,9 @@ function getInviteStorageKey(brandId: string) {
 
 export function BrandsAdminClient() {
   const pushToast = useToastStore((state) => state.pushToast);
+  const brandSubmission = useFormSubmission();
   const [brands, setBrands] = useState<Brand[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSavingBrand, setIsSavingBrand] = useState(false);
   const [editingBrandId, setEditingBrandId] = useState<string | null>(null);
   const [brandForm, setBrandForm] = useState<BrandFormState>(defaultBrandForm);
   const [inviteUrlByBrandId, setInviteUrlByBrandId] = useState<Record<string, string>>({});
@@ -94,9 +95,8 @@ export function BrandsAdminClient() {
 
   const handleBrandSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setIsSavingBrand(true);
 
-    try {
+    await brandSubmission.execute(async () => {
       const payload = {
         name: brandForm.name.trim(),
         slug: brandForm.slug.trim(),
@@ -123,12 +123,12 @@ export function BrandsAdminClient() {
       setEditingBrandId(null);
       setBrandForm(defaultBrandForm);
       await loadData();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to save brand";
-      pushToast(message, "error");
-    } finally {
-      setIsSavingBrand(false);
-    }
+    }, {
+      errorMessage: "Unable to save brand",
+      onError: (_error, message) => {
+        pushToast(message, "error");
+      },
+    });
   };
 
   const handleDeleteBrand = async (brand: Brand) => {
@@ -239,8 +239,8 @@ export function BrandsAdminClient() {
             Verified brand
           </label>
           <div className="flex gap-2">
-            <button type="submit" disabled={isSavingBrand} className="h-10 border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-50">
-              {isSavingBrand ? "Saving" : editingBrandId ? "Update Brand" : "Create Brand"}
+            <button type="submit" disabled={brandSubmission.isSubmitting} className="h-10 border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-50">
+              {brandSubmission.isSubmitting ? "Saving" : editingBrandId ? "Update Brand" : "Create Brand"}
             </button>
             {editingBrandId ? (
               <button

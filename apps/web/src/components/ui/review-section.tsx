@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { ProductImage } from "@/components/ui/product-image";
 import { getMyReviews, getProductReviews, getUserOrders, reportReview, voteReviewHelpfulness } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
 import { useToastStore } from "@/stores/toast-store";
@@ -32,23 +33,12 @@ function StarDisplay({ rating }: { rating: number }) {
   );
 }
 
-function resolveReviewImageSrc(imageUrl: string) {
-  const normalized = imageUrl.trim();
-  if (!normalized) return "/window.svg";
-  if (normalized.startsWith("http://") || normalized.startsWith("https://")) return normalized;
-
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
-  return new URL(normalized, apiBase).toString();
-}
-
 function RatingPipes({ count, total }: { count: number; total: number }) {
-  const filledPipes = total > 0 ? Math.round((count / total) * 20) : 0;
+  const ratio = total > 0 ? Math.max(0, Math.min(1, count / total)) : 0;
 
   return (
-    <div className="flex h-2 flex-1 gap-0.5 overflow-hidden border border-zinc-300 bg-white" aria-hidden="true">
-      {Array.from({ length: 20 }, (_, index) => (
-        <span key={index} className={`flex-1 ${index < filledPipes ? "bg-black" : "bg-zinc-100"}`} />
-      ))}
+    <div className="h-2 flex-1 overflow-hidden rounded-sm bg-zinc-200" aria-hidden="true">
+      <div className="h-full bg-zinc-800" style={{ width: `${ratio * 100}%` }} />
     </div>
   );
 }
@@ -101,8 +91,14 @@ export function ReviewSection({
         if (!mounted) return;
 
         const deliveredItemsForProduct = orders
-          .filter((order) => order.status === "DELIVERED")
-          .flatMap((order) => order.items)
+          .flatMap((order) => {
+            const deliveredIds = new Set(
+              order.subOrders
+                .filter((subOrder) => subOrder.status === "DELIVERED")
+                .flatMap((subOrder) => subOrder.items.map((item) => item.id)),
+            );
+            return order.items.filter((item) => deliveredIds.has(item.id));
+          })
           .filter((item) => item.product.id === productId);
 
         const reviewedOrderItemIds = new Set(
@@ -222,7 +218,7 @@ export function ReviewSection({
             </Link>
           ) : null}
           {canWriteReview ? (
-            <Link href={`/account/reviews?orderItemId=${encodeURIComponent(writeOrderItemId || "")}`} className="border border-black bg-black px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-white">
+            <Link href={`/account/reviews?orderItemId=${encodeURIComponent(writeOrderItemId || "")}&formOpen=1`} className="border border-black bg-black px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-white">
               Write Review
             </Link>
           ) : null}
@@ -284,21 +280,12 @@ export function ReviewSection({
                 <div>
                   <p className="text-sm font-semibold">{review.user.fullName}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-3">
-                    <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">{review.isVerifiedPurchase ? "Verified Purchase" : "Review"}</p>
                     {review.product?.name ? <span className="text-xs uppercase tracking-[0.12em] text-zinc-500">Product: {review.product.name}</span> : null}
-                    {review.orderItem?.selectedColor && (
-                      <span className="text-xs text-zinc-600">
-                        Color: <span className="font-semibold">{review.orderItem.selectedColor}</span>
-                      </span>
-                    )}
-                    {review.orderItem?.selectedSize && (
-                      <span className="text-xs text-zinc-600">
-                        Size: <span className="font-semibold">{review.orderItem.selectedSize}</span>
-                      </span>
-                    )}
+                    <span className="text-xs text-zinc-600">Color: <span className="font-semibold">{review.orderItem?.selectedColor || "N/A"}</span></span>
+                    <span className="text-xs text-zinc-600">Size: <span className="font-semibold">{review.orderItem?.selectedSize || "N/A"}</span></span>
                     {review.orderItem?.order?.id ? (
                       <span className="text-xs text-zinc-600">
-                        Order: <span className="font-semibold">{review.orderItem.order.id.slice(0, 10)}...</span>
+                        Order: <span className="font-semibold">{review.orderItem.order.id}</span>
                       </span>
                     ) : null}
                   </div>
@@ -317,19 +304,10 @@ export function ReviewSection({
                     <button
                       key={image.id}
                       type="button"
-                        onClick={() => setActiveImage({ url: resolveReviewImageSrc(image.url), alt: "Review attachment" })}
+                      onClick={() => setActiveImage({ url: image.url, alt: "Review attachment" })}
                       className="relative h-24 w-full overflow-hidden border border-zinc-200 bg-zinc-50"
                     >
-                      <img
-                        src={resolveReviewImageSrc(image.url)}
-                        alt="Review attachment"
-                        className="h-full w-full object-cover"
-                        loading="lazy"
-                        onError={(e) => {
-                          const img = e.target as HTMLImageElement;
-                          img.src = "/window.svg";
-                        }}
-                      />
+                      <ProductImage src={image.url} alt="Review attachment" fill sizes="(max-width: 640px) 50vw, 25vw" className="object-cover" />
                     </button>
                   ))}
                 </div>
@@ -440,7 +418,9 @@ export function ReviewSection({
             <button type="button" onClick={() => setActiveImage(null)} className="absolute right-2 top-2 z-10 border border-white/40 bg-black/60 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-white">
               Close
             </button>
-            <img src={activeImage.url} alt={activeImage.alt} className="max-h-[90vh] w-full object-contain" />
+            <div className="relative h-[90vh] w-full">
+              <ProductImage src={activeImage.url} alt={activeImage.alt} fill sizes="100vw" className="object-contain" />
+            </div>
           </div>
         </div>
       ) : null}

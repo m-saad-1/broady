@@ -66,8 +66,13 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
   });
   const showOperationsPanels = mode === "dashboard";
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
+  const loadAll = useCallback(async (refreshMode = false) => {
+    if (refreshMode) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
     try {
       const [nextOverview, nextOrders, nextProducts, nextNotifications] = await Promise.all([
         getBrandDashboardOverview(),
@@ -152,7 +157,7 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
         customerNote: draft.customerNote.trim() || undefined,
       });
       pushToast("Order status updated", "success");
-      await loadAll();
+      await loadAll(true);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to update order";
       pushToast(message, "error");
@@ -170,7 +175,7 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
       await updateBrandDashboardProduct(productId, buildBrandProductPayload(draft));
       pushToast("Product updated", "success");
       setEditingProductId(null);
-      await loadAll();
+      await loadAll(true);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to update product";
       pushToast(message, "error");
@@ -212,7 +217,7 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
         stock: "0",
         isActive: true,
       });
-      await loadAll();
+      await loadAll(true);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to submit product";
       pushToast(message, "error");
@@ -238,27 +243,33 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
 
   return (
     <div className="space-y-8">
-      <section className="border border-zinc-300 p-4">
-        <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Brand</p>
-        <h2 className="mt-2 font-heading text-4xl uppercase">{overview.brand.name}</h2>
+      <section className="flex flex-wrap items-start justify-between gap-4 border border-zinc-300 p-4">
+        <div>
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Brand</p>
+          <h2 className="mt-2 font-heading text-4xl uppercase">{overview.brand.name}</h2>
+          <p className="mt-2 text-xs uppercase tracking-[0.12em] text-zinc-500">Unread alerts: {unreadCount}</p>
+        </div>
+        <button type="button" onClick={() => void loadAll(true)} className="h-10 border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white">
+          {refreshing ? "Refreshing..." : "Refresh"}
+        </button>
       </section>
 
       <section className="grid gap-4 md:grid-cols-4">
         <article className="border border-zinc-300 p-5">
-          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Gross Sales</p>
-          <p className="mt-3 font-heading text-3xl">PKR {overview.metrics.grossPkr.toLocaleString()}</p>
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Total Orders</p>
+          <p className="mt-3 font-heading text-3xl">{overview.metrics.totalOrders}</p>
         </article>
         <article className="border border-zinc-300 p-5">
-          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Estimated Earnings</p>
-          <p className="mt-3 font-heading text-3xl">PKR {overview.metrics.estimatedNetPkr.toLocaleString()}</p>
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Open Orders</p>
+          <p className="mt-3 font-heading text-3xl">{overview.metrics.openOrders}</p>
         </article>
         <article className="border border-zinc-300 p-5">
-          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Order Items</p>
-          <p className="mt-3 font-heading text-3xl">{overview.metrics.orderItems}</p>
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Delivered Orders</p>
+          <p className="mt-3 font-heading text-3xl">{overview.metrics.deliveredOrders}</p>
         </article>
         <article className="border border-zinc-300 p-5">
-          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Unread Alerts</p>
-          <p className="mt-3 font-heading text-3xl">{unreadCount}</p>
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Total Sales</p>
+          <p className="mt-3 font-heading text-3xl">PKR {overview.metrics.totalSalesPkr.toLocaleString()}</p>
         </article>
       </section>
 

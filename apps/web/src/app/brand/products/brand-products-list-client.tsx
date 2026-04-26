@@ -56,8 +56,9 @@ export function BrandProductsListClient() {
   const totals = useMemo(
     () => ({
       products: products.length,
-      activeProducts: products.filter((item) => item.isActive).length,
+      activeProducts: products.filter((item) => item.isActive && item.approvalStatus === "APPROVED").length,
       pendingApprovals: products.filter((item) => item.approvalStatus === "PENDING").length,
+      outOfStockProducts: products.filter((item) => item.isActive && item.approvalStatus === "APPROVED" && item.stock <= 0).length,
     }),
     [products],
   );
@@ -88,18 +89,22 @@ export function BrandProductsListClient() {
 
   return (
     <div className="space-y-8">
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-4">
         <article className="border border-zinc-300 p-5">
-          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Products</p>
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Total Products</p>
           <p className="mt-3 font-heading text-4xl">{totals.products}</p>
         </article>
         <article className="border border-zinc-300 p-5">
-          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Active</p>
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Active Products</p>
           <p className="mt-3 font-heading text-4xl">{totals.activeProducts}</p>
         </article>
         <article className="border border-zinc-300 p-5">
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Pending Approval</p>
           <p className="mt-3 font-heading text-4xl">{totals.pendingApprovals}</p>
+        </article>
+        <article className="border border-zinc-300 p-5">
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Out of Stock</p>
+          <p className="mt-3 font-heading text-4xl">{totals.outOfStockProducts}</p>
         </article>
       </section>
 

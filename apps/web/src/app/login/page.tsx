@@ -2,30 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { loginUser, loginWithGoogleIdToken } from "@/lib/auth-client";
+import { useState } from "react";
+import { loginUser } from "@/lib/auth-client";
 import { useAuthStore } from "@/stores/auth-store";
-
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        id: {
-          initialize: (config: {
-            client_id: string;
-            callback: (response: { credential?: string }) => void;
-          }) => void;
-          renderButton: (element: HTMLElement, options: Record<string, unknown>) => void;
-        };
-      };
-    };
-  }
-}
 
 export default function LoginPage() {
   const router = useRouter();
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [googlePlaceholderMessage, setGooglePlaceholderMessage] = useState("");
   const setUser = useAuthStore((state) => state.setUser);
 
   const resolveNextRoute = (role?: string) => {
@@ -33,59 +18,6 @@ export default function LoginPage() {
     if (role === "BRAND_ADMIN" || role === "BRAND_STAFF" || role === "BRAND") return "/brand/dashboard";
     return "/catalog";
   };
-
-  useEffect(() => {
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-    if (!clientId) return;
-
-    const script = document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-      const mountPoint = document.getElementById("google-signin-btn");
-      if (!window.google || !mountPoint) return;
-
-      window.google.accounts.id.initialize({
-        client_id: clientId,
-        callback: async (response) => {
-          const credential = response.credential;
-          if (!credential) {
-            setMessage("Google login failed. Missing credential.");
-            return;
-          }
-
-          try {
-            setIsLoading(true);
-            const user = await loginWithGoogleIdToken(credential);
-            setUser(user);
-            const nextUrl = resolveNextRoute(user.role);
-            router.push(nextUrl);
-            router.refresh();
-          } catch (error) {
-            setMessage(error instanceof Error ? error.message : "Google login failed.");
-          } finally {
-            setIsLoading(false);
-          }
-        },
-      });
-
-      mountPoint.innerHTML = "";
-      window.google.accounts.id.renderButton(mountPoint, {
-        theme: "outline",
-        size: "large",
-        text: "continue_with",
-        shape: "rectangular",
-        width: 280,
-      });
-    };
-
-    document.body.appendChild(script);
-
-    return () => {
-      if (script.parentNode) script.parentNode.removeChild(script);
-    };
-  }, [router, setUser]);
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -122,7 +54,21 @@ export default function LoginPage() {
         </button>
         <div className="border-t border-zinc-300 pt-4">
           <p className="mb-3 text-[11px] uppercase tracking-[0.12em] text-zinc-500">Or continue with</p>
-          <div id="google-signin-btn" />
+          <button
+            type="button"
+            onClick={() => setGooglePlaceholderMessage("Google sign-in will be available soon.")}
+            className="inline-flex h-11 w-full items-center justify-center gap-2 border border-zinc-300 bg-white px-3 text-xs font-semibold uppercase tracking-[0.12em]"
+            aria-label="Continue with Google"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true" focusable="false">
+              <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.2 1.2-.9 2.3-1.9 3l3.1 2.4c1.8-1.7 2.8-4.1 2.8-7 0-.7-.1-1.5-.2-2.2H12z" />
+              <path fill="#34A853" d="M12 22c2.5 0 4.6-.8 6.1-2.3L15 17.3c-.9.6-1.9.9-3 .9-2.3 0-4.2-1.5-4.9-3.6H3.9v2.3C5.4 19.9 8.4 22 12 22z" />
+              <path fill="#4A90E2" d="M7.1 14.6c-.2-.6-.3-1.3-.3-2s.1-1.4.3-2V8.3H3.9A9.9 9.9 0 0 0 3 12c0 1.6.4 3.1 1 4.5l3.1-1.9z" />
+              <path fill="#FBBC05" d="M12 6.7c1.3 0 2.5.5 3.4 1.3l2.6-2.6C16.6 3.9 14.5 3 12 3 8.4 3 5.4 5.1 3.9 8.3l3.2 2.4c.7-2.1 2.6-3.7 4.9-3.7z" />
+            </svg>
+            Continue with Google
+          </button>
+          {googlePlaceholderMessage ? <p className="mt-2 text-xs text-zinc-600">{googlePlaceholderMessage}</p> : null}
         </div>
       </form>
       {message && <p className="text-sm text-zinc-600">{message}</p>}

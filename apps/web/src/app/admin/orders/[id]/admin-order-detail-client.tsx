@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { formatPkr } from "@/lib/utils";
 import type { UserOrder } from "@/types/marketplace";
 
@@ -9,10 +11,24 @@ type AdminOrderDetailClientProps = {
 };
 
 export function AdminOrderDetailClient({ initialOrder }: AdminOrderDetailClientProps) {
+  const searchParams = useSearchParams();
   const order = initialOrder;
+  const focusedSubOrderId = searchParams.get("subOrderId") || "";
+  const focusedSubOrder = useMemo(
+    () => order.subOrders.find((subOrder) => subOrder.id === focusedSubOrderId) || null,
+    [focusedSubOrderId, order.subOrders],
+  );
 
   return (
     <section className="space-y-5">
+      {focusedSubOrder ? (
+        <section className="space-y-2 border border-emerald-300 bg-emerald-50 p-4">
+          <p className="text-xs uppercase tracking-[0.12em] text-emerald-700">Focused Vendor Group</p>
+          <p className="text-sm font-semibold uppercase tracking-[0.08em]">{focusedSubOrder.brand?.name || "Brand"} - {focusedSubOrder.id}</p>
+          <p className="text-sm text-emerald-900">Status: {focusedSubOrder.status}</p>
+        </section>
+      ) : null}
+
       <section className="grid gap-4 border border-zinc-300 p-5 md:grid-cols-2">
         <div>
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Order</p>
@@ -53,9 +69,15 @@ export function AdminOrderDetailClient({ initialOrder }: AdminOrderDetailClientP
                   {item.product.name}
                 </Link>
                 <p className="text-xs text-zinc-600">{item.product.brand?.name || item.brand?.name || "Brand"} / {item.product.topCategory} / {item.product.subCategory}</p>
+                <div className="mt-1 flex flex-wrap gap-3 text-xs text-zinc-700">
+                  <p className="font-semibold">Size: {item.selectedSize || "Not specified"}</p>
+                  <p className="font-semibold">Color: {item.selectedColor || "Not specified"}</p>
+                  <p className="font-semibold">Quantity: {item.quantity}</p>
+                  <p className="font-semibold">Price: {formatPkr(item.unitPricePkr)}</p>
+                </div>
               </div>
-              <p className="text-sm">Qty {item.quantity}</p>
-              <p className="text-sm">{formatPkr(item.unitPricePkr)}</p>
+              <div />
+              <div />
               <Link href={`/product/${item.product.slug}`} className="h-9 border border-zinc-300 px-3 text-xs font-semibold uppercase tracking-[0.12em] leading-9 text-center">
                 Product
               </Link>

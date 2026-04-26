@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { ProductImage } from "@/components/ui/product-image";
 import { getBrandDashboardOrder, updateBrandOrderStatus } from "@/lib/api";
+import { resolveMediaUrl } from "@/lib/media-url";
 import { getOrderStatusLabel, getOrderStatusOptions, getOrderStatusTone } from "@/lib/order-status";
 import { formatPkr } from "@/lib/utils";
 import { useToastStore } from "@/stores/toast-store";
@@ -28,8 +29,7 @@ function formatDateTime(value?: string | null) {
 }
 
 function resolveProductImageSrc(imageUrl?: string | null) {
-  const normalized = (imageUrl || "").trim();
-  return normalized || "/window.svg";
+  return resolveMediaUrl(imageUrl);
 }
 
 export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps) {
@@ -68,6 +68,11 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
   const applyUpdate = async () => {
     if (!order || !draft) return;
 
+    if (draft.status === "SHIPPED" && !draft.trackingId.trim()) {
+      pushToast("Tracking ID is required when status is Shipped.", "error");
+      return;
+    }
+
     setSaving(true);
     try {
       await updateBrandOrderStatus(order.id, {
@@ -88,7 +93,7 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
 
   const confirmDescription = useMemo(() => {
     if (!order || !draft) return "";
-    return `Order ${order.id.slice(0, 10)}... will be updated to ${draft.status}${draft.trackingId ? ` with tracking ${draft.trackingId}` : ""}.`;
+    return `Order ${order.id} will be updated to ${draft.status}${draft.trackingId ? ` with tracking ${draft.trackingId}` : ""}.`;
   }, [draft, order]);
 
   if (loading) {
@@ -113,6 +118,10 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
   return (
     <div className="space-y-8">
       <section className="grid gap-4 border border-zinc-300 p-5 md:grid-cols-2">
+        <div>
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Order ID</p>
+          <p className="mt-2 text-sm font-semibold uppercase tracking-[0.08em]">{order.id}</p>
+        </div>
         <div>
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Customer</p>
           <p className="mt-2 text-sm font-semibold">{customerName}</p>
@@ -141,7 +150,15 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
         <h2 className="font-heading text-3xl uppercase">Update Order</h2>
         <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
           <select
-            className="h-10 border border-zinc-300 px-3 text-sm"
+            className={`h-10 border px-3 text-sm ${
+              draft.status === "SHIPPED"
+                ? "border-blue-300 bg-blue-50"
+                : draft.status === "DELIVERED"
+                  ? "border-emerald-300 bg-emerald-50"
+                  : draft.status === "CANCELED"
+                    ? "border-rose-300 bg-rose-50"
+                    : "border-zinc-300 bg-white"
+            }`}
             value={draft.status}
             onChange={(event) => setDraft((current) => current ? { ...current, status: event.target.value as OrderStatus } : current)}
           >
@@ -198,10 +215,12 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
                 <Link href={`/product/${item.product.slug}`} className="text-sm font-semibold uppercase tracking-[0.08em] underline decoration-zinc-400 underline-offset-2">
                   {item.product.name}
                 </Link>
-                <p className="text-xs text-zinc-600">Size: {item.selectedSize || "Not specified"}</p>
-                <p className="text-xs text-zinc-600">Color: {item.selectedColor || "Not specified"}</p>
-                <p className="text-xs text-zinc-600">Quantity: {item.quantity}</p>
-                <p className="text-xs text-zinc-600">Price: {formatPkr(item.unitPricePkr)}</p>
+                <div className="flex flex-wrap gap-3 text-xs text-zinc-700">
+                  <p className="font-semibold">Size: {item.selectedSize || "Not specified"}</p>
+                  <p className="font-semibold">Color: {item.selectedColor || "Not specified"}</p>
+                  <p className="font-semibold">Quantity: {item.quantity}</p>
+                  <p className="font-semibold">Price: {formatPkr(item.unitPricePkr)}</p>
+                </div>
               </div>
               <Link href={`/product/${item.product.slug}`} className="inline-flex h-9 items-center border border-zinc-300 px-3 text-xs font-semibold uppercase tracking-[0.12em] leading-9 text-center">
                 Product

@@ -6,6 +6,7 @@ import { prisma } from "../../config/prisma.js";
 import { requireAdmin, requireAuth } from "../../middleware/auth.js";
 import { notificationEventNames } from "../notifications/notification.events.js";
 import { queueNotificationEvent } from "../notifications/notification.service.js";
+import { productCache } from "./product-cache.service.js";
 import {
   productApprovalStatuses,
   productBaseSchema,
@@ -441,8 +442,8 @@ async function getCorrectedQuery(normalizedQuery: string) {
   return correctedQuery;
 }
 
-function clearProductCache() {
-  cache.clear();
+async function clearProductCache() {
+  await productCache.invalidateProductLists();
 }
 
 router.get("/", async (req, res) => {
@@ -735,8 +736,34 @@ router.get("/suggest", async (req, res) => {
   return res.json({ data: Array.from(suggestionMap.values()).slice(0, 10), correctedQuery: correctedQuery || undefined });
 });
 
-router.get("/admin", requireAuth, requireAdmin, async (_req, res) => {
+router.get("/admin", requireAuth, requireAdmin, async (req, res) => {
+  const querySchema = z.object({
+    topCategory: z.string().optional(),
+    productType: z.string().optional(),
+    subCategory: z.string().optional(),
+  });
+
+  const parsed = querySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid query", issues: parsed.error.flatten() });
+  }
+
+  const whereClause: Prisma.ProductWhereInput = {
+    topCategory: parsed.data.topCategory,
+    subCategory: parsed.data.subCategory,
+  };
+
+  if (parsed.data.productType && productTypeMap[parsed.data.productType]) {
+    if (parsed.data.subCategory) {
+      whereClause.AND = [{ subCategory: parsed.data.subCategory }, { subCategory: { in: productTypeMap[parsed.data.productType] } }];
+      delete whereClause.subCategory;
+    } else {
+      whereClause.subCategory = { in: productTypeMap[parsed.data.productType] };
+    }
+  }
+
   const products = await prisma.product.findMany({
+    where: whereClause,
     include: { brand: true },
     orderBy: { createdAt: "desc" },
   });

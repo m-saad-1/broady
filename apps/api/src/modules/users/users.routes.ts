@@ -4,6 +4,9 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../../config/prisma.js";
 import { requireAuth } from "../../middleware/auth.js";
+import { getCart, getCartScopeFromUser, replaceCart } from "../carts/cart.service.js";
+import { normalizeOrderNotificationPresentation } from "../notifications/notification.presentation.js";
+import { resolveNotificationTargetPath } from "../notifications/notification.targets.js";
 
 const router = Router();
 
@@ -45,17 +48,7 @@ const cartSyncSchema = z.object({
 });
 
 router.get("/cart", requireAuth, async (req, res) => {
-  const cart = await prisma.cart.upsert({
-    where: { userId: req.auth!.userId },
-    create: { userId: req.auth!.userId },
-    update: {},
-    include: {
-      items: {
-        include: { product: { include: { brand: true } } },
-        orderBy: { createdAt: "asc" },
-      },
-    },
-  });
+  const cart = await getCart(getCartScopeFromUser(req.auth!.userId));
 
   return res.json({ data: cart });
 });
@@ -66,70 +59,13 @@ router.put("/cart", requireAuth, async (req, res) => {
     return res.status(400).json({ message: "Invalid payload", issues: parsed.error.flatten() });
   }
 
-  const uniqueProductIds = Array.from(new Set(parsed.data.items.map((item) => item.productId)));
-  if (uniqueProductIds.length) {
-    const validProducts = await prisma.product.findMany({
-      where: { id: { in: uniqueProductIds }, isActive: true, approvalStatus: "APPROVED" },
-      select: { id: true },
-    });
-    const validSet = new Set(validProducts.map((item) => item.id));
-    const invalid = uniqueProductIds.filter((id) => !validSet.has(id));
-    if (invalid.length) {
-      return res.status(400).json({ message: "One or more cart products are invalid or inactive", invalidProductIds: invalid });
-    }
+  const scope = getCartScopeFromUser(req.auth!.userId);
+  const result = await replaceCart(scope, parsed.data.items);
+  if (result.error) {
+    return res.status(result.error.status).json(result.error);
   }
 
-  const cart = await prisma.$transaction(async (tx) => {
-    const ensuredCart = await tx.cart.upsert({
-      where: { userId: req.auth!.userId },
-      create: { userId: req.auth!.userId },
-      update: {},
-      select: { id: true },
-    });
-
-    if (!parsed.data.merge) {
-      await tx.cartItem.deleteMany({ where: { cartId: ensuredCart.id } });
-    }
-
-    for (const item of parsed.data.items) {
-      const existing = await tx.cartItem.findFirst({
-        where: {
-          cartId: ensuredCart.id,
-          productId: item.productId,
-          selectedColor: item.selectedColor || null,
-          selectedSize: item.selectedSize || null,
-        },
-        select: { id: true, quantity: true },
-      });
-
-      if (existing) {
-        await tx.cartItem.update({
-          where: { id: existing.id },
-          data: { quantity: parsed.data.merge ? existing.quantity + item.quantity : item.quantity },
-        });
-      } else {
-        await tx.cartItem.create({
-          data: {
-            cartId: ensuredCart.id,
-            productId: item.productId,
-            quantity: item.quantity,
-            selectedColor: item.selectedColor,
-            selectedSize: item.selectedSize,
-          },
-        });
-      }
-    }
-
-    return tx.cart.findUniqueOrThrow({
-      where: { id: ensuredCart.id },
-      include: {
-        items: {
-          include: { product: { include: { brand: true } } },
-          orderBy: { createdAt: "asc" },
-        },
-      },
-    });
-  });
+  const cart = await getCart(scope);
 
   return res.json({ data: cart });
 });
@@ -319,8 +255,58 @@ router.get("/notifications", requireAuth, async (req, res) => {
     orderBy: { createdAt: "desc" },
     take: 100,
   });
+  const roleContext =
+    req.auth?.role === "ADMIN" || req.auth?.role === "SUPER_ADMIN"
+      ? "ADMIN"
+      : req.auth?.role === "BRAND" || req.auth?.role === "BRAND_ADMIN" || req.auth?.role === "BRAND_STAFF"
+        ? "BRAND"
+        : "USER";
 
-  return res.json({ data: notifications });
+  return res.json({
+    data: notifications.map((item) => ({
+      ...normalizeOrderNotificationPresentation(
+        {
+          ...item,
+          orderId: item.order?.id,
+        },
+        roleContext,
+      ),
+      targetPath: resolveNotificationTargetPath({
+        type: item.type,
+        orderId: item.order?.id,
+        title: item.title,
+        message: item.message,
+        role: req.auth?.role,
+      }),
+    })),
+  });
+});
+
+router.patch("/notifications/read-all", requireAuth, async (req, res) => {
+  const unread = await prisma.notification.findMany({
+    where: {
+      userId: req.auth!.userId,
+      readAt: null,
+    },
+    select: { id: true },
+    take: 300,
+  });
+
+  if (!unread.length) {
+    return res.json({ data: { updated: 0 } });
+  }
+
+  const ids = unread.map((item) => item.id);
+  const result = await prisma.notification.updateMany({
+    where: {
+      id: { in: ids },
+      userId: req.auth!.userId,
+      readAt: null,
+    },
+    data: { readAt: new Date() },
+  });
+
+  return res.json({ data: { updated: result.count } });
 });
 
 router.patch("/notifications/:id/read", requireAuth, async (req, res) => {

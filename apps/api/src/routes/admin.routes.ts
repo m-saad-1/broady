@@ -10,6 +10,7 @@ import {
 import { getNotificationWorkerStats } from "../modules/notifications/notification.worker.js";
 
 const router = Router();
+const OPEN_ORDER_STATUSES = new Set(["PENDING", "CONFIRMED", "PACKED", "PARTIALLY_SHIPPED", "SHIPPED"]);
 
 router.use(requireAuth, requireAdmin);
 
@@ -205,7 +206,17 @@ router.get("/brand-dashboard", async (_req, res) => {
       acc[order.status] = (acc[order.status] || 0) + 1;
       return acc;
     }, {});
-    const grossPkr = brand.subOrders.reduce((sum, subOrder) => sum + subOrder.subtotalPkr, 0);
+
+    const totalOrders = orders.length;
+    const openOrders = orders.filter((order) => OPEN_ORDER_STATUSES.has(order.status)).length;
+    const deliveredOrders = orders.filter((order) => order.status === "DELIVERED").length;
+    const cancelledOrders = orders.filter((order) => order.status === "CANCELED").length;
+    const totalSalesPkr = orders.reduce((sum, order) => sum + (order.status === "DELIVERED" ? order.subtotalPkr : 0), 0);
+    const activeProducts = brand.products.filter((product) => product.isActive && product.approvalStatus === "APPROVED").length;
+    const pendingProducts = brand.products.filter((product) => product.approvalStatus === "PENDING").length;
+    const outOfStockProducts = brand.products.filter(
+      (product) => product.isActive && product.approvalStatus === "APPROVED" && product.stock <= 0,
+    ).length;
 
     return {
       brand: {
@@ -225,11 +236,14 @@ router.get("/brand-dashboard", async (_req, res) => {
       orders,
       metrics: {
         totalProducts: brand.products.length,
-        activeProducts: brand.products.filter((product) => product.isActive).length,
-        pendingProducts: brand.products.filter((product) => product.approvalStatus === "PENDING").length,
-        totalOrders: orders.length,
-        totalSubOrders: brand.subOrders.length,
-        grossPkr,
+        activeProducts,
+        pendingProducts,
+        outOfStockProducts,
+        totalOrders,
+        openOrders,
+        deliveredOrders,
+        cancelledOrders,
+        totalSalesPkr,
         statusCounts,
       },
     };
@@ -301,7 +315,16 @@ router.get("/brand-dashboard/:brandId", async (req, res) => {
     return acc;
   }, {});
 
-  const grossPkr = brand.subOrders.reduce((sum, subOrder) => sum + subOrder.subtotalPkr, 0);
+  const totalOrders = orders.length;
+  const openOrders = orders.filter((order) => OPEN_ORDER_STATUSES.has(order.status)).length;
+  const deliveredOrders = orders.filter((order) => order.status === "DELIVERED").length;
+  const cancelledOrders = orders.filter((order) => order.status === "CANCELED").length;
+  const totalSalesPkr = orders.reduce((sum, order) => sum + (order.status === "DELIVERED" ? order.subtotalPkr : 0), 0);
+  const activeProducts = brand.products.filter((product) => product.isActive && product.approvalStatus === "APPROVED").length;
+  const pendingProducts = brand.products.filter((product) => product.approvalStatus === "PENDING").length;
+  const outOfStockProducts = brand.products.filter(
+    (product) => product.isActive && product.approvalStatus === "APPROVED" && product.stock <= 0,
+  ).length;
 
   return res.json({
     data: {
@@ -322,11 +345,14 @@ router.get("/brand-dashboard/:brandId", async (req, res) => {
       orders,
       metrics: {
         totalProducts: brand.products.length,
-        activeProducts: brand.products.filter((product) => product.isActive).length,
-        pendingProducts: brand.products.filter((product) => product.approvalStatus === "PENDING").length,
-        totalOrders: orders.length,
-        totalSubOrders: brand.subOrders.length,
-        grossPkr,
+        activeProducts,
+        pendingProducts,
+        outOfStockProducts,
+        totalOrders,
+        openOrders,
+        deliveredOrders,
+        cancelledOrders,
+        totalSalesPkr,
         statusCounts,
       },
     },

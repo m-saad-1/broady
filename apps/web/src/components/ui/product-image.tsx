@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { resolveMediaUrl } from "@/lib/media-url";
 
 type ProductImageProps = {
   src: string;
@@ -26,11 +27,13 @@ export function ProductImage({
   width,
   height,
 }: ProductImageProps) {
-  if (isExternalHttpUrl(src)) {
+  const resolvedSrc = resolveMediaUrl(src);
+
+  if (isExternalHttpUrl(resolvedSrc)) {
     if (fill) {
       return (
         <img
-          src={src}
+          src={resolvedSrc}
           alt={alt}
           loading={priority ? "eager" : "lazy"}
           className={`absolute inset-0 h-full w-full ${className || ""}`}
@@ -41,7 +44,7 @@ export function ProductImage({
 
     return (
       <img
-        src={src}
+        src={resolvedSrc}
         alt={alt}
         loading={priority ? "eager" : "lazy"}
         className={className}
@@ -54,7 +57,7 @@ export function ProductImage({
 
   return (
     <Image
-      src={src}
+      src={resolvedSrc}
       alt={alt}
       fill={fill}
       sizes={sizes}

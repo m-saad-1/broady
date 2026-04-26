@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { addWishlistProduct, removeWishlistProduct } from "@/lib/api";
 import { getProductPricing } from "@/lib/pricing";
+import { getTopCategoryLabel } from "@/lib/taxonomy";
 import { formatPkr } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 import { useCartStore } from "@/stores/cart-store";
@@ -31,6 +32,11 @@ export function ProductCard({ product }: { product: Product }) {
     ? `-${pricing.discountPercentage}%`
     : product.badge || (product.stock <= 0 ? "Out of Stock" : product.pricePkr < 3000 ? "Sale" : "New");
   const canAdd = product.stock > 0;
+  const reviewCountRaw = (product as Product & { reviewCount?: number; totalReviews?: number }).reviewCount;
+  const reviewCount =
+    typeof reviewCountRaw === "number"
+      ? reviewCountRaw
+      : (product as Product & { reviewCount?: number; totalReviews?: number }).totalReviews || 0;
   const defaultSize = product.sizes[0] || "One Size";
   const defaultColor = product.colors?.[0] || "Black";
   const badgeClass =
@@ -64,29 +70,32 @@ export function ProductCard({ product }: { product: Product }) {
           </span>
         </div>
       </Link>
-      <div className="space-y-4 p-4">
-        <div>
+      <div className="space-y-2.5 p-4">
+        <div className="space-y-0.5">
           <p className="text-[11px] uppercase tracking-[0.12em] text-zinc-500">{product.brand?.name || "Brand"}</p>
-          <Link href={`/product/${product.slug}`} className="mt-1 block font-medium uppercase tracking-[0.08em]">
+          <Link href={`/product/${product.slug}`} className="block font-medium uppercase tracking-[0.08em]">
             {product.name}
           </Link>
           {pricing.hasDiscount ? (
-            <div className="mt-2 flex items-center gap-2">
+            <div className="mt-1 flex items-center gap-2">
               <p className="text-sm font-semibold text-black">{formatPkr(pricing.finalPrice)}</p>
               <p className="text-xs text-zinc-500 line-through">{formatPkr(pricing.basePrice)}</p>
             </div>
           ) : (
-            <p className="mt-2 text-sm text-zinc-600">{formatPkr(pricing.basePrice)}</p>
+            <p className="mt-1 text-sm text-zinc-600">{formatPkr(pricing.basePrice)}</p>
           )}
-          <p className="mt-1 text-[11px] uppercase tracking-[0.12em] text-zinc-500">{product.topCategory} / {product.productType || "Top"} / {product.subCategory}</p>
-          <p className={`mt-1 text-[11px] uppercase tracking-[0.12em] ${product.stock > 0 ? "text-emerald-700" : "text-rose-700"}`}>
+          <p className="mt-0.5 text-[11px] uppercase tracking-[0.12em] text-zinc-500">{getTopCategoryLabel(product.topCategory)} / {product.productType || "Top"} / {product.subCategory}</p>
+          {reviewCount > 0 ? <p className="text-[11px] uppercase tracking-[0.1em] text-zinc-500">{reviewCount} reviews</p> : null}
+          <p className={`mt-0.5 text-[11px] uppercase tracking-[0.12em] ${product.stock > 0 ? "text-emerald-700" : "text-rose-700"}`}>
             Stock: {product.stock > 0 ? `${product.stock} available` : "Out of stock"}
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-12 gap-2 pt-0.5">
           <Button
             variant="ghost"
             size="sm"
+            className="col-span-3 px-0"
+            aria-label={wishlistActive ? "Remove from wishlist" : "Add to wishlist"}
             onClick={async () => {
               if (wishlistActive) {
                 setConfirmOpen(true);
@@ -115,17 +124,31 @@ export function ProductCard({ product }: { product: Product }) {
               pushToast("Added to wishlist", "success");
             }}
           >
-            {wishlistActive ? "Saved" : "Wishlist"}
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              className="h-5 w-5"
+              fill={wishlistActive ? "currentColor" : "none"}
+              stroke="currentColor"
+              strokeWidth="1.4"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12.001 20.56c-.311 0-.621-.11-.867-.33-3.446-3.073-5.568-5.036-7.039-6.715C2.62 11.856 2 10.389 2 8.853 2 6.174 4.14 4 6.781 4c1.527 0 3.004.69 4.001 1.87C11.779 4.69 13.257 4 14.783 4 17.424 4 19.565 6.174 19.565 8.853c0 1.536-.621 3.003-2.095 4.662-1.47 1.679-3.591 3.642-7.037 6.715-.247.22-.557.33-.868.33z"
+              />
+            </svg>
           </Button>
           <Button
             size="sm"
+            className="col-span-9 border-zinc-900 bg-zinc-900 text-white hover:bg-black"
             onClick={() => {
               addToCart(product, { selectedColor: defaultColor, selectedSize: defaultSize });
               pushToast("Added to cart", "success");
             }}
             disabled={!canAdd}
           >
-            {canAdd ? "Add" : "Stock"}
+            {canAdd ? "Add to Cart" : "Out of Stock"}
           </Button>
         </div>
       </div>

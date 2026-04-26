@@ -20,10 +20,10 @@ Run from repository root unless noted.
 - Build one workspace:
   - Web: `npm run build -w @broady/web`
   - API: `npm run build -w @broady/api`
-- Prisma workflows (API workspace):  
-  `npm run prisma:generate -w @broady/api`  
-  `npm run prisma:migrate -w @broady/api`  
-  `npm run prisma:seed -w @broady/api`
+- Prisma workflows (API workspace):
+  - `npm run prisma:generate -w @broady/api`
+  - `npm run prisma:migrate -w @broady/api`
+  - `npm run prisma:seed -w @broady/api`
 
 There is currently no `test` script in workspace `package.json` files, so there is no project-defined full-suite or single-test command yet.
 
@@ -61,15 +61,32 @@ There is currently no `test` script in workspace `package.json` files, so there 
   - Notification worker can run embedded or standalone
   - Keep graceful shutdown paths intact when editing runtime entrypoints
 
-## Key repository conventions
+## Repository conventions (strict)
 
-- Keep API boundaries explicit: route wiring in route files, business logic in services, shared contracts in `packages/shared` (from `CONTRIBUTING.md` and docs strategy files).
+- Keep API boundaries explicit: routes wire endpoints and middleware only, business logic lives in services.
+- Use the module shape for non-trivial API domains:
+  - `routes` for endpoint wiring
+  - `controller` for request/response mapping
+  - `service` for domain rules and orchestration
+  - `repository` for complex data access (optional)
 - Validate request input at route boundaries with Zod `safeParse` and return `400` with validation details on invalid payloads.
-- API responses are usually envelope-style (`{ data: ... }`) for resource endpoints; auth endpoints are a notable exception (`{ token, user }`). Preserve existing shape per module.
+- Preserve API response shapes. Use envelopes (`{ data: ... }`) for resource endpoints; auth endpoints are exceptions (`{ token, user }`).
+- Prefer backward-compatible, additive API changes. Do not break clients without an explicit plan.
 - Use middleware-first authorization:
   - `requireAuth` for authenticated routes
   - `requireAdmin` for admin-only routes
   - Brand access often requires resolving `brandId` via `user.brandId` or `BrandMember` membership
 - For domain events, do not send notifications directly from route handlers. Emit via `queueNotificationEvent(...)` and let notification services/rules handle recipients/channels.
-- Product/catalog writes should clear API in-memory cache (`config/cache.ts`) to avoid stale reads.
+- Product/catalog writes must clear API in-memory cache (`config/cache.ts`) to avoid stale reads.
 - Prefer using `@broady/shared` contracts in web/API types instead of redefining shared enums/role/order/payment primitives.
+
+## Naming, security, and docs
+
+- Naming conventions:
+  - Files and folders: kebab-case for new files
+  - Variables/functions: camelCase
+  - Types/interfaces/classes/enums: PascalCase
+  - Constants: UPPER_SNAKE_CASE
+- Never log secrets or tokens.
+- Use environment variables for secret or configurable values and update `.env.example` when adding new required config.
+- Update `README.md` when onboarding/run instructions change and update `docs/README.md` when adding or curating documentation.

@@ -1,9 +1,9 @@
 import { getBrandSession } from "../../_lib/brand-session";
-import { BrandProductCreateClient } from "./brand-product-create-client";
+import { ProductCreateFormPage } from "@/components/dashboard/product-create-form-page";
 
 export const metadata = {
   title: "Add Brand Product | BROADY",
-  description: "Create a new product for your brand account.",
+  description: "Create a new product for your brand account with the shared product form.",
 };
 
 export default async function BrandProductCreatePage() {
@@ -17,7 +17,7 @@ export default async function BrandProductCreatePage() {
         <p className="max-w-3xl text-sm text-zinc-600">Create a new product from a dedicated page so product browsing stays separate from product creation.</p>
       </header>
 
-      <BrandProductCreateClient />
+      <ProductCreateFormPage scope="brand" />
     </main>
   );
 }

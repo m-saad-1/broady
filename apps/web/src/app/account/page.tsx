@@ -12,6 +12,7 @@ import {
   updateNotificationPreferences,
   updatePassword,
 } from "@/lib/api";
+import { useFormSubmission } from "@/hooks/use-form-submission";
 import { OrderTrackerClient } from "./order-tracker-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { useCartStore } from "@/stores/cart-store";
@@ -34,9 +35,6 @@ export default function AccountPage() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
-  const [passwordFeedback, setPasswordFeedback] = useState<string | null>(null);
-  const [feedbackTone, setFeedbackTone] = useState<"error" | "success">("success");
   const [paymentMethods, setPaymentMethods] = useState<UserPaymentMethod[]>([]);
   const [paymentType, setPaymentType] = useState<UserPaymentType>("CARD");
   const [paymentLabel, setPaymentLabel] = useState("");
@@ -44,11 +42,11 @@ export default function AccountPage() {
   const [paymentExpiryMonth, setPaymentExpiryMonth] = useState("");
   const [paymentExpiryYear, setPaymentExpiryYear] = useState("");
   const [paymentIsDefault, setPaymentIsDefault] = useState(false);
-  const [isSavingPayment, setIsSavingPayment] = useState(false);
-  const [paymentFeedback, setPaymentFeedback] = useState<string | null>(null);
   const [notificationPrefs, setNotificationPrefs] = useState(defaultNotifications);
-  const [isSavingNotifications, setIsSavingNotifications] = useState(false);
-  const [notificationFeedback, setNotificationFeedback] = useState<string | null>(null);
+
+  const passwordSubmission = useFormSubmission();
+  const paymentSubmission = useFormSubmission();
+  const notificationSubmission = useFormSubmission();
 
   useEffect(() => {
     fetchCurrentUser().then(async (currentUser) => {
@@ -74,101 +72,106 @@ export default function AccountPage() {
     event.preventDefault();
 
     if (!newPassword || !confirmPassword) {
-      setFeedbackTone("error");
-      setPasswordFeedback("Please complete all password fields.");
+      passwordSubmission.setErrorFeedback("Please complete all password fields.");
       return;
     }
 
     if (newPassword.length < 8) {
-      setFeedbackTone("error");
-      setPasswordFeedback("New password must be at least 8 characters.");
+      passwordSubmission.setErrorFeedback("New password must be at least 8 characters.");
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setFeedbackTone("error");
-      setPasswordFeedback("New password and confirmation do not match.");
+      passwordSubmission.setErrorFeedback("New password and confirmation do not match.");
       return;
     }
 
-    try {
-      setIsUpdatingPassword(true);
-      await updatePassword({ currentPassword: currentPassword || undefined, newPassword });
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-      setFeedbackTone("success");
-      setPasswordFeedback("Password updated successfully.");
-    } catch (error) {
-      setFeedbackTone("error");
-      setPasswordFeedback(error instanceof Error ? error.message : "Unable to update password.");
-    } finally {
-      setIsUpdatingPassword(false);
-    }
+    await passwordSubmission.execute(
+      async () => {
+        await updatePassword({ currentPassword: currentPassword || undefined, newPassword });
+      },
+      {
+        successMessage: "Password updated successfully.",
+        errorMessage: "Unable to update password.",
+        onSuccess: () => {
+          setCurrentPassword("");
+          setNewPassword("");
+          setConfirmPassword("");
+        },
+      }
+    );
   };
 
   const onAddPaymentMethod = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setPaymentFeedback(null);
+    paymentSubmission.clearFeedback();
 
     if (!/^\d{4}$/.test(paymentLast4.trim())) {
-      setPaymentFeedback("Last 4 digits must be exactly 4 numbers.");
+      paymentSubmission.setErrorFeedback("Last 4 digits must be exactly 4 numbers.");
       return;
     }
 
-    try {
-      setIsSavingPayment(true);
-      await addPaymentMethod({
-        type: paymentType,
-        label: paymentLabel.trim(),
-        last4: paymentLast4.trim(),
-        expiresMonth: paymentExpiryMonth ? Number(paymentExpiryMonth) : undefined,
-        expiresYear: paymentExpiryYear ? Number(paymentExpiryYear) : undefined,
-        isDefault: paymentIsDefault,
-      });
-      const methods = await getPaymentMethods();
-      setPaymentMethods(methods);
-      setPaymentLabel("");
-      setPaymentLast4("");
-      setPaymentExpiryMonth("");
-      setPaymentExpiryYear("");
-      setPaymentIsDefault(false);
-      setPaymentFeedback("Payment method saved.");
-    } catch (error) {
-      setPaymentFeedback(error instanceof Error ? error.message : "Unable to save payment method.");
-    } finally {
-      setIsSavingPayment(false);
-    }
+    await paymentSubmission.execute(
+      async () => {
+        await addPaymentMethod({
+          type: paymentType,
+          label: paymentLabel.trim(),
+          last4: paymentLast4.trim(),
+          expiresMonth: paymentExpiryMonth ? Number(paymentExpiryMonth) : undefined,
+          expiresYear: paymentExpiryYear ? Number(paymentExpiryYear) : undefined,
+          isDefault: paymentIsDefault,
+        });
+      },
+      {
+        successMessage: "Payment method saved.",
+        errorMessage: "Unable to save payment method.",
+        onSuccess: async () => {
+          const methods = await getPaymentMethods();
+          setPaymentMethods(methods);
+          setPaymentLabel("");
+          setPaymentLast4("");
+          setPaymentExpiryMonth("");
+          setPaymentExpiryYear("");
+          setPaymentIsDefault(false);
+        },
+      }
+    );
   };
 
   const onRemovePaymentMethod = async (methodId: string) => {
-    try {
-      await removePaymentMethod(methodId);
-      const methods = await getPaymentMethods();
-      setPaymentMethods(methods);
-      setPaymentFeedback("Payment method removed.");
-    } catch (error) {
-      setPaymentFeedback(error instanceof Error ? error.message : "Unable to remove payment method.");
-    }
+    await paymentSubmission.execute(
+      async () => {
+        await removePaymentMethod(methodId);
+      },
+      {
+        successMessage: "Payment method removed.",
+        errorMessage: "Unable to remove payment method.",
+        onSuccess: async () => {
+          const methods = await getPaymentMethods();
+          setPaymentMethods(methods);
+        },
+      }
+    );
   };
 
   const onSaveNotifications = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    try {
-      setIsSavingNotifications(true);
-      const updated = await updateNotificationPreferences(notificationPrefs);
-      setNotificationPrefs({
-        orderUpdates: updated.orderUpdates,
-        promoEmails: updated.promoEmails,
-        securityAlerts: updated.securityAlerts,
-        wishlistAlerts: updated.wishlistAlerts,
-      });
-      setNotificationFeedback("Notification preferences saved.");
-    } catch (error) {
-      setNotificationFeedback(error instanceof Error ? error.message : "Unable to save notification preferences.");
-    } finally {
-      setIsSavingNotifications(false);
-    }
+
+    await notificationSubmission.execute(
+      async () => {
+        const updated = await updateNotificationPreferences(notificationPrefs);
+        setNotificationPrefs({
+          orderUpdates: updated.orderUpdates,
+          promoEmails: updated.promoEmails,
+          securityAlerts: updated.securityAlerts,
+          wishlistAlerts: updated.wishlistAlerts,
+        });
+      },
+      {
+        successMessage: "Notification preferences saved.",
+        errorMessage: "Unable to save notification preferences.",
+      }
+    );
   };
 
   const onLogout = async () => {
@@ -239,12 +242,12 @@ export default function AccountPage() {
                 className="h-11 w-full border border-zinc-300 px-3 text-sm"
                 required
               />
-              <button type="submit" disabled={isUpdatingPassword} className="h-11 border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-50">
-                {isUpdatingPassword ? "Updating" : "Update Password"}
+              <button type="submit" disabled={passwordSubmission.isSubmitting} className="h-11 border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-50">
+                {passwordSubmission.isSubmitting ? "Updating" : "Update Password"}
               </button>
             </form>
-            {passwordFeedback ? (
-              <p className={`text-xs ${feedbackTone === "error" ? "text-red-600" : "text-emerald-700"}`}>{passwordFeedback}</p>
+            {passwordSubmission.feedback ? (
+              <p className={`text-xs ${passwordSubmission.feedbackTone === "error" ? "text-red-600" : "text-emerald-700"}`}>{passwordSubmission.feedback}</p>
             ) : null}
           </article>
 
@@ -267,8 +270,8 @@ export default function AccountPage() {
                 <input type="checkbox" checked={paymentIsDefault} onChange={(event) => setPaymentIsDefault(event.target.checked)} />
                 Set as default payment method
               </label>
-              <button type="submit" disabled={isSavingPayment} className="h-11 border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-50 md:col-span-2">
-                {isSavingPayment ? "Saving" : "Add Payment Method"}
+              <button type="submit" disabled={paymentSubmission.isSubmitting} className="h-11 border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-50 md:col-span-2">
+                {paymentSubmission.isSubmitting ? "Saving" : "Add Payment Method"}
               </button>
             </form>
 
@@ -289,7 +292,7 @@ export default function AccountPage() {
                 ))
               )}
             </div>
-            {paymentFeedback ? <p className="text-xs text-zinc-700">{paymentFeedback}</p> : null}
+            {paymentSubmission.feedback ? <p className={`text-xs ${paymentSubmission.feedbackTone === "error" ? "text-red-600" : "text-emerald-700"}`}>{paymentSubmission.feedback}</p> : null}
           </article>
 
           <article className="md:col-span-2">
@@ -311,11 +314,11 @@ export default function AccountPage() {
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={notificationPrefs.promoEmails} onChange={(event) => setNotificationPrefs((current) => ({ ...current, promoEmails: event.target.checked }))} /> Promotional emails</label>
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={notificationPrefs.securityAlerts} onChange={(event) => setNotificationPrefs((current) => ({ ...current, securityAlerts: event.target.checked }))} /> Security alerts</label>
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={notificationPrefs.wishlistAlerts} onChange={(event) => setNotificationPrefs((current) => ({ ...current, wishlistAlerts: event.target.checked }))} /> Wishlist alerts</label>
-              <button type="submit" disabled={isSavingNotifications} className="h-10 border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-50">
-                {isSavingNotifications ? "Saving" : "Save Preferences"}
+              <button type="submit" disabled={notificationSubmission.isSubmitting} className="h-10 border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-50">
+                {notificationSubmission.isSubmitting ? "Saving" : "Save Preferences"}
               </button>
             </form>
-            {notificationFeedback ? <p className="text-xs text-zinc-700">{notificationFeedback}</p> : null}
+            {notificationSubmission.feedback ? <p className={`text-xs ${notificationSubmission.feedbackTone === "error" ? "text-red-600" : "text-emerald-700"}`}>{notificationSubmission.feedback}</p> : null}
           </article>
         </section>
       ) : (

@@ -45,7 +45,7 @@ export default async function AdminOrderDetailPage({ params }: AdminOrderDetailP
       <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-10 lg:px-10">
         <header className="space-y-3 border-b border-zinc-300 pb-5">
           <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Admin Order Detail</p>
-          <h1 className="font-heading text-5xl uppercase">Order {order.id.slice(0, 10)}...</h1>
+          <h1 className="font-heading text-5xl uppercase">Order ID: {order.id}</h1>
           <div className="flex flex-wrap gap-2">
             <Link href="/admin/brand-dashboard" className="inline-flex h-10 items-center border border-zinc-300 px-4 text-xs font-semibold uppercase tracking-[0.12em]">
               Back to Brand Dashboard

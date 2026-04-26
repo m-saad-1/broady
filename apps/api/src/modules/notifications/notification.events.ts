@@ -13,6 +13,11 @@ export const notificationEventNames = {
   productApproved: "ProductApproved",
   productRejected: "ProductRejected",
   brandApproved: "BrandApproved",
+  reviewSubmitted: "ReviewSubmitted",
+  reviewHelpfulVoted: "ReviewHelpfulVoted",
+  reviewReported: "ReviewReported",
+  reviewModerated: "ReviewModerated",
+  reviewReplied: "ReviewReplied",
 } as const;
 
 export type NotificationEventName = (typeof notificationEventNames)[keyof typeof notificationEventNames];
@@ -33,8 +38,11 @@ export type NotificationEvent =
         | typeof notificationEventNames.orderDelivered
         | typeof notificationEventNames.orderCancelled;
       orderId: string;
+      subOrderId?: string;
       changedByRole?: "SYSTEM" | "ADMIN" | "BRAND" | "USER";
       note?: string;
+      brandName?: string;
+      notifyAdmin?: boolean;
     })
   | (BaseEvent & {
       name:
@@ -62,4 +70,45 @@ export type NotificationEvent =
       name: typeof notificationEventNames.brandApproved;
       brandId: string;
       note?: string;
+    })
+  | (BaseEvent & {
+      name: typeof notificationEventNames.reviewSubmitted;
+      reviewId: string;
+      orderId: string;
+      userId: string;
+      brandId: string;
+      productId: string;
+      productName: string;
+      brandName?: string;
+    })
+  | (BaseEvent & {
+      name: typeof notificationEventNames.reviewHelpfulVoted;
+      reviewId: string;
+      userId: string;
+      productId: string;
+      productName: string;
+    })
+  | (BaseEvent & {
+      name: typeof notificationEventNames.reviewReported;
+      reviewId: string;
+      productId: string;
+      productName: string;
+      brandId: string;
+    })
+  | (BaseEvent & {
+      name: typeof notificationEventNames.reviewModerated;
+      reviewId: string;
+      userId: string;
+      productId: string;
+      productName: string;
+      moderationStatus: "VISIBLE" | "HIDDEN" | "FLAGGED" | "REMOVED";
+    })
+  | (BaseEvent & {
+      name: typeof notificationEventNames.reviewReplied;
+      reviewId: string;
+      userId: string;
+      productId: string;
+      productName: string;
+      brandId: string;
+      brandName?: string;
     });

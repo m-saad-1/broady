@@ -11,9 +11,9 @@ const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 
 function runPrismaMigrations() {
   return new Promise<void>((resolve, reject) => {
-    const child = spawn("npm", ["run", "prisma:migrate:deploy"], {
+    const prismaCli = path.resolve(packageRoot, "..", "..", "node_modules", "prisma", "build", "index.js");
+    const child = spawn(process.execPath, [prismaCli, "migrate", "deploy"], {
       cwd: packageRoot,
-      shell: true,
       stdio: "inherit",
       env: process.env,
     });
@@ -74,7 +74,14 @@ function bootServer(port: number, attempt = 0) {
 }
 
 async function main() {
-  await runPrismaMigrations();
+  const shouldRunMigrations = process.env.PRISMA_MIGRATE_ON_BOOT !== "false";
+
+  if (shouldRunMigrations) {
+    await runPrismaMigrations();
+  } else {
+    console.warn("[server] skipping prisma migrate deploy because PRISMA_MIGRATE_ON_BOOT=false");
+  }
+
   server = bootServer(env.port);
 }
 

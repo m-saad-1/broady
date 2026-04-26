@@ -2,8 +2,9 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ProductCard } from "@/components/ui/product-card";
+import { trackUserBehaviorEvent } from "@/lib/api";
 import { getProductPricing } from "@/lib/pricing";
 import { useMockFallback } from "@/lib/runtime-flags";
 import {
@@ -12,7 +13,8 @@ import {
   normalizeSearchQuery,
 } from "@/lib/search-fallback";
 import { fallbackProducts } from "../../lib/mock-data";
-import { normalizeProduct } from "@/lib/taxonomy";
+import { getTopCategoryLabel, normalizeProduct } from "@/lib/taxonomy";
+import { useAuthStore } from "@/stores/auth-store";
 import type { Product } from "@/types/marketplace";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
@@ -100,6 +102,9 @@ async function fetchProducts(params: Record<string, string>) {
 
 export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
   const router = useRouter();
+  const user = useAuthStore((state) => state.user);
+  const lastSearchTrackedRef = useRef<string>("");
+  const lastCategoryTrackedRef = useRef<string>("");
   const [topCategory, setTopCategory] = useState(params.topCategory || "");
   const [productType, setProductType] = useState(params.productType || "");
   const [subCategory, setSubCategory] = useState(params.subCategory || "");
@@ -219,6 +224,50 @@ export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
     router.replace(href, { scroll: false });
   }, [router, runtimeParams]);
 
+  useEffect(() => {
+    if (!user) return;
+    const query = queryFromRoute.trim();
+    if (!query) return;
+
+    const fingerprint = query.toLowerCase();
+    if (lastSearchTrackedRef.current === fingerprint) return;
+    lastSearchTrackedRef.current = fingerprint;
+
+    void trackUserBehaviorEvent({
+      eventType: "SEARCH_QUERY",
+      searchQuery: query,
+      topCategory: topCategory || undefined,
+      subCategory: effectiveSubCategory || undefined,
+      metadata: {
+        source: "catalog",
+        productType: effectiveProductType || undefined,
+      },
+    }).catch(() => {
+      // Ignore telemetry failures.
+    });
+  }, [effectiveProductType, effectiveSubCategory, queryFromRoute, topCategory, user]);
+
+  useEffect(() => {
+    if (!user) return;
+    if (!topCategory && !effectiveSubCategory) return;
+
+    const fingerprint = [topCategory || "", effectiveSubCategory || "", effectiveProductType || ""].join("|").toLowerCase();
+    if (lastCategoryTrackedRef.current === fingerprint) return;
+    lastCategoryTrackedRef.current = fingerprint;
+
+    void trackUserBehaviorEvent({
+      eventType: "CATEGORY_BROWSE",
+      topCategory: topCategory || undefined,
+      subCategory: effectiveSubCategory || undefined,
+      metadata: {
+        source: "catalog",
+        productType: effectiveProductType || undefined,
+      },
+    }).catch(() => {
+      // Ignore telemetry failures.
+    });
+  }, [effectiveProductType, effectiveSubCategory, topCategory, user]);
+
   return (
     <div className="space-y-5">
       <section className="space-y-3 border border-zinc-300 p-4">
@@ -249,7 +298,7 @@ export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
             <option value="">All genders</option>
             {topCategoryOptions.map((item) => (
               <option key={item} value={item}>
-                {item}
+                {getTopCategoryLabel(item)}
               </option>
             ))}
           </select>

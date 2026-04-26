@@ -34,6 +34,20 @@ export function inferProductType(subCategory: string) {
   return subCategoryToType[subCategory] || "Top";
 }
 
+export function getTopCategoryLabel(category: string) {
+  return category.toLowerCase() === "kids" ? "Juniors" : category;
+}
+
+export function resolveTopCategoryFilter(category: string) {
+  const normalized = category.trim().toLowerCase();
+
+  if (normalized === "juniors" || normalized === "kids") return "Kids";
+  if (normalized === "men") return "Men";
+  if (normalized === "women") return "Women";
+
+  return category;
+}
+
 export function normalizeProduct(product: Product): Product {
   const productType = product.productType || inferProductType(product.subCategory || "T-Shirts");
   const subCategory = product.subCategory || "T-Shirts";

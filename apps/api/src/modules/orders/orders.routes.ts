@@ -1,12 +1,34 @@
 import { Router } from "express";
-import { OrderStatus, PaymentStatus, Prisma } from "@prisma/client";
+import { OrderStatus, PaymentStatus, Prisma, UserActivityEventType } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../../config/prisma.js";
 import { requireAuth } from "../../middleware/auth.js";
+import { createUserAndIpRateLimiters } from "../../middleware/rate-limit.js";
+import { addCartItem, getCart, getCartScopeFromUser, syncCheckoutCart } from "../carts/cart.service.js";
 import { notificationEventNames } from "../notifications/notification.events.js";
 import { queueNotificationEvent } from "../notifications/notification.service.js";
+import { trackUserActivity } from "../recommendations/recommendation.service.js";
 
 const router = Router();
+const [orderPlacementIpLimit, orderPlacementUserLimit] = createUserAndIpRateLimiters("orders-create", 60_000, 10, 30);
+
+const cancelReasonCodeSchema = z.enum([
+  "CHANGED_MIND",
+  "ORDERED_BY_MISTAKE",
+  "FOUND_BETTER_PRICE",
+  "DELIVERY_TOO_SLOW",
+  "PAYMENT_ISSUE",
+  "OTHER",
+]);
+
+const cancelReasonLabelByCode: Record<z.infer<typeof cancelReasonCodeSchema>, string> = {
+  CHANGED_MIND: "Changed my mind",
+  ORDERED_BY_MISTAKE: "Ordered by mistake",
+  FOUND_BETTER_PRICE: "Found a better price",
+  DELIVERY_TOO_SLOW: "Delivery is taking too long",
+  PAYMENT_ISSUE: "Payment issue",
+  OTHER: "Other",
+};
 
 const paymentMethodSchema = z.enum(["COD", "JAZZCASH", "EASYPAISA"]);
 const brandOrderStatusSchema = z.enum(["PENDING", "CONFIRMED", "PACKED", "SHIPPED", "DELIVERED", "CANCELED", "CANCELLED"]);
@@ -37,6 +59,25 @@ function composeStatusNote(note?: string, trackingId?: string | null) {
   if (trackingId) parts.push(`Tracking ID: ${trackingId}`);
   if (note) parts.push(note);
   return parts.join(" | ") || undefined;
+}
+
+function composeCancellationReason(reasonCode?: z.infer<typeof cancelReasonCodeSchema>, customReason?: string, fallback?: string) {
+  const reasonLabel = reasonCode ? cancelReasonLabelByCode[reasonCode] : null;
+  const custom = customReason?.trim();
+
+  if (reasonLabel && reasonCode === "OTHER" && custom) {
+    return `${reasonLabel}: ${custom}`;
+  }
+
+  if (reasonLabel) {
+    return reasonLabel;
+  }
+
+  if (custom) {
+    return custom;
+  }
+
+  return fallback;
 }
 
 function extractCustomerVisibleNote(note?: string | null) {
@@ -123,7 +164,7 @@ async function getAllowedBrandIdsForUser(userId: string, brandId?: string | null
   return memberships.map((membership) => membership.brandId);
 }
 
-router.post("/", requireAuth, async (req, res) => {
+router.post("/", requireAuth, orderPlacementIpLimit, orderPlacementUserLimit, async (req, res) => {
   const schema = z.object({
     paymentMethod: paymentMethodSchema,
     deliveryAddress: z.string().min(10),
@@ -344,6 +385,35 @@ router.post("/", requireAuth, async (req, res) => {
     });
   }
 
+  await Promise.allSettled(
+    parsed.data.items.map(async (item) => {
+      const product = productById(item.productId);
+      if (!product) return;
+
+      await trackUserActivity({
+        userId: req.auth!.userId,
+        eventType: UserActivityEventType.PRODUCT_PURCHASED,
+        productId: product.id,
+        topCategory: product.topCategory,
+        subCategory: product.subCategory,
+        metadata: {
+          quantity: item.quantity,
+          orderId: order.id,
+        },
+      });
+    }),
+  );
+
+  await syncCheckoutCart(
+    getCartScopeFromUser(req.auth!.userId),
+    parsed.data.items.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      selectedColor: item.selectedColor,
+      selectedSize: item.selectedSize,
+    })),
+  );
+
   return res.status(201).json({ data: order, paymentRedirect });
 });
 
@@ -419,6 +489,10 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
     return res.status(409).json({
       message: `Order status cannot move from ${targetSubOrder.status} to ${status}.`,
     });
+  }
+
+  if (status === OrderStatus.SHIPPED && !trackingId?.trim()) {
+    return res.status(400).json({ message: "Tracking ID is required when setting status to SHIPPED." });
   }
 
   if (!statusChanged && !trackingChanged && !parsed.data.note && !parsed.data.customerNote) {
@@ -527,10 +601,6 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
   };
 
   const parentStatusAfterUpdate = updated.status;
-  const resolvedEventName: OrderLifecycleEventName =
-    status === OrderStatus.DELIVERED && parentStatusAfterUpdate !== OrderStatus.DELIVERED
-      ? notificationEventNames.orderShipped
-      : orderEventByStatus[status];
 
   const customerFacingNote = buildSubOrderUpdateNote(
     status,
@@ -539,14 +609,19 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
     parsed.data.customerNote,
   );
 
-  queueNotificationEvent({
-    name: resolvedEventName,
-    orderId: order.id,
-    userId: order.userId,
-    brandId: targetSubOrder.brandId,
-    changedByRole: actingAsPlatformAdmin ? "ADMIN" : "BRAND",
-    note: customerFacingNote,
-  });
+  if (statusChanged) {
+    queueNotificationEvent({
+      name: orderEventByStatus[status],
+      orderId: order.id,
+      subOrderId: targetSubOrder.id,
+      userId: order.userId,
+      brandId: targetSubOrder.brandId,
+      brandName: targetSubOrder.brand.name,
+      changedByRole: actingAsPlatformAdmin ? "ADMIN" : "BRAND",
+      note: customerFacingNote,
+      notifyAdmin: true,
+    });
+  }
 
   if (status === OrderStatus.DELIVERED && order.paymentMethod === "COD" && order.paymentStatus !== PaymentStatus.COMPLETED) {
     queueNotificationEvent({
@@ -563,6 +638,8 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
 router.post("/me/:orderId/cancel", requireAuth, async (req, res) => {
   const payload = z
     .object({
+      reasonCode: cancelReasonCodeSchema.optional(),
+      customReason: z.string().trim().max(240).optional(),
       note: z.string().trim().max(240).optional(),
     })
     .safeParse(req.body || {});
@@ -570,6 +647,16 @@ router.post("/me/:orderId/cancel", requireAuth, async (req, res) => {
   if (!payload.success) {
     return res.status(400).json({ message: "Invalid payload", issues: payload.error.flatten() });
   }
+
+  if (payload.data.reasonCode === "OTHER" && !payload.data.customReason?.trim()) {
+    return res.status(400).json({ message: "customReason is required when reasonCode is OTHER." });
+  }
+
+  const cancellationReason = composeCancellationReason(
+    payload.data.reasonCode,
+    payload.data.customReason,
+    payload.data.note,
+  );
 
   const order = await prisma.order.findFirst({
     where: {
@@ -579,7 +666,7 @@ router.post("/me/:orderId/cancel", requireAuth, async (req, res) => {
     include: {
       user: { select: { id: true, email: true, fullName: true } },
       items: { include: { product: true, brand: true } },
-      subOrders: { include: { items: true } },
+      subOrders: { include: { items: true, brand: true } },
     },
   });
 
@@ -626,7 +713,7 @@ router.post("/me/:orderId/cancel", requireAuth, async (req, res) => {
           status: OrderStatus.CANCELED,
           updatedBy: "SYSTEM",
           updatedById: req.auth!.userId,
-          note: composeStatusNote(payload.data.note || "Vendor group canceled by customer"),
+          note: composeStatusNote(cancellationReason || "Vendor group canceled by customer"),
         },
       });
     }
@@ -637,7 +724,7 @@ router.post("/me/:orderId/cancel", requireAuth, async (req, res) => {
         status: OrderStatus.CANCELED,
         updatedBy: "SYSTEM",
         updatedById: req.auth!.userId,
-        note: composeStatusNote(payload.data.note || "Order canceled by customer"),
+        note: composeStatusNote(cancellationReason || "Order canceled by customer"),
       },
     });
 
@@ -664,7 +751,163 @@ router.post("/me/:orderId/cancel", requireAuth, async (req, res) => {
     orderId: order.id,
     userId: order.userId,
     changedByRole: "USER",
-    note: payload.data.note,
+    note: cancellationReason,
+    notifyAdmin: false,
+  });
+
+  for (const subOrder of order.subOrders.filter((entry) => entry.status !== OrderStatus.CANCELED)) {
+    queueNotificationEvent({
+      name: notificationEventNames.orderCancelled,
+      orderId: order.id,
+      subOrderId: subOrder.id,
+      userId: order.userId,
+      brandId: subOrder.brandId,
+      brandName: subOrder.brand?.name,
+      changedByRole: "USER",
+      note: cancellationReason || `${subOrder.brand?.name || "Brand"} vendor group canceled by customer`,
+      notifyAdmin: true,
+    });
+  }
+
+  return res.json({ data: canceled });
+});
+
+router.post("/me/:orderId/sub-orders/:subOrderId/cancel", requireAuth, async (req, res) => {
+  const payload = z
+    .object({
+      reasonCode: cancelReasonCodeSchema.optional(),
+      customReason: z.string().trim().max(240).optional(),
+      note: z.string().trim().max(240).optional(),
+    })
+    .safeParse(req.body || {});
+
+  if (!payload.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: payload.error.flatten() });
+  }
+
+  if (payload.data.reasonCode === "OTHER" && !payload.data.customReason?.trim()) {
+    return res.status(400).json({ message: "customReason is required when reasonCode is OTHER." });
+  }
+
+  const cancellationReason = composeCancellationReason(
+    payload.data.reasonCode,
+    payload.data.customReason,
+    payload.data.note,
+  );
+
+  const order = await prisma.order.findFirst({
+    where: {
+      id: String(req.params.orderId),
+      userId: req.auth!.userId,
+    },
+    include: {
+      user: { select: { id: true, email: true, fullName: true } },
+      items: { include: { product: true, brand: true } },
+      subOrders: {
+        include: {
+          brand: true,
+          items: true,
+        },
+      },
+    },
+  });
+
+  if (!order) return res.status(404).json({ message: "Order not found" });
+  if (!isWithinOrderActionWindow(order.createdAt)) {
+    return res.status(409).json({ message: "Cancel window has expired for this order." });
+  }
+
+  const targetSubOrder = order.subOrders.find((subOrder) => subOrder.id === String(req.params.subOrderId));
+  if (!targetSubOrder) {
+    return res.status(404).json({ message: "Vendor group not found" });
+  }
+
+  if ([OrderStatus.PACKED, OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(targetSubOrder.status)) {
+    return res.status(409).json({ message: "This vendor group can no longer be canceled." });
+  }
+
+  const canceled = await prisma.$transaction(async (tx) => {
+    if (targetSubOrder.status !== OrderStatus.CANCELED) {
+      await tx.subOrder.update({
+        where: { id: targetSubOrder.id },
+        data: { status: OrderStatus.CANCELED },
+      });
+
+      await restockOrderItems(
+        tx,
+        targetSubOrder.items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+      );
+
+      await tx.subOrderStatusLog.create({
+        data: {
+          subOrderId: targetSubOrder.id,
+          status: OrderStatus.CANCELED,
+          updatedBy: "SYSTEM",
+          updatedById: req.auth!.userId,
+          note: composeStatusNote(cancellationReason || "Vendor group canceled by customer"),
+        },
+      });
+    }
+
+    const refreshedSubOrders = await tx.subOrder.findMany({
+      where: { orderId: order.id },
+      select: { status: true, trackingId: true },
+    });
+
+    const nextParentStatus = deriveParentOrderStatus(refreshedSubOrders.map((subOrder) => subOrder.status));
+    const nextTrackingId =
+      refreshedSubOrders.length === 1
+        ? refreshedSubOrders[0].trackingId
+        : refreshedSubOrders.every((subOrder) => subOrder.trackingId && subOrder.trackingId === refreshedSubOrders[0].trackingId)
+          ? refreshedSubOrders[0].trackingId
+          : null;
+
+    await tx.order.update({
+      where: { id: order.id },
+      data: {
+        status: nextParentStatus,
+        trackingId: nextTrackingId,
+      },
+    });
+
+    await tx.orderStatusLog.create({
+      data: {
+        orderId: order.id,
+        status: nextParentStatus,
+        updatedBy: "SYSTEM",
+        updatedById: req.auth!.userId,
+        note: composeStatusNote(cancellationReason || `Vendor group (${targetSubOrder.brand.name}) canceled by customer`),
+      },
+    });
+
+    return tx.order.findUniqueOrThrow({
+      where: { id: order.id },
+      include: {
+        user: { select: { id: true, email: true, fullName: true } },
+        items: { include: { product: true, brand: true } },
+        subOrders: {
+          include: {
+            brand: true,
+            items: { include: { product: true } },
+            statusLogs: { orderBy: { createdAt: "desc" } },
+          },
+          orderBy: { createdAt: "asc" },
+        },
+        statusLogs: { orderBy: { createdAt: "desc" } },
+      },
+    });
+  });
+
+  queueNotificationEvent({
+    name: notificationEventNames.orderCancelled,
+    orderId: order.id,
+    subOrderId: targetSubOrder.id,
+    userId: order.userId,
+    brandId: targetSubOrder.brandId,
+    brandName: targetSubOrder.brand.name,
+    changedByRole: "USER",
+    note: cancellationReason || `${targetSubOrder.brand.name} vendor group canceled by customer`,
+    notifyAdmin: true,
   });
 
   return res.json({ data: canceled });
@@ -678,13 +921,20 @@ router.post("/me/:orderId/reorder", requireAuth, async (req, res) => {
     },
     include: {
       items: true,
+      subOrders: {
+        select: { status: true },
+      },
     },
   });
 
   if (!order) return res.status(404).json({ message: "Order not found" });
 
-  if (!isWithinOrderActionWindow(order.createdAt)) {
-    return res.status(409).json({ message: "Reorder is available only within 24 hours of order placement." });
+  const hasOnlyCompletedOrCanceledGroups = order.subOrders.every(
+    (subOrder) => subOrder.status === OrderStatus.DELIVERED || subOrder.status === OrderStatus.CANCELED,
+  );
+
+  if (!hasOnlyCompletedOrCanceledGroups) {
+    return res.status(409).json({ message: "Reorder is available only when all vendor groups are delivered or canceled." });
   }
 
   const productIds = Array.from(new Set(order.items.map((item) => item.productId)));
@@ -704,57 +954,86 @@ router.post("/me/:orderId/reorder", requireAuth, async (req, res) => {
     return res.status(409).json({ message: "None of the items in this order are currently available for reorder." });
   }
 
-  const cart = await prisma.$transaction(async (tx) => {
-    const ensuredCart = await tx.cart.upsert({
-      where: { userId: req.auth!.userId },
-      create: { userId: req.auth!.userId },
-      update: {},
-      select: { id: true },
+  const scope = getCartScopeFromUser(req.auth!.userId);
+  for (const item of reorderItems) {
+    const variantAwareItem = item as unknown as { selectedColor?: string | null; selectedSize?: string | null };
+    const added = await addCartItem(scope, {
+      productId: item.productId,
+      quantity: item.quantity,
+      selectedColor: variantAwareItem.selectedColor || undefined,
+      selectedSize: variantAwareItem.selectedSize || undefined,
     });
 
-    for (const item of reorderItems) {
-      const variantAwareItem = item as unknown as { selectedColor?: string | null; selectedSize?: string | null };
-      const selectedColor = variantAwareItem.selectedColor || null;
-      const selectedSize = variantAwareItem.selectedSize || null;
-
-      const existing = await tx.cartItem.findFirst({
-        where: {
-          cartId: ensuredCart.id,
-          productId: item.productId,
-          selectedColor,
-          selectedSize,
-        },
-        select: { id: true, quantity: true },
-      });
-
-      if (existing) {
-        await tx.cartItem.update({
-          where: { id: existing.id },
-          data: { quantity: existing.quantity + item.quantity },
-        });
-      } else {
-        await tx.cartItem.create({
-          data: {
-            cartId: ensuredCart.id,
-            productId: item.productId,
-            quantity: item.quantity,
-            selectedColor,
-            selectedSize,
-          },
-        });
-      }
+    if (added.error) {
+      return res.status(added.error.status).json(added.error);
     }
+  }
 
-    return tx.cart.findUniqueOrThrow({
-      where: { id: ensuredCart.id },
-      include: {
-        items: {
-          include: { product: { include: { brand: true } } },
-          orderBy: { createdAt: "asc" },
+  const cart = await getCart(scope);
+
+  return res.json({ data: cart });
+});
+
+router.post("/me/:orderId/sub-orders/:subOrderId/reorder", requireAuth, async (req, res) => {
+  const order = await prisma.order.findFirst({
+    where: {
+      id: String(req.params.orderId),
+      userId: req.auth!.userId,
+    },
+    include: {
+      subOrders: {
+        where: { id: String(req.params.subOrderId) },
+        include: {
+          items: true,
         },
       },
-    });
+    },
   });
+
+  if (!order) return res.status(404).json({ message: "Order not found" });
+
+  const targetSubOrder = order.subOrders[0];
+  if (!targetSubOrder) {
+    return res.status(404).json({ message: "Vendor group not found" });
+  }
+
+  if (![OrderStatus.DELIVERED, OrderStatus.CANCELED].includes(targetSubOrder.status)) {
+    return res.status(409).json({ message: "Reorder is available only for delivered or canceled vendor groups." });
+  }
+
+  const productIds = Array.from(new Set(targetSubOrder.items.map((item) => item.productId)));
+  const products = await prisma.product.findMany({
+    where: {
+      id: { in: productIds },
+      isActive: true,
+      approvalStatus: "APPROVED",
+    },
+    select: { id: true },
+  });
+
+  const activeProductIds = new Set(products.map((item) => item.id));
+  const reorderItems = targetSubOrder.items.filter((item) => activeProductIds.has(item.productId));
+
+  if (!reorderItems.length) {
+    return res.status(409).json({ message: "None of the items in this vendor group are currently available for reorder." });
+  }
+
+  const scope = getCartScopeFromUser(req.auth!.userId);
+  for (const item of reorderItems) {
+    const variantAwareItem = item as unknown as { selectedColor?: string | null; selectedSize?: string | null };
+    const added = await addCartItem(scope, {
+      productId: item.productId,
+      quantity: item.quantity,
+      selectedColor: variantAwareItem.selectedColor || undefined,
+      selectedSize: variantAwareItem.selectedSize || undefined,
+    });
+
+    if (added.error) {
+      return res.status(added.error.status).json(added.error);
+    }
+  }
+
+  const cart = await getCart(scope);
 
   return res.json({ data: cart });
 });

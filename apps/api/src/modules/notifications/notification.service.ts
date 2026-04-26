@@ -10,7 +10,11 @@ import { prisma } from "../../config/prisma.js";
 import { env } from "../../config/env.js";
 import type { NotificationEvent } from "./notification.events.js";
 import { enqueueNotificationEvent } from "./notification.queue.js";
-import { notificationRules, type NotificationAudience } from "./notification.rules.js";
+import {
+  notificationRules,
+  type NotificationAudience,
+  type NotificationChannelPreference,
+} from "./notification.rules.js";
 import { buildNotificationTemplate } from "./notification.templates.js";
 
 type DispatchInput = {
@@ -33,8 +37,10 @@ type ResolvedRecipient = {
   audience: NotificationAudience;
   userId?: string;
   brandId?: string;
+  brandName?: string;
   email?: string | null;
   whatsapp?: string | null;
+  channels: NotificationChannelPreference[];
 };
 
 function mapEventToNotificationType(event: NotificationEvent): NotificationType {
@@ -50,12 +56,22 @@ function mapEventToNotificationType(event: NotificationEvent): NotificationType 
     case "PaymentSuccess":
     case "PaymentFailed":
     case "RefundProcessed":
-    case "ProductApproved":
-    case "ProductRejected":
     case "BrandApproved":
       return NotificationType.ORDER_STATUS_UPDATED;
     case "ProductSubmitted":
+    case "ProductApproved":
+    case "ProductRejected":
       return NotificationType.BRAND_ORDER_ASSIGNED;
+    case "ReviewSubmitted":
+      return NotificationType.PRODUCT_REVIEW_SUBMITTED;
+    case "ReviewHelpfulVoted":
+      return NotificationType.PRODUCT_REVIEW_REPLIED;
+    case "ReviewReported":
+      return NotificationType.PRODUCT_REVIEW_REPORTED;
+    case "ReviewModerated":
+      return NotificationType.PRODUCT_REVIEW_MODERATED;
+    case "ReviewReplied":
+      return NotificationType.PRODUCT_REVIEW_REPLIED;
     default:
       return NotificationType.ORDER_STATUS_UPDATED;
   }
@@ -172,6 +188,10 @@ async function resolveRecipients(
 ): Promise<ResolvedRecipient[]> {
   const rule = notificationRules[event.name];
   const recipients: ResolvedRecipient[] = [];
+  const channelsForAudience = (audience: NotificationAudience): NotificationChannelPreference[] => {
+    return rule.audienceRules.find((item) => item.audience === audience)?.channels || [];
+  };
+  const audiences = new Set(rule.audienceRules.map((item) => item.audience));
 
   const order = event.orderId
     ? await prismaClient.order.findUnique({
@@ -183,7 +203,7 @@ async function resolveRecipients(
       })
     : null;
 
-  if (rule.audiences.includes("USER")) {
+  if (audiences.has("USER")) {
     const resolvedUserId = event.userId || order?.user.id;
     if (resolvedUserId) {
       const user =
@@ -199,52 +219,89 @@ async function resolveRecipients(
           audience: "USER",
           userId: user.id,
           email: user.email,
+          channels: channelsForAudience("USER"),
         });
       }
     }
   }
 
-  if (rule.audiences.includes("ADMIN")) {
-    const admins = await prismaClient.user.findMany({
-      where: { role: { in: [Role.ADMIN, Role.SUPER_ADMIN] } },
-      select: { id: true, email: true },
-    });
+  if (audiences.has("ADMIN")) {
+    const shouldSkipAdminAudience =
+      (event.name === "OrderDelivered" || event.name === "OrderCancelled") &&
+      "notifyAdmin" in event &&
+      event.notifyAdmin === false;
 
-    recipients.push(
-      ...admins.map((admin) => ({
-        audience: "ADMIN" as const,
-        userId: admin.id,
-        email: admin.email,
-      })),
-    );
+    if (!shouldSkipAdminAudience) {
+      const admins = await prismaClient.user.findMany({
+        where: { role: { in: [Role.ADMIN, Role.SUPER_ADMIN] } },
+        select: { id: true, email: true },
+      });
+
+      recipients.push(
+        ...admins.map((admin) => ({
+          audience: "ADMIN" as const,
+          userId: admin.id,
+          email: admin.email,
+          channels: channelsForAudience("ADMIN"),
+        })),
+      );
+    }
   }
 
-  if (rule.audiences.includes("BRAND_MEMBERS")) {
+  if (audiences.has("BRAND_MEMBERS")) {
     const brandIds = new Set<string>();
-    if (event.brandId) brandIds.add(event.brandId);
-    if (order) {
+    if (event.brandId) {
+      brandIds.add(event.brandId);
+    } else if (order) {
       for (const item of order.items) {
         brandIds.add(item.brandId);
       }
     }
 
     if (brandIds.size > 0) {
+      const brandIdList = Array.from(brandIds);
       const members = await prismaClient.brandMember.findMany({
-        where: { brandId: { in: Array.from(brandIds) } },
+        where: { brandId: { in: brandIdList } },
         include: {
           user: { select: { id: true, email: true } },
-          brand: { select: { id: true, contactEmail: true, whatsappNumber: true } },
+          brand: { select: { id: true, name: true, contactEmail: true, whatsappNumber: true } },
+        },
+      });
+
+      const owners = await prismaClient.user.findMany({
+        where: { brandId: { in: brandIdList } },
+        select: {
+          id: true,
+          email: true,
+          brandId: true,
+          brand: { select: { id: true, name: true, contactEmail: true, whatsappNumber: true } },
         },
       });
 
       recipients.push(
         ...members.map((member) => ({
-          audience: "BRAND_MEMBERS" as const,
-          userId: member.user.id,
-          brandId: member.brand.id,
-          email: member.user.email || member.brand.contactEmail,
-          whatsapp: member.brand.whatsappNumber,
+            audience: "BRAND_MEMBERS" as const,
+            userId: member.user.id,
+            brandId: member.brand.id,
+            brandName: member.brand.name,
+            email: member.user.email || member.brand.contactEmail,
+            whatsapp: member.brand.whatsappNumber,
+            channels: channelsForAudience("BRAND_MEMBERS"),
         })),
+      );
+
+      recipients.push(
+        ...owners
+          .filter((owner) => Boolean(owner.brandId) && Boolean(owner.brand))
+          .map((owner) => ({
+            audience: "BRAND_MEMBERS" as const,
+            userId: owner.id,
+            brandId: owner.brandId!,
+            brandName: owner.brand?.name,
+            email: owner.email || owner.brand?.contactEmail,
+            whatsapp: owner.brand?.whatsappNumber,
+            channels: channelsForAudience("BRAND_MEMBERS"),
+          })),
       );
     }
   }
@@ -408,14 +465,41 @@ export async function emitNotificationEvent(
   event: NotificationEvent,
   prismaClient: PrismaClient | Prisma.TransactionClient = prisma,
 ) {
-  const rule = notificationRules[event.name];
+  const orderBrandNames = event.orderId
+    ? await prismaClient.order
+        .findUnique({
+          where: { id: event.orderId },
+          select: {
+            items: {
+              select: {
+                brand: { select: { name: true } },
+              },
+            },
+          },
+        })
+        .then((order) => Array.from(new Set(order?.items.map((item) => item.brand.name).filter(Boolean) || [])))
+    : undefined;
+
+  const eventBrandName = event.brandId
+    ? await prismaClient.brand
+        .findUnique({
+          where: { id: event.brandId },
+          select: { name: true },
+        })
+        .then((brand) => brand?.name)
+    : undefined;
+
   const recipients = await resolveRecipients(prismaClient, event);
   const type = mapEventToNotificationType(event);
 
   for (const recipient of recipients) {
-    const template = buildNotificationTemplate(event, recipient.audience);
+    const template = buildNotificationTemplate(event, recipient.audience, {
+      recipientBrandName:
+        recipient.brandName || ("brandName" in event ? event.brandName : undefined) || eventBrandName || undefined,
+      orderBrandNames,
+    });
     const emailAllowed =
-      rule.channels.includes("EMAIL") &&
+      recipient.channels.includes("EMAIL") &&
       (await shouldSendEmailForRecipient({
         prismaClient,
         recipient,
@@ -431,7 +515,7 @@ export async function emitNotificationEvent(
       brandId: recipient.brandId,
       orderId: event.orderId,
       emailRecipient: emailAllowed ? recipient.email : undefined,
-      whatsappRecipient: rule.channels.includes("WHATSAPP") ? recipient.whatsapp : undefined,
+      whatsappRecipient: recipient.channels.includes("WHATSAPP") ? recipient.whatsapp : undefined,
       emailSubject: `[Broady] ${template.title}`,
       emailText: template.message,
     });
@@ -445,6 +529,16 @@ export function queueNotificationEvent(event: NotificationEvent) {
       orderId: event.orderId,
       brandId: event.brandId,
       error: error instanceof Error ? error.message : String(error),
+    });
+
+    // Reliability fallback: still attempt direct delivery when the queue layer is unavailable.
+    void emitNotificationEvent(event).catch((directError) => {
+      console.error("[notifications] failed to deliver event after enqueue fallback", {
+        event: event.name,
+        orderId: event.orderId,
+        brandId: event.brandId,
+        error: directError instanceof Error ? directError.message : String(directError),
+      });
     });
   });
 }

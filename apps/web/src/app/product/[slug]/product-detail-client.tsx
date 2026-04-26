@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ProductImage } from "@/components/ui/product-image";
-import { addWishlistProduct, removeWishlistProduct } from "@/lib/api";
+import { addWishlistProduct, removeWishlistProduct, trackUserBehaviorEvent } from "@/lib/api";
 import { getProductPricing } from "@/lib/pricing";
 import { formatPkr } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
@@ -20,7 +20,7 @@ export function ProductDetailClient({ product }: Props) {
   const [hasHydrated, setHasHydrated] = useState(false);
   const [selectedSize, setSelectedSize] = useState(product.sizes[0] || "");
   const [selectedColor, setSelectedColor] = useState(product.colors?.[0] || "Black");
-  const [openPanel, setOpenPanel] = useState<"sizeGuide" | "deliveriesReturns" | "shippingDelivery" | "fabricCare" | null>("sizeGuide");
+  const [openPanel, setOpenPanel] = useState<"sizeGuide" | "deliveriesReturns" | "shippingDelivery" | "fabricCare" | null>(null);
   const [zoomOpen, setZoomOpen] = useState(false);
 
   const user = useAuthStore((state) => state.user);
@@ -33,16 +33,22 @@ export function ProductDetailClient({ product }: Props) {
   const wishlistActive = hasHydrated ? isInWishlist : false;
   const pricing = getProductPricing(product);
 
-  const getStockColor = () => {
-    if (product.stock === 0) return "bg-red-100 border-red-300";
-    if (product.stock <= 5) return "bg-amber-100 border-amber-300";
-    if (product.stock <= 15) return "bg-yellow-100 border-yellow-300";
-    return "bg-emerald-100 border-emerald-300";
-  };
-
   useEffect(() => {
     setHasHydrated(true);
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    void trackUserBehaviorEvent({
+      eventType: "PRODUCT_VIEW",
+      productId: product.id,
+      topCategory: product.topCategory,
+      subCategory: product.subCategory,
+    }).catch(() => {
+      // Ignore telemetry failures to keep browsing uninterrupted.
+    });
+  }, [product.id, product.subCategory, product.topCategory, user]);
 
   const badge = useMemo(() => {
     if (pricing.hasDiscount) return `-${pricing.discountPercentage}%`;
@@ -84,7 +90,7 @@ export function ProductDetailClient({ product }: Props) {
 
       <div className="space-y-5 border border-zinc-300 p-6 md:col-span-5">
         <div className="flex items-center justify-between gap-3">
-          <Link href={product.brand?.slug ? `/brand/${product.brand.slug}` : "/brands"} className="text-xs uppercase tracking-[0.14em] text-zinc-500 hover:text-black">
+          <Link href={product.brand?.slug ? `/brand/${product.brand.slug}` : "/brands"} className="text-xs uppercase tracking-[0.14em] text-zinc-500 hover:text-zinc-700">
             {product.brand?.name || "Verified Brand"}
           </Link>
           <span className={`border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${badgeClass}`}>{badge}</span>
@@ -101,11 +107,11 @@ export function ProductDetailClient({ product }: Props) {
         )}
         <p className="text-sm leading-7 text-zinc-700">{product.descriptionLong || product.description}</p>
 
-        <div className={`border p-3 text-xs uppercase tracking-[0.12em] ${getStockColor()}`}>
-          <div className="flex items-center justify-between">
-            <span>Stock: {product.stock > 0 ? `${product.stock} available` : "Out of stock"}</span>
-            <span>{product.topCategory} / {product.subCategory}</span>
-          </div>
+        <div className="space-y-1 text-xs uppercase tracking-[0.12em]">
+          <p className={product.stock > 0 ? "font-semibold text-emerald-700" : "font-semibold text-rose-700"}>
+            Stock: {product.stock > 0 ? `${product.stock} available` : "Out of stock"}
+          </p>
+          <p className="text-zinc-500">{product.topCategory} / {product.subCategory}</p>
         </div>
 
         <div className="space-y-2">
@@ -148,13 +154,24 @@ export function ProductDetailClient({ product }: Props) {
             onClick={() => {
               addToCart(product, { selectedColor, selectedSize });
               pushToast("Added to cart", "success");
+              if (user) {
+                void trackUserBehaviorEvent({
+                  eventType: "PRODUCT_ADDED_TO_CART",
+                  productId: product.id,
+                  topCategory: product.topCategory,
+                  subCategory: product.subCategory,
+                  metadata: { source: "product-detail" },
+                }).catch(() => {
+                  // Ignore telemetry failures.
+                });
+              }
             }}
           >
             {canAdd ? "Add to Cart" : "Out of Stock"}
           </button>
           <button
             type="button"
-            className="h-11 border border-black px-4 text-xs font-semibold uppercase tracking-[0.14em]"
+            className="h-11 border border-zinc-300 px-4 text-xs font-semibold uppercase tracking-[0.14em] hover:bg-zinc-100"
             onClick={async () => {
               if (wishlistActive) {
                 if (user) {
@@ -175,6 +192,15 @@ export function ProductDetailClient({ product }: Props) {
                 try {
                   await addWishlistProduct(product.id);
                   addWishlistLocal(product);
+                  void trackUserBehaviorEvent({
+                    eventType: "WISHLIST_ADDED",
+                    productId: product.id,
+                    topCategory: product.topCategory,
+                    subCategory: product.subCategory,
+                    metadata: { source: "product-detail" },
+                  }).catch(() => {
+                    // Ignore telemetry failures.
+                  });
                 } catch (error) {
                   const message = error instanceof Error ? error.message : "Failed to save wishlist item";
                   if (message.toLowerCase().includes("product not found")) {
@@ -283,7 +309,7 @@ export function ProductDetailClient({ product }: Props) {
               <article key={panel.key} className="w-full border border-zinc-300">
                 <button
                   type="button"
-                  className="flex w-full items-center justify-between px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.12em] hover:bg-black hover:text-white"
+                  className="flex w-full items-center justify-between px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.12em] hover:bg-zinc-100 hover:text-zinc-900"
                   onClick={() => setOpenPanel((current) => (current === panel.key ? null : panel.key))}
                 >
                   <span>{panel.title}</span>

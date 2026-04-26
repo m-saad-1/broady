@@ -17,8 +17,8 @@ Broady follows a module-oriented monorepo architecture:
 
 At runtime, the system is split into three concerns:
 
-- HTTP API process (`apps/api/src/server.ts`)
-- Notification worker process (`apps/api/src/notification-worker.ts`) or embedded mode
+- HTTP API process (`apps/api/src/notification-worker.ts`)
+- Notification worker process (`apps/api/src/server.ts`) or embedded mode
 - Web process (`apps/web`)
 
 ## Tech Stack

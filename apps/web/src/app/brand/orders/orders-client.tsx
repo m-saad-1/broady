@@ -11,7 +11,7 @@ type BrandOrdersClientProps = {
   mode?: "dashboard" | "orders";
 };
 
-type OrderFilter = "ALL" | "NEW" | "DELIVERED" | "CANCELLED";
+type OrderFilter = "ALL" | "NEW" | "PENDING" | "CONFIRMED" | "SHIPPED" | "DELIVERED" | "CANCELLED";
 
 const currencyFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
@@ -37,9 +37,20 @@ function formatDateTime(value?: string | null) {
 const filterOptions: Array<{ key: OrderFilter; label: string }> = [
   { key: "ALL", label: "All" },
   { key: "NEW", label: "New" },
+  { key: "PENDING", label: "Pending" },
+  { key: "CONFIRMED", label: "Confirmed" },
+  { key: "SHIPPED", label: "Shipped" },
   { key: "DELIVERED", label: "Delivered" },
   { key: "CANCELLED", label: "Cancelled" },
 ];
+
+const statusTone: Record<string, string> = {
+  PENDING: "text-amber-700",
+  CONFIRMED: "text-blue-700",
+  SHIPPED: "text-indigo-700",
+  DELIVERED: "text-emerald-700",
+  CANCELED: "text-rose-700",
+};
 
 function truncateText(value: string, maxLength: number) {
   if (value.length <= maxLength) return value;
@@ -51,6 +62,15 @@ function matchesFilter(order: BrandDashboardOrder, filter: OrderFilter) {
   if (filter === "NEW") {
     // New orders are those that were just created (PENDING status)
     return order.status === "PENDING";
+  }
+  if (filter === "PENDING") {
+    return order.status === "PENDING";
+  }
+  if (filter === "CONFIRMED") {
+    return order.status === "CONFIRMED";
+  }
+  if (filter === "SHIPPED") {
+    return order.status === "SHIPPED";
   }
   if (filter === "DELIVERED") {
     return order.status === "DELIVERED";
@@ -112,8 +132,6 @@ export function BrandOrdersClient({ title = "Orders", mode = "orders" }: BrandOr
     return sortedOrders.filter((item) => matchesFilter(item, activeFilter));
   }, [activeFilter, sortedOrders]);
 
-  const openOrders = useMemo(() => orders.filter((item) => !["DELIVERED", "CANCELED"].includes(item.status)).length, [orders]);
-
   const topProducts = useMemo(
     () => [...products].sort((a, b) => b.stock - a.stock).slice(0, 4),
     [products],
@@ -139,29 +157,32 @@ export function BrandOrdersClient({ title = "Orders", mode = "orders" }: BrandOr
 
   return (
     <div className="space-y-6">
-      <section className="border border-zinc-300 p-4">
-        <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Brand</p>
-        <h2 className="mt-2 font-heading text-4xl uppercase">{overview.brand.name}</h2>
+      <section className="flex flex-wrap items-start justify-between gap-4 border border-zinc-300 p-4">
+        <div>
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Brand</p>
+          <h2 className="mt-2 font-heading text-4xl uppercase">{overview.brand.name}</h2>
+        </div>
+        <button type="button" onClick={() => void loadAll(true)} className="h-10 border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white">
+          {refreshing ? "Refreshing..." : "Refresh"}
+        </button>
       </section>
 
       <section className="grid gap-4 md:grid-cols-4">
         <article className="border border-zinc-300 p-5">
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Total Orders</p>
-          <p className="mt-3 font-heading text-3xl">{orders.length}</p>
+          <p className="mt-3 font-heading text-3xl">{overview.metrics.totalOrders}</p>
         </article>
         <article className="border border-zinc-300 p-5">
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Open Orders</p>
-          <p className="mt-3 font-heading text-3xl">{openOrders}</p>
+          <p className="mt-3 font-heading text-3xl">{overview.metrics.openOrders}</p>
         </article>
         <article className="border border-zinc-300 p-5">
-          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Gross Sales</p>
-          <p className="mt-3 font-heading text-3xl">PKR {formatCurrency(overview.metrics.grossPkr)}</p>
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Delivered Orders</p>
+          <p className="mt-3 font-heading text-3xl">{overview.metrics.deliveredOrders}</p>
         </article>
         <article className="border border-zinc-300 p-5">
-          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Live Updates</p>
-          <button type="button" onClick={() => void loadAll(true)} className="mt-3 text-sm font-semibold uppercase tracking-[0.08em] text-zinc-700">
-            {refreshing ? "Refreshing..." : "Refresh"}
-          </button>
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Total Sales</p>
+          <p className="mt-3 font-heading text-3xl">PKR {formatCurrency(overview.metrics.totalSalesPkr)}</p>
         </article>
       </section>
 
@@ -203,7 +224,7 @@ export function BrandOrdersClient({ title = "Orders", mode = "orders" }: BrandOr
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <Link href={`/brand/orders/${order.id}`} className="text-sm font-semibold uppercase tracking-[0.08em] underline decoration-zinc-400 underline-offset-2">
-                      Order {order.id.slice(0, 10)}...
+                      Order {order.id}
                     </Link>
                     <p className="text-xs text-zinc-600">{order.user.fullName} / {order.user.email}</p>
                   </div>
@@ -228,7 +249,7 @@ export function BrandOrdersClient({ title = "Orders", mode = "orders" }: BrandOr
                   <span>
                     <span className="font-semibold text-zinc-700">Items:</span> {itemsSummary}
                   </span>
-                  <span>
+                  <span className={`font-semibold ${statusTone[order.status] || "text-zinc-700"}`}>
                     {order.status} · PKR {order.totalPkr.toLocaleString()}
                   </span>
                 </div>

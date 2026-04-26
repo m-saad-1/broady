@@ -31,7 +31,7 @@ export function TopPromoBanner({ slides, intervalMs = 3600 }: TopPromoBannerProp
   return (
     <section
       aria-live="polite"
-      className="relative h-[22rem] overflow-hidden border border-zinc-300 md:h-[29rem]"
+      className="relative h-[15rem] overflow-hidden border border-zinc-300 md:h-[20rem]"
     >
       {list.map((slide, messageIndex) => (
         <div

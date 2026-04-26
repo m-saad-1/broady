@@ -16,7 +16,7 @@ import {
 } from "@/lib/api";
 import { fallbackProducts } from "@/lib/mock-data";
 import { filterProductsBySubCategoryContains, isEligibleSearchQuery } from "@/lib/search-fallback";
-import { normalizeProduct } from "@/lib/taxonomy";
+import { normalizeProduct, resolveTopCategoryFilter } from "@/lib/taxonomy";
 import { useAuthStore } from "@/stores/auth-store";
 import { useCartStore } from "@/stores/cart-store";
 import { useWishlistStore } from "@/stores/wishlist-store";
@@ -32,7 +32,7 @@ const baseNavLinkClass =
 const primaryNavItems = [
   { href: "/category/Men", label: "Men" },
   { href: "/category/Women", label: "Women" },
-  { href: "/category/Kids", label: "Kids" },
+  { href: "/category/Juniors", label: "Juniors" },
   { href: "/catalog", label: "Catalog" },
   { href: "/offers", label: "Offers" },
   { href: "/brands", label: "Brands" },
@@ -141,8 +141,9 @@ export function SiteHeader() {
     }
 
     const categorySlug = decodeURIComponent(pathname.split("/")[2] || "");
-    if (categorySlug === "Men" || categorySlug === "Women" || categorySlug === "Kids") {
-      return categorySlug;
+    const resolvedCategory = resolveTopCategoryFilter(categorySlug);
+    if (resolvedCategory === "Men" || resolvedCategory === "Women" || resolvedCategory === "Kids") {
+      return resolvedCategory;
     }
 
     return undefined;

@@ -179,10 +179,13 @@ export type BrandDashboardOverview = {
   metrics: {
     totalProducts: number;
     activeProducts: number;
-    grossPkr: number;
-    estimatedNetPkr: number;
-    commissionRate: number;
-    orderItems: number;
+    pendingProducts: number;
+    outOfStockProducts: number;
+    totalOrders: number;
+    openOrders: number;
+    deliveredOrders: number;
+    cancelledOrders: number;
+    totalSalesPkr: number;
     byStatus: Record<string, number>;
   };
   recentOrders: BrandDashboardOrder[];
@@ -264,8 +267,12 @@ export type AdminBrandDashboardRecord = {
     totalProducts: number;
     activeProducts: number;
     pendingProducts: number;
+    outOfStockProducts: number;
     totalOrders: number;
-    grossPkr: number;
+    openOrders: number;
+    deliveredOrders: number;
+    cancelledOrders: number;
+    totalSalesPkr: number;
     statusCounts: Record<string, number>;
   };
 };

@@ -44,6 +44,16 @@ export function AdminBrandDashboardClient() {
     [entries, selectedBrandId],
   );
 
+  const dashboardTotals = useMemo(
+    () => ({
+      totalBrands: entries.length,
+      activeBrands: entries.filter((entry) => entry.metrics.activeProducts > 0).length,
+      inactiveBrands: entries.filter((entry) => entry.metrics.activeProducts === 0).length,
+      brandsWithPendingProducts: entries.filter((entry) => entry.metrics.pendingProducts > 0).length,
+    }),
+    [entries],
+  );
+
   const handleApproveProduct = async (productId: string) => {
     setSavingProductId(productId);
     try {
@@ -82,24 +92,28 @@ export function AdminBrandDashboardClient() {
 
   return (
     <div className="space-y-8">
+      <div className="flex justify-end">
+        <button type="button" onClick={() => void loadData("refresh")} className="h-10 border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white">
+          {refreshing ? "Refreshing..." : "Refresh"}
+        </button>
+      </div>
+
       <section className="grid gap-4 md:grid-cols-4">
         <article className="border border-zinc-300 p-5">
-          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Brands</p>
-          <p className="mt-3 font-heading text-4xl">{entries.length}</p>
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Total Brands</p>
+          <p className="mt-3 font-heading text-4xl">{dashboardTotals.totalBrands}</p>
         </article>
         <article className="border border-zinc-300 p-5">
-          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Products</p>
-          <p className="mt-3 font-heading text-4xl">{entries.reduce((acc, item) => acc + item.metrics.totalProducts, 0)}</p>
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Active Brands</p>
+          <p className="mt-3 font-heading text-4xl">{dashboardTotals.activeBrands}</p>
         </article>
         <article className="border border-zinc-300 p-5">
-          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Orders</p>
-          <p className="mt-3 font-heading text-4xl">{entries.reduce((acc, item) => acc + item.metrics.totalOrders, 0)}</p>
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Inactive Brands</p>
+          <p className="mt-3 font-heading text-4xl">{dashboardTotals.inactiveBrands}</p>
         </article>
         <article className="border border-zinc-300 p-5">
-          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Live Updates</p>
-          <p className="mt-3 text-sm font-semibold uppercase tracking-[0.08em] text-zinc-700">
-            {refreshing ? "Refreshing..." : "On demand"}
-          </p>
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Brands With Pending Products</p>
+          <p className="mt-3 font-heading text-4xl">{dashboardTotals.brandsWithPendingProducts}</p>
         </article>
       </section>
 
@@ -134,9 +148,16 @@ export function AdminBrandDashboardClient() {
               </div>
               <div className="grid gap-3 text-xs uppercase tracking-[0.12em] text-zinc-600 md:grid-cols-4">
                 <p>Total products: {selected.metrics.totalProducts}</p>
+                <p>Active products: {selected.metrics.activeProducts}</p>
                 <p>Pending products: {selected.metrics.pendingProducts}</p>
+                <p>Out of stock: {selected.metrics.outOfStockProducts}</p>
+              </div>
+              <div className="grid gap-3 text-xs uppercase tracking-[0.12em] text-zinc-600 md:grid-cols-5">
                 <p>Total orders: {selected.metrics.totalOrders}</p>
-                <p>Gross: PKR {selected.metrics.grossPkr.toLocaleString()}</p>
+                <p>Open orders: {selected.metrics.openOrders}</p>
+                <p>Delivered orders: {selected.metrics.deliveredOrders}</p>
+                <p>Cancelled orders: {selected.metrics.cancelledOrders}</p>
+                <p>Total sales: PKR {selected.metrics.totalSalesPkr.toLocaleString()}</p>
               </div>
             </section>
 
@@ -185,7 +206,7 @@ export function AdminBrandDashboardClient() {
                     <div className="grid gap-3 md:grid-cols-[1.5fr_1fr_1fr_auto] md:items-center">
                       <div>
                         <Link href={`/admin/orders/${order.id}`} className="text-sm font-semibold uppercase tracking-[0.08em] underline decoration-zinc-400 underline-offset-2">
-                          Order {order.id.slice(0, 10)}...
+                          Order {order.id}
                         </Link>
                         <p className="text-xs text-zinc-600">{order.user.fullName} / {order.user.email}</p>
                       </div>

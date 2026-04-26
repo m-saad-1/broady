@@ -8,13 +8,16 @@ import {
   registerController,
 } from "./auth.controller.js";
 import { requireAuth } from "../../middleware/auth.js";
+import { createIpRateLimiter } from "../../middleware/rate-limit.js";
 
 const router = Router();
+const authBurstLimiter = createIpRateLimiter("auth-burst", 60_000, 20);
+const authCredentialLimiter = createIpRateLimiter("auth-credentials", 5 * 60_000, 12);
 
-router.post("/register", registerController);
-router.post("/login", loginController);
-router.post("/google", googleAuthController);
-router.post("/brand-invite/complete", completeBrandInviteController);
+router.post("/register", authBurstLimiter, authCredentialLimiter, registerController);
+router.post("/login", authBurstLimiter, authCredentialLimiter, loginController);
+router.post("/google", authBurstLimiter, googleAuthController);
+router.post("/brand-invite/complete", authBurstLimiter, authCredentialLimiter, completeBrandInviteController);
 router.post("/logout", logoutController);
 router.get("/me", requireAuth, meController);
 
