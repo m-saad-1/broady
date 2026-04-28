@@ -3,7 +3,16 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  MEN_CATEGORY_CARD_IMAGES,
+  WOMEN_CATEGORY_CARD_IMAGES,
+  FALLBACK_CATEGORY_IMAGE,
+  MEN_PRESET_CATEGORIES,
+  WOMEN_PRESET_CATEGORIES,
+  JUNIOR_GROUPS,
+  JUNIOR_SUBCATEGORIES,
+} from "@/lib/category-images";
 import { fetchCurrentUser } from "@/lib/auth-client";
 import {
   addWishlistProduct,
@@ -16,7 +25,7 @@ import {
 } from "@/lib/api";
 import { fallbackProducts } from "@/lib/mock-data";
 import { filterProductsBySubCategoryContains, isEligibleSearchQuery } from "@/lib/search-fallback";
-import { normalizeProduct, resolveTopCategoryFilter } from "@/lib/taxonomy";
+import { inferProductType, normalizeProduct, resolveTopCategoryFilter } from "@/lib/taxonomy";
 import { useAuthStore } from "@/stores/auth-store";
 import { useCartStore } from "@/stores/cart-store";
 import { useWishlistStore } from "@/stores/wishlist-store";
@@ -28,6 +37,39 @@ function getCartKey(item: { product: Product; selectedColor?: string; selectedSi
 
 const baseNavLinkClass =
   "relative whitespace-nowrap after:absolute after:-bottom-1 after:left-0 after:h-px after:w-full after:origin-left after:bg-black after:transition-transform after:duration-200";
+
+const dropdownNavLinkClass = "relative whitespace-nowrap text-xs font-semibold uppercase tracking-[0.14em]";
+
+type CatalogFilters = {
+  q?: string;
+  topCategory?: string;
+  productType?: string;
+  subCategory?: string;
+};
+
+type CatalogCard = {
+  label: string;
+  filters: CatalogFilters;
+};
+
+const MEN_WOMEN_MENU_ITEMS: CatalogCard[] = [
+  { label: "Shirts", filters: { q: "Shirts", productType: "Top" } },
+  { label: "T-Shirts", filters: { q: "T-Shirts", productType: "Top", subCategory: "T-Shirts" } },
+  { label: "Jackets", filters: { q: "Jackets", productType: "Top" } },
+  { label: "Polo", filters: { q: "Polo Shirts", productType: "Top", subCategory: "Polo Shirts" } },
+  { label: "Jeans", filters: { q: "Jeans", productType: "Bottom", subCategory: "Jeans" } },
+  { label: "Sneakers", filters: { q: "Sneakers", productType: "Footwear", subCategory: "Sneakers" } },
+  { label: "Boots", filters: { q: "Boots", productType: "Footwear", subCategory: "Boots" } },
+  { label: "Accessories", filters: { q: "Accessories", productType: "Accessories", subCategory: "Accessories" } },
+];
+
+const JUNIORS_MENU_ITEMS: CatalogCard[] = [
+  { label: "Hoodies", filters: { q: "Hoodies", productType: "Top", subCategory: "Hoodies" } },
+  { label: "Polo Shirts", filters: { q: "Polo Shirts", productType: "Top", subCategory: "Polo Shirts" } },
+  { label: "Joggers", filters: { q: "Joggers", productType: "Bottom", subCategory: "Joggers" } },
+  { label: "Slip Ons", filters: { q: "Slip Ons", productType: "Footwear", subCategory: "Slip Ons" } },
+  { label: "Caps", filters: { q: "Caps", productType: "Accessories", subCategory: "Caps" } },
+];
 
 const primaryNavItems = [
   { href: "/category/Men", label: "Men" },
@@ -51,6 +93,17 @@ function isLinkActive(pathname: string, href: string) {
 function navLinkClass(pathname: string, href: string) {
   const active = isLinkActive(pathname, href);
   return `${baseNavLinkClass} ${active ? "after:scale-x-100" : "after:scale-x-0 hover:after:scale-x-100"}`;
+}
+
+function buildCatalogHref(filters: CatalogFilters) {
+  const params = new URLSearchParams();
+  if (filters.q) params.set("q", filters.q);
+  if (filters.topCategory) params.set("topCategory", filters.topCategory);
+  if (filters.productType) params.set("productType", filters.productType);
+  if (filters.subCategory) params.set("subCategory", filters.subCategory);
+
+  const query = params.toString();
+  return query ? `/catalog?${query}` : "/catalog";
 }
 
 function canAccessBrandArea(role?: string) {
@@ -111,11 +164,12 @@ function IconButton({
 export function SiteHeader() {
   const router = useRouter();
   const pathname = usePathname();
+  const [isPending, startTransition] = useTransition();
   const [hasHydrated, setHasHydrated] = useState(false);
+  const [openMenu, setOpenMenu] = useState<"men" | "women" | "juniors" | null>(null);
   const cartCount = useCartStore((state) => state.items.length);
   const cartItems = useCartStore((state) => state.items);
   const setCartItems = useCartStore((state) => state.setItems);
-  const clearCart = useCartStore((state) => state.clearCart);
   const wishlistCount = useWishlistStore((state) => state.items.length);
   const setWishlistItems = useWishlistStore((state) => state.setItems);
   const clearWishlist = useWishlistStore((state) => state.clear);
@@ -134,6 +188,7 @@ export function SiteHeader() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationError, setNotificationError] = useState<string | null>(null);
   const cartSyncEnabledRef = useRef(false);
+  const dropdownCloseTimerRef = useRef<number | null>(null);
 
   const topCategoryContext = useMemo(() => {
     if (!pathname.startsWith("/category/")) {
@@ -160,7 +215,9 @@ export function SiteHeader() {
       params.set("topCategory", topCategory);
     }
 
-    router.push(`/catalog?${params.toString()}`);
+      startTransition(() => {
+        router.push(`/catalog?${params.toString()}`);
+      });
     setSearchOpen(false);
     setSearchTerm("");
     setSuggestions([]);
@@ -173,6 +230,33 @@ export function SiteHeader() {
     const scopedTopCategory = item.topCategory || topCategoryContext;
     runCatalogSearch(item.query, scopedTopCategory);
   };
+
+  const clearDropdownCloseTimer = () => {
+    if (dropdownCloseTimerRef.current !== null) {
+      window.clearTimeout(dropdownCloseTimerRef.current);
+      dropdownCloseTimerRef.current = null;
+    }
+  };
+
+  const closeDropdownMenu = () => {
+    clearDropdownCloseTimer();
+    setOpenMenu(null);
+  };
+
+  const scheduleDropdownClose = () => {
+    clearDropdownCloseTimer();
+    dropdownCloseTimerRef.current = window.setTimeout(() => {
+      setOpenMenu(null);
+      dropdownCloseTimerRef.current = null;
+    }, 120);
+  };
+
+  const navigateToCatalog = (filters: CatalogFilters) => {
+        startTransition(() => {
+          router.push(buildCatalogHref(filters));
+        });
+        closeDropdownMenu();
+      };
 
   useEffect(() => {
     let active = true;
@@ -378,11 +462,180 @@ export function SiteHeader() {
         </Link>
 
         <nav className="hidden items-center gap-5 text-xs font-semibold uppercase tracking-[0.14em] lg:flex">
-          {primaryNavItems.map((item) => (
-            <Link key={item.href} href={item.href} className={navLinkClass(pathname, item.href)}>
-              {item.label}
-            </Link>
-          ))}
+          {primaryNavItems.map((item) => {
+            if (item.label === "Men") {
+              return (
+                <div
+                  key={item.href}
+                  onMouseEnter={() => {
+                    clearDropdownCloseTimer();
+                    setOpenMenu("men");
+                  }}
+                  onMouseLeave={scheduleDropdownClose}
+                  className="relative"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setOpenMenu(openMenu === "men" ? null : "men")}
+                    className={`${dropdownNavLinkClass} inline-flex cursor-pointer items-center py-1`}
+                    aria-haspopup="true"
+                    aria-expanded={openMenu === "men"}
+                  >
+                    {item.label}
+                  </button>
+                  {openMenu === "men" ? (
+                    <div
+                      onMouseEnter={clearDropdownCloseTimer}
+                      onMouseLeave={scheduleDropdownClose}
+                      className="absolute left-1/2 top-full z-50 w-screen -translate-x-1/2 rounded-b border border-zinc-200 bg-white shadow-lg"
+                    >
+                      <div className="mx-auto grid max-w-7xl grid-cols-4 gap-4 px-4 py-6 lg:px-10">
+                        {MEN_PRESET_CATEGORIES.map((cat) => {
+                          const menuItem = MEN_WOMEN_MENU_ITEMS.find((item) => item.label === cat);
+                          return (
+                            <button
+                              key={cat}
+                              type="button"
+                              onClick={() => navigateToCatalog({ topCategory: "Men", ...menuItem?.filters })}
+                              className="block w-full text-left"
+                            >
+                              <div className="relative h-28 w-full overflow-hidden rounded bg-zinc-100">
+                                <Image src={MEN_CATEGORY_CARD_IMAGES[cat] || FALLBACK_CATEGORY_IMAGE} alt={cat} fill className="object-cover" sizes="(max-width: 768px) 100vw, 25vw" />
+                              </div>
+                              <div className="mt-2 text-sm font-medium tracking-[0.08em] text-zinc-900">{cat}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            }
+            if (item.label === "Women") {
+              return (
+                <div
+                  key={item.href}
+                  onMouseEnter={() => {
+                    clearDropdownCloseTimer();
+                    setOpenMenu("women");
+                  }}
+                  onMouseLeave={scheduleDropdownClose}
+                  className="relative"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setOpenMenu(openMenu === "women" ? null : "women")}
+                    className={`${dropdownNavLinkClass} inline-flex cursor-pointer items-center py-1`}
+                    aria-haspopup="true"
+                    aria-expanded={openMenu === "women"}
+                  >
+                    {item.label}
+                  </button>
+                  {openMenu === "women" ? (
+                    <div
+                      onMouseEnter={clearDropdownCloseTimer}
+                      onMouseLeave={scheduleDropdownClose}
+                      className="absolute left-1/2 top-full z-50 w-screen -translate-x-1/2 rounded-b border border-zinc-200 bg-white shadow-lg"
+                    >
+                      <div className="mx-auto grid max-w-7xl grid-cols-4 gap-4 px-4 py-6 lg:px-10">
+                        {WOMEN_PRESET_CATEGORIES.map((cat) => {
+                          const menuItem = MEN_WOMEN_MENU_ITEMS.find((item) => item.label === cat);
+                          return (
+                            <button
+                              key={cat}
+                              type="button"
+                              onClick={() => navigateToCatalog({ topCategory: "Women", ...menuItem?.filters })}
+                              className="block w-full text-left"
+                            >
+                              <div className="relative h-28 w-full overflow-hidden rounded bg-zinc-100">
+                                <Image src={WOMEN_CATEGORY_CARD_IMAGES[cat] || FALLBACK_CATEGORY_IMAGE} alt={cat} fill className="object-cover" sizes="(max-width: 768px) 100vw, 25vw" />
+                              </div>
+                              <div className="mt-2 text-sm font-medium tracking-[0.08em] text-zinc-900">{cat}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            }
+            if (item.label === "Juniors") {
+              return (
+                <div
+                  key={item.href}
+                  onMouseEnter={() => {
+                    clearDropdownCloseTimer();
+                    setOpenMenu("juniors");
+                  }}
+                  onMouseLeave={scheduleDropdownClose}
+                  className="relative"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setOpenMenu(openMenu === "juniors" ? null : "juniors")}
+                    className={`${dropdownNavLinkClass} inline-flex cursor-pointer items-center py-1`}
+                    aria-haspopup="true"
+                    aria-expanded={openMenu === "juniors"}
+                  >
+                    {item.label}
+                  </button>
+                  {openMenu === "juniors" ? (
+                    <div
+                      onMouseEnter={clearDropdownCloseTimer}
+                      onMouseLeave={scheduleDropdownClose}
+                      className="absolute left-1/2 top-full z-50 w-screen -translate-x-1/2 rounded-b border border-zinc-200 bg-white shadow-lg"
+                    >
+                      <div className="mx-auto max-w-7xl px-4 py-6 lg:px-10">
+                        <div className="grid grid-cols-2 gap-4 mb-6 border-b border-zinc-200 pb-6">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-600 mb-3">By Category</p>
+                            <div className="grid grid-cols-2 gap-4">
+                              {JUNIORS_MENU_ITEMS.map((cat) => (
+                                <button
+                                  key={cat.label}
+                                  type="button"
+                                  onClick={() => navigateToCatalog({ topCategory: "Kids", ...cat.filters })}
+                                  className="block w-full text-left"
+                                >
+                                  <div className="relative h-24 w-full overflow-hidden rounded bg-zinc-100">
+                                    <Image src={FALLBACK_CATEGORY_IMAGE} alt={cat.label} fill className="object-cover" sizes="(max-width: 768px) 100vw, 25vw" />
+                                  </div>
+                                  <div className="mt-2 text-sm font-medium tracking-[0.08em] text-zinc-900">{cat.label}</div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-600 mb-3">By Group</p>
+                            <ul className="space-y-2">
+                              {JUNIOR_GROUPS.map((group) => (
+                                <li key={group}>
+                                  <button
+                                    type="button"
+                                    onClick={() => navigateToCatalog({ topCategory: "Kids", q: group, subCategory: group })}
+                                    className="block w-full rounded px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50 hover:text-black border border-zinc-200"
+                                  >
+                                    {group}
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            }
+            return (
+              <Link key={item.href} href={item.href} className={navLinkClass(pathname, item.href)}>
+                {item.label}
+              </Link>
+            );
+          })}
           {canAccessBrandArea(user?.role) ? <Link href="/brand/dashboard" className={navLinkClass(pathname, "/brand/dashboard")}>Brand Dashboard</Link> : null}
           {user?.role === "SUPER_ADMIN" || user?.role === "ADMIN" ? <Link href="/admin" className={navLinkClass(pathname, "/admin")}>Admin</Link> : null}
         </nav>
@@ -395,13 +648,13 @@ export function SiteHeader() {
             </svg>
           </IconButton>
 
-          <IconButton href="/wishlist" label="Wishlist" badge={hasHydrated ? wishlistCount : 0}>
+          <IconButton href="/wishlist" label="Wishlist" badge={hasHydrated ? wishlistCount : undefined}>
             <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M12 20s-7-4.7-7-10.2C5 7 6.8 5 9.2 5c1.2 0 2.3.5 2.8 1.4.5-.9 1.6-1.4 2.8-1.4C17.2 5 19 7 19 9.8 19 15.3 12 20 12 20z" />
             </svg>
           </IconButton>
 
-          <IconButton href="/cart" label="Cart" badge={hasHydrated ? cartCount : 0}>
+          <IconButton href="/cart" label="Cart" badge={hasHydrated ? cartCount : undefined}>
             <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M3 5h2l2 10h9l2-7H7" />
               <circle cx="10" cy="19" r="1.2" />

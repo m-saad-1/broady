@@ -396,10 +396,19 @@ export async function getUserOrder(orderId: string): Promise<UserOrder> {
   return response.data;
 }
 
-export async function cancelUserOrder(orderId: string, note?: string): Promise<UserOrder> {
+export type CancelReasonCode = "CHANGED_MIND" | "ORDERED_BY_MISTAKE" | "FOUND_BETTER_PRICE" | "DELIVERY_TOO_SLOW" | "PAYMENT_ISSUE" | "OTHER";
+
+export type CancelPayload = {
+  reasonCode: CancelReasonCode;
+  customReason?: string;
+  note?: string;
+};
+
+export async function cancelUserOrder(orderId: string, payload?: string | CancelPayload): Promise<UserOrder> {
+  const body = typeof payload === "string" ? { note: payload } : payload || {};
   const response = await authFetch<ApiEnvelope<UserOrder>>(`/orders/me/${orderId}/cancel`, {
     method: "POST",
-    body: JSON.stringify(note ? { note } : {}),
+    body: JSON.stringify(body),
   });
   return response.data;
 }
@@ -429,6 +438,43 @@ export async function reorderUserOrder(orderId: string): Promise<ReorderResponse
       product: normalizeProduct(item.product),
     })),
   };
+}
+
+export async function cancelUserSubOrder(orderId: string, subOrderId: string, payload?: CancelPayload): Promise<UserOrder> {
+  const response = await authFetch<ApiEnvelope<UserOrder>>(`/orders/me/${orderId}/sub-orders/${subOrderId}/cancel`, {
+    method: "POST",
+    body: JSON.stringify(payload || {}),
+  });
+  return response.data;
+}
+
+export async function reorderUserSubOrder(orderId: string, subOrderId: string): Promise<ReorderResponse["data"]> {
+  const response = await authFetch<ReorderResponse>(`/orders/me/${orderId}/sub-orders/${subOrderId}/reorder`, {
+    method: "POST",
+  });
+  return {
+    ...response.data,
+    items: response.data.items.map((item) => ({
+      ...item,
+      product: normalizeProduct(item.product),
+    })),
+  };
+}
+
+export type TrackUserBehaviorEventPayload = {
+  eventType: "PRODUCT_VIEW" | "PRODUCT_ADDED_TO_CART" | "WISHLIST_ADDED" | "SEARCH_QUERY" | "CATEGORY_BROWSE" | "PRODUCT_PURCHASED";
+  productId?: string;
+  searchQuery?: string;
+  topCategory?: string;
+  subCategory?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export async function trackUserBehaviorEvent(payload: TrackUserBehaviorEventPayload): Promise<void> {
+  await authFetch<{ accepted: boolean }>("/recommendations/events", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function getAdminBrands(): Promise<Brand[]> {

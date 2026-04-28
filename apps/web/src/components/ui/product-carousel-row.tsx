@@ -29,21 +29,25 @@ export function ProductCarouselRow({ products, label }: ProductCarouselRowProps)
         type="button"
         aria-label={`Scroll ${label} left`}
         onClick={() => scrollByCards("prev")}
-        className="absolute left-0 top-1/2 z-10 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center border border-zinc-300 bg-white/95 text-sm font-semibold uppercase tracking-[0.08em] text-zinc-700 shadow-sm hover:border-black hover:text-black"
+        className="absolute left-0 top-1/2 z-10 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center border border-zinc-300 bg-white/95 text-zinc-700 shadow-sm hover:border-black hover:text-black transition-colors"
       >
-        {"<"}
+        <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M15 18l-6-6 6-6" />
+        </svg>
       </button>
       <button
         type="button"
         aria-label={`Scroll ${label} right`}
         onClick={() => scrollByCards("next")}
-        className="absolute right-0 top-1/2 z-10 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center border border-zinc-300 bg-white/95 text-sm font-semibold uppercase tracking-[0.08em] text-zinc-700 shadow-sm hover:border-black hover:text-black"
+        className="absolute right-0 top-1/2 z-10 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center border border-zinc-300 bg-white/95 text-zinc-700 shadow-sm hover:border-black hover:text-black transition-colors"
       >
-        {">"}
+        <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M9 18l6-6-6-6" />
+        </svg>
       </button>
       <div
         ref={scrollRef}
-        className="no-scrollbar grid snap-x snap-mandatory grid-flow-col auto-cols-[calc((100%-3rem)/4)] gap-4 overflow-x-auto px-5 pb-1"
+        className="no-scrollbar grid snap-x snap-mandatory grid-flow-col auto-cols-[calc((100vw-7.5rem)/4)] gap-4 overflow-x-auto px-5 pb-1 lg:auto-cols-[calc((100%-7.5rem)/4)]"
       >
         {visibleProducts.map((product) => (
           <div key={product.id} className="snap-start">

@@ -84,11 +84,9 @@ export function ProductCard({ product }: { product: Product }) {
           ) : (
             <p className="mt-1 text-sm text-zinc-600">{formatPkr(pricing.basePrice)}</p>
           )}
-          <p className="mt-0.5 text-[11px] uppercase tracking-[0.12em] text-zinc-500">{getTopCategoryLabel(product.topCategory)} / {product.productType || "Top"} / {product.subCategory}</p>
+          <p className="mt-0.5 text-[11px] uppercase tracking-[0.12em] text-zinc-500">{getTopCategoryLabel(product.topCategory)} | {product.subCategory}</p>
           {reviewCount > 0 ? <p className="text-[11px] uppercase tracking-[0.1em] text-zinc-500">{reviewCount} reviews</p> : null}
-          <p className={`mt-0.5 text-[11px] uppercase tracking-[0.12em] ${product.stock > 0 ? "text-emerald-700" : "text-rose-700"}`}>
-            Stock: {product.stock > 0 ? `${product.stock} available` : "Out of stock"}
-          </p>
+          <p className="mt-0.5 text-[11px] uppercase tracking-[0.12em] text-rose-700">SOLD</p>
         </div>
         <div className="grid grid-cols-12 gap-2 pt-0.5">
           <Button

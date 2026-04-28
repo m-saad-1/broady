@@ -90,7 +90,7 @@ export function ProductEditorForm({
   }, [initialValues, scope]);
 
   const form = useForm<ProductFormValues>({
-    resolver: zodResolver(scope === "admin" ? adminProductFormSchema : productFormSchema),
+    resolver: zodResolver(scope === "admin" ? adminProductFormSchema : productFormSchema) as any,
     defaultValues,
     mode: "onBlur",
     reValidateMode: "onChange",

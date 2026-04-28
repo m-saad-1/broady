@@ -30,6 +30,7 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
   const [products, setProducts] = useState<Product[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
   const [savingProductId, setSavingProductId] = useState<string | null>(null);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
@@ -89,6 +90,7 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
       pushToast(message, "error");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [pushToast, showOperationsPanels]);
 

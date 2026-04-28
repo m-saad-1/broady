@@ -99,7 +99,22 @@ npm run dev:all
 Useful alternatives:
 
 - `npm run dev` (web + api)
+- `npm run dev:web` (web only)
+- `npm run dev:api` (api only)
 - `npm run dev:worker` (standalone worker watch mode)
+
+## Build and Lint
+
+- `npm run lint` (all workspaces)
+- `npm run lint -w @broady/web`
+- `npm run lint -w @broady/api`
+- `npm run build` (all workspaces)
+- `npm run build -w @broady/web`
+- `npm run build -w @broady/api`
+
+## Testing Status
+
+There is currently no top-level `test` script in workspace `package.json` files. Validation is done through linting, build checks, and focused smoke scripts.
 
 ## Database and Prisma
 

@@ -32,6 +32,8 @@ export type ProductFormValues = {
 
 const productTopCategories = ["Men", "Women", "Kids"] as const;
 
+export { productTopCategories };
+
 function isProductAssetUrl(value: string) {
   if (value.startsWith("/")) return true;
 
@@ -117,6 +119,8 @@ const productFormSchema = z.object({
 const adminProductFormSchema = productFormSchema.extend({
   brandId: z.string().trim().min(1, "Select a brand"),
 });
+
+export { productFormSchema, adminProductFormSchema };
 
 export function buildAdminProductPayload(form: ProductFormValues): ProductMutationPayload {
   const parsed = adminProductFormSchema.safeParse({
@@ -255,5 +259,60 @@ export function buildBrandProductPayload(
     },
     stock: parsed.data.stock,
     isActive: parsed.data.isActive,
+  };
+}
+
+export function createDefaultProductFormValues(scope: "admin" | "brand", brandId?: string): ProductFormValues {
+  return {
+    brandId: scope === "admin" ? brandId : undefined,
+    name: "",
+    slug: "",
+    description: "",
+    pricePkr: "",
+    topCategory: "Men",
+    subCategory: "",
+    sizes: "",
+    imageUrl: "",
+    sizeGuideImageUrl: undefined,
+    sizeGuideRows: [{ size: "", cm: "", inches: "" }],
+    deliveryTime: "",
+    returnPolicy: "",
+    refundConditions: "",
+    shippingRegions: "",
+    shippingEstimatedDeliveryTime: "",
+    shippingCharges: undefined,
+    fabricType: "",
+    careInstructions: "",
+    stock: "",
+  };
+}
+
+export function productToFormValues(product: Partial<Product>): Partial<ProductFormValues> {
+  return {
+    brandId: product.brandId,
+    name: product.name || "",
+    slug: product.slug || "",
+    description: product.description || "",
+    pricePkr: product.pricePkr ? String(product.pricePkr) : "",
+    topCategory: product.topCategory || "Men",
+    subCategory: product.subCategory || "",
+    sizes: product.sizes ? product.sizes.join(", ") : "",
+    imageUrl: product.imageUrl || "",
+    sizeGuideTemplateId: product.sizeGuideTemplateId,
+    sizeGuideImageUrl: product.sizeGuide?.imageUrl,
+    sizeGuideRows: product.sizeGuide?.entries || [{ size: "", cm: "", inches: "" }],
+    deliveriesReturnsTemplateId: product.deliveriesReturnsTemplateId,
+    deliveryTime: product.deliveriesReturns?.deliveryTime || "",
+    returnPolicy: product.deliveriesReturns?.returnPolicy || "",
+    refundConditions: product.deliveriesReturns?.refundConditions || "",
+    shippingDeliveryTemplateId: product.shippingDeliveryTemplateId,
+    shippingRegions: product.shippingDelivery?.regions?.join("\n") || "",
+    shippingEstimatedDeliveryTime: product.shippingDelivery?.estimatedDeliveryTime || "",
+    shippingCharges: product.shippingDelivery?.charges,
+    fabricCareTemplateId: product.fabricCareTemplateId,
+    fabricType: product.fabricCare?.fabricType || "",
+    careInstructions: product.fabricCare?.careInstructions?.join("\n") || "",
+    stock: product.stock ? String(product.stock) : "",
+    isActive: product.isActive,
   };
 }

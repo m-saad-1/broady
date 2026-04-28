@@ -205,6 +205,7 @@ export type NotificationItem = {
   message: string;
   readAt?: string | null;
   createdAt: string;
+  targetPath?: string;
   order?: { id: string; status: OrderStatus; trackingId?: string | null };
   channels: Array<{
     id: string;

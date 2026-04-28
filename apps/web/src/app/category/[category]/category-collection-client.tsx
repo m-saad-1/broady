@@ -25,45 +25,14 @@ const MEN_WOMEN_SECTIONS: Array<{ title: string; type?: ProductTypeFilter; helpe
   { title: "Shop by Style", helper: "Fresh looks grouped by signature subcategories" },
 ];
 
-const JUNIOR_GROUPS = ["Junior Boys", "Toddler Boys", "Junior Girls", "Toddler Girls"] as const;
-
-const MEN_CATEGORY_CARD_IMAGES: Record<string, string> = {
-  Shirts: "https://images.unsplash.com/photo-1594938298603-c8148c4dae35?w=1200",
-  "T-Shirts": "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=1200",
-  Jackets: "https://images.unsplash.com/photo-1521223890158-f9f7c3d5d504?w=1200",
-  Polo: "https://images.unsplash.com/photo-1586790170083-2f9ceadc732d?w=1200",
-  "Polo Shirts": "https://images.unsplash.com/photo-1586790170083-2f9ceadc732d?w=1200",
-  "Formal Shirts": "https://images.unsplash.com/photo-1594938298603-c8148c4dae35?w=1200",
-  Hoodies: "https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=1200",
-  Jeans: "https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=1200",
-  Trousers: "https://images.unsplash.com/photo-1506629905607-45f4ba5cfe0f?w=1200",
-  Sneakers: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=1200",
-  Boots: "https://images.unsplash.com/photo-1525966222134-fcfa99b8ae77?w=1200",
-  Belts: "https://images.unsplash.com/photo-1548883354-94bcfe321cbb?w=1200",
-  Accessories: "https://images.unsplash.com/photo-1622560482379-6d7f18e28c25?w=1200",
-};
-
-const WOMEN_CATEGORY_CARD_IMAGES: Record<string, string> = {
-  Shirts: "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=1200",
-  "T-Shirts": "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=1200",
-  Jackets: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=1200",
-  Polo: "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=1200",
-  Dresses: "https://images.unsplash.com/photo-1495385794356-15371f348c31?w=1200",
-  "V-Neck": "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=1200",
-  "Formal Shirts": "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=1200",
-  Skirts: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=1200",
-  Jeans: "https://images.unsplash.com/photo-1542272604-787c3835535d?w=1200",
-  Sneakers: "https://images.unsplash.com/photo-1552346154-21d32810aba3?w=1200",
-  Sandals: "https://images.unsplash.com/photo-1514989940723-e8e51635b782?w=1200",
-  Bags: "https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=1200",
-  Jewelry: "https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=1200",
-  Accessories: "https://images.unsplash.com/photo-1622560482379-6d7f18e28c25?w=1200",
-};
-
-const FALLBACK_CATEGORY_IMAGE = "https://images.unsplash.com/photo-1445205170230-053b83016050?w=1200";
-
-const MEN_PRESET_CATEGORIES = ["Shirts", "T-Shirts", "Jackets", "Polo", "Jeans", "Sneakers", "Boots", "Accessories"];
-const WOMEN_PRESET_CATEGORIES = ["Shirts", "T-Shirts", "Jackets", "Polo", "Dresses", "Jeans", "Skirts", "Accessories"];
+import {
+  MEN_CATEGORY_CARD_IMAGES,
+  WOMEN_CATEGORY_CARD_IMAGES,
+  FALLBACK_CATEGORY_IMAGE,
+  MEN_PRESET_CATEGORIES,
+  WOMEN_PRESET_CATEGORIES,
+  JUNIOR_GROUPS,
+} from "@/lib/category-images";
 
 function normalizeCategorySlug(value: string) {
   return decodeURIComponent(value).trim().toLowerCase();
@@ -156,31 +125,35 @@ function ScrollCategoryCards({ items }: { items: Array<{ label: string; href: st
         type="button"
         aria-label="Scroll category cards left"
         onClick={() => scrollByCards("prev")}
-        className="absolute left-0 top-1/2 z-10 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center border border-zinc-300 bg-white/95 text-sm font-semibold uppercase tracking-[0.08em] text-zinc-700 shadow-sm hover:border-black hover:text-black"
+        className="absolute left-0 top-1/2 z-10 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center border border-zinc-300 bg-white/95 text-zinc-700 shadow-sm hover:border-black hover:text-black transition-colors"
       >
-        {"<"}
+        <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M15 18l-6-6 6-6" />
+        </svg>
       </button>
       <button
         type="button"
         aria-label="Scroll category cards right"
         onClick={() => scrollByCards("next")}
-        className="absolute right-0 top-1/2 z-10 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center border border-zinc-300 bg-white/95 text-sm font-semibold uppercase tracking-[0.08em] text-zinc-700 shadow-sm hover:border-black hover:text-black"
+        className="absolute right-0 top-1/2 z-10 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center border border-zinc-300 bg-white/95 text-zinc-700 shadow-sm hover:border-black hover:text-black transition-colors"
       >
-        {">"}
+        <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M9 18l6-6-6-6" />
+        </svg>
       </button>
-      <div ref={scrollRef} className="no-scrollbar grid grid-flow-col auto-cols-[calc((100%-3rem)/4)] gap-4 overflow-x-auto px-5 pb-1">
+      <div ref={scrollRef} className="no-scrollbar grid grid-flow-col auto-cols-[calc((100vw-7.5rem)/5)] gap-4 overflow-x-auto px-5 pb-1 lg:auto-cols-[calc((100%-7.5rem)/5)]">
         {items.map((item) => (
           <Link
             key={item.href}
             href={item.href}
-            className="group relative flex min-h-52 items-end overflow-hidden border border-zinc-300 bg-zinc-50 p-4 transition hover:border-black"
+            className="group relative flex min-h-64 items-end overflow-hidden border border-zinc-300 bg-zinc-50 p-4 transition hover:border-black"
           >
             {item.image ? (
               <Image
                 src={item.image}
                 alt={`${item.label} category`}
                 fill
-                sizes="(max-width: 1200px) 35vw, 25vw"
+                sizes="(max-width: 1200px) 20vw, 15vw"
                 className="object-cover transition-transform duration-500 group-hover:scale-[1.05]"
               />
             ) : null}
@@ -195,12 +168,12 @@ function ScrollCategoryCards({ items }: { items: Array<{ label: string; href: st
 
 function BannerBlock({ title, subtitle, image }: { title: string; subtitle: string; image: string }) {
   return (
-    <section className="relative overflow-hidden border border-zinc-300 p-5 md:p-8">
+    <section className="relative overflow-hidden border border-zinc-300 p-8 md:p-12 min-h-80 md:min-h-96 flex items-center">
       <Image src={image} alt={`${title} banner`} fill sizes="100vw" className="object-cover" />
       <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/40 to-black/10" />
       <div className="relative">
         <p className="text-xs uppercase tracking-[0.16em] text-zinc-200">Banner</p>
-        <h2 className="mt-3 font-heading text-4xl uppercase text-white md:text-5xl">{title}</h2>
+        <h2 className="mt-3 font-heading text-5xl uppercase text-white md:text-6xl">{title}</h2>
         <p className="mt-3 text-sm text-zinc-100">{subtitle}</p>
       </div>
     </section>
@@ -322,16 +295,34 @@ export function CategoryCollectionClient({ products, categorySlug }: Props) {
 
         <section className="space-y-4">
           <div className="space-y-2 border-b border-zinc-300 pb-3">
-            <h3 className="font-heading text-3xl uppercase tracking-[0.06em]">Shop by Category</h3>
+            <h3 className="font-heading text-3xl uppercase tracking-[0.06em]">Shop by Group</h3>
           </div>
-          <ScrollCategoryCards
-            items={[
+          <div className="grid grid-cols-4 gap-4">
+            {[
               { label: "Toddler Boys", href: "/category/toddler-boys", image: "https://images.unsplash.com/photo-1519238363430-6d56c844d0a5?w=1200" },
               { label: "Junior Boys", href: "/category/junior-boys", image: "https://images.unsplash.com/photo-1503944583220-79d8926ad5e2?w=1200" },
               { label: "Toddler Girls", href: "/category/toddler-girls", image: "https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=1200" },
               { label: "Junior Girls", href: "/category/junior-girls", image: "https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?w=1200" },
-            ]}
-          />
+            ].map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="group relative flex min-h-64 items-end overflow-hidden border border-zinc-300 bg-zinc-50 p-4 transition hover:border-black"
+              >
+                {item.image ? (
+                  <Image
+                    src={item.image}
+                    alt={`${item.label}`}
+                    fill
+                    sizes="(max-width: 1200px) 25vw, 20vw"
+                    className="object-cover transition-transform duration-500 group-hover:scale-[1.05]"
+                  />
+                ) : null}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                <span className="relative mt-auto block text-sm font-semibold uppercase tracking-[0.1em] text-white">{item.label}</span>
+              </Link>
+            ))}
+          </div>
         </section>
 
         <section className="space-y-4">

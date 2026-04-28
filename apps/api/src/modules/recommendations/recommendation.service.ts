@@ -195,7 +195,7 @@ export async function trackUserActivity(input: TrackUserActivityInput) {
       topCategory,
       subCategory,
       weight: ACTIVITY_WEIGHTS[input.eventType],
-      metadata: input.metadata,
+      metadata: input.metadata as any,
     },
   });
 
@@ -223,6 +223,7 @@ async function getFallbackProducts(limit: number, excludeProductIds: string[] = 
       },
       include: {
         brand: true,
+        reviewAggregate: true,
       },
     });
 

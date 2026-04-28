@@ -822,7 +822,7 @@ router.post("/me/:orderId/sub-orders/:subOrderId/cancel", requireAuth, async (re
     return res.status(404).json({ message: "Vendor group not found" });
   }
 
-  if ([OrderStatus.PACKED, OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(targetSubOrder.status)) {
+  if (["PACKED", "SHIPPED", "DELIVERED"].includes(targetSubOrder.status)) {
     return res.status(409).json({ message: "This vendor group can no longer be canceled." });
   }
 
@@ -997,7 +997,7 @@ router.post("/me/:orderId/sub-orders/:subOrderId/reorder", requireAuth, async (r
     return res.status(404).json({ message: "Vendor group not found" });
   }
 
-  if (![OrderStatus.DELIVERED, OrderStatus.CANCELED].includes(targetSubOrder.status)) {
+  if (!["DELIVERED", "CANCELED"].includes(targetSubOrder.status)) {
     return res.status(409).json({ message: "Reorder is available only for delivered or canceled vendor groups." });
   }
 

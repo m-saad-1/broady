@@ -187,7 +187,7 @@ export async function createBrandInviteAccount(input: {
   brandName: string;
   contactEmail?: string | null;
   fullName?: string;
-}) {
+}): Promise<any> {
   const inviteToken = randomBytes(32).toString("hex");
   const inviteTokenHash = hashInviteToken(inviteToken);
   const brandInviteTokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -198,33 +198,36 @@ export async function createBrandInviteAccount(input: {
     select: { id: true, fullName: true } as any,
   });
 
-  const account = existingBrandAccount
-    ? await input.prismaClient.user.update({
+  const userDelegate: any = input.prismaClient.user;
+  const updateResult: any = existingBrandAccount
+    ? await userDelegate.update({
         where: { id: existingBrandAccount.id },
         data: {
           email: brandEmail,
           fullName: input.fullName || existingBrandAccount.fullName || `${input.brandName} Brand Admin`,
-          role: "BRAND_ADMIN" as any,
+          role: "BRAND_ADMIN",
           authProvider: "LOCAL",
           brandInviteTokenHash: inviteTokenHash,
           brandInviteTokenExpiresAt,
           brandInviteAcceptedAt: null,
-        } as any,
-        select: { id: true, email: true, fullName: true, role: true, brandId: true } as any,
+        },
+        select: { id: true, email: true, fullName: true, role: true },
       })
-    : await input.prismaClient.user.create({
+    : await userDelegate.create({
         data: {
           email: brandEmail,
           fullName: input.fullName || `${input.brandName} Brand Admin`,
-          role: "BRAND_ADMIN" as any,
+          role: "BRAND_ADMIN",
           brandId: input.brandId,
           authProvider: "LOCAL",
           password: null,
           brandInviteTokenHash: inviteTokenHash,
           brandInviteTokenExpiresAt,
-        } as any,
-        select: { id: true, email: true, fullName: true, role: true, brandId: true } as any,
+        },
+        select: { id: true, email: true, fullName: true, role: true },
       });
+
+  const account: any = updateResult;
 
   const accountData = account as any;
 
