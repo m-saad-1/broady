@@ -90,3 +90,58 @@ There is currently no `test` script in workspace `package.json` files, so there 
 - Never log secrets or tokens.
 - Use environment variables for secret or configurable values and update `.env.example` when adding new required config.
 - Update `README.md` when onboarding/run instructions change and update `docs/README.md` when adding or curating documentation.
+
+## Hybrid repository strategy (mandatory)
+
+- Maintain two repositories with strict boundaries:
+  - `broady-core` (private): production business logic and sensitive internals.
+  - `broady-showcase` (public): demo-safe UI/system showcase without sensitive logic.
+- Keep all sensitive implementation details in `broady-core`, including:
+  - Multi-vendor split-order internals (parent/sub-order orchestration)
+  - Payment processing and gateway internals
+  - Vendor management internals
+  - Event-driven notification internals
+- In `broady-showcase`, use mock APIs and dummy data. Simulate flows instead of exposing real backend logic.
+
+## Architecture rules for feature code
+
+- Keep module layout under `src/modules/{feature}/`.
+- Enforce separation of concerns:
+  - `controller`: request/response mapping only
+  - `service`: business rules and orchestration
+  - `model`/repository: data access and persistence concerns
+  - `routes`: endpoint wiring and middleware only
+- Prefer consistency with existing module patterns over introducing new patterns.
+
+## Security rules (public vs private)
+
+- Never expose these in public repositories:
+  - API keys or credentials
+  - Real payment logic or gateway internals
+  - Internal system architecture details that increase attack surface
+  - `.env` files
+- Always:
+  - Provide `.env.example` for required configuration
+  - Sanitize sensitive logs and outputs
+  - Mock protected flows in public/demo code
+
+## Implementation behavior
+
+- Before implementing any feature, classify it first:
+  - Core logic/sensitive workflow -> keep private (`broady-core`)
+  - UI/demo or portfolio-safe behavior -> public (`broady-showcase`)
+- Public repository rules:
+  - Replace real APIs with mocks
+  - Simulate responses and non-sensitive schemas
+  - Keep code readable, educational, and demo-focused
+- Generate code that is production-style in quality, modular, and scalable while protecting sensitive logic.
+
+## Coding and git workflow requirements
+
+- Use meaningful names and keep functions small/single-purpose.
+- Prefer `async/await` and centralized error handling.
+- Use small, meaningful commits following conventional style, for example:
+  - `feat(order): implement sub-order splitting`
+  - `fix(auth): handle token expiration`
+  - `refactor(notification): decouple event emitter`
+- Avoid large, unstructured commits.
