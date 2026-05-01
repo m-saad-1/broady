@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { addWishlistProduct, removeWishlistProduct } from "@/lib/api";
 import { getProductPricing } from "@/lib/pricing";
-import { getTopCategoryLabel } from "@/lib/taxonomy";
+import { getProductDisplayCategory } from "@/lib/taxonomy";
 import { formatPkr } from "@/lib/utils";
+import { useStableNow } from "@/hooks/use-stable-now";
 import { useAuthStore } from "@/stores/auth-store";
 import { useCartStore } from "@/stores/cart-store";
 import { useToastStore } from "@/stores/toast-store";
@@ -27,7 +28,8 @@ export function ProductCard({ product }: { product: Product }) {
   const toggleWishlistLocal = useWishlistStore((state) => state.toggleWishlist);
   const isInWishlist = useWishlistStore((state) => state.isInWishlist(product.id));
   const wishlistActive = hasHydrated ? isInWishlist : false;
-  const pricing = getProductPricing(product);
+  const renderNow = useStableNow();
+  const pricing = useMemo(() => getProductPricing(product, renderNow), [product, renderNow]);
   const badge = pricing.hasDiscount
     ? `-${pricing.discountPercentage}%`
     : product.badge || (product.stock <= 0 ? "Out of Stock" : product.pricePkr < 3000 ? "Sale" : "New");
@@ -50,6 +52,17 @@ export function ProductCard({ product }: { product: Product }) {
           ? "border-amber-700 bg-amber-500 text-black"
           : "border-zinc-700 bg-zinc-800 text-white";
 
+  // Remove brand name from product title
+  const stripBrandPrefix = (title: string, brandName?: string) => {
+    if (!brandName) return title;
+    const escapedBrand = brandName.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const cleaned = title.replace(new RegExp(`^${escapedBrand}(?:\\s|:|-)+?`, "i"), "").trim();
+    return cleaned || title;
+  };
+
+  const displayTitle = stripBrandPrefix(product.name, product.brand?.name);
+  const soldCount = product.soldCount || 0;
+
   useEffect(() => {
     setHasHydrated(true);
   }, []);
@@ -60,7 +73,7 @@ export function ProductCard({ product }: { product: Product }) {
         <div className="relative aspect-[4/5] bg-zinc-100">
           <ProductImage
             src={product.imageUrl}
-            alt={product.name}
+            alt={displayTitle}
             fill
             className="object-cover transition-transform duration-500 group-hover:scale-[1.03]"
             sizes="(max-width: 768px) 100vw, 33vw"
@@ -70,25 +83,29 @@ export function ProductCard({ product }: { product: Product }) {
           </span>
         </div>
       </Link>
-      <div className="space-y-2.5 p-4">
-        <div className="space-y-0.5">
-          <p className="text-[11px] uppercase tracking-[0.12em] text-zinc-500">{product.brand?.name || "Brand"}</p>
-          <Link href={`/product/${product.slug}`} className="block font-medium uppercase tracking-[0.08em]">
-            {product.name}
+      <div className="space-y-2 p-3">
+        <div className="space-y-0.5 leading-snug">
+          <p className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">{product.brand?.name || "Brand"}</p>
+          <Link href={`/product/${product.slug}`} className="block text-sm font-medium uppercase tracking-[0.05em] truncate" title={displayTitle}>
+            {displayTitle}
           </Link>
-          {pricing.hasDiscount ? (
-            <div className="mt-1 flex items-center gap-2">
-              <p className="text-sm font-semibold text-black">{formatPkr(pricing.finalPrice)}</p>
-              <p className="text-xs text-zinc-500 line-through">{formatPkr(pricing.basePrice)}</p>
-            </div>
-          ) : (
-            <p className="mt-1 text-sm text-zinc-600">{formatPkr(pricing.basePrice)}</p>
-          )}
-          <p className="mt-0.5 text-[11px] uppercase tracking-[0.12em] text-zinc-500">{getTopCategoryLabel(product.topCategory)} | {product.subCategory}</p>
-          {reviewCount > 0 ? <p className="text-[11px] uppercase tracking-[0.1em] text-zinc-500">{reviewCount} reviews</p> : null}
-          <p className="mt-0.5 text-[11px] uppercase tracking-[0.12em] text-rose-700">SOLD</p>
+          <div className="mt-1 pb-1 flex items-center justify-between">
+            {pricing.hasDiscount ? (
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold text-black">{formatPkr(pricing.finalPrice)}</p>
+                <p className="text-xs text-zinc-500 line-through">{formatPkr(pricing.basePrice)}</p>
+              </div>
+            ) : (
+              <p className="text-sm font-semibold text-zinc-800">{formatPkr(pricing.basePrice)}</p>
+            )}
+            <p className="text-[11px] font-semibold text-zinc-800">{soldCount} Sold</p>
+          </div>
+          <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.1em] text-zinc-500">
+            <p>{getProductDisplayCategory(product)}</p>
+            {reviewCount > 0 ? <p>{reviewCount} reviews</p> : null}
+          </div>
         </div>
-        <div className="grid grid-cols-12 gap-2 pt-0.5">
+        <div className="grid grid-cols-12 gap-2 pt-1">
           <Button
             variant="ghost"
             size="sm"

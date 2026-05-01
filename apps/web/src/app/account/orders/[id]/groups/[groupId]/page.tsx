@@ -99,7 +99,7 @@ export default async function VendorGroupDetailPage({ params }: VendorGroupDetai
   });
   const canWriteReview = group.status === "DELIVERED";
   const canCancelGroup = ["PENDING", "CONFIRMED"].includes(group.status);
-  const canReorderGroup = ["DELIVERED", "CANCELED"].includes(group.status);
+  const canReorderGroup = ["DELIVERED", "RETURNED", "CANCELED"].includes(group.status);
 
   return (
     <main className="mx-auto w-full max-w-5xl space-y-8 px-4 py-10 lg:px-10">
@@ -117,6 +117,10 @@ export default async function VendorGroupDetailPage({ params }: VendorGroupDetai
             {getOrderStatusLabel(group.status)}
           </p>
           <p className="mt-2 text-sm text-zinc-600">Tracking ID: {group.trackingId || "Pending assignment"}</p>
+          <p className="mt-2 text-sm text-zinc-600">Delivery attempts: {group.deliveryAttempts || 0}</p>
+          {group.failureReason ? <p className="mt-2 text-sm text-orange-800">Failure reason: {group.failureReason}</p> : null}
+          {group.nextAttemptDate ? <p className="mt-2 text-sm text-blue-800">Next attempt: {formatDateTime(group.nextAttemptDate)}</p> : null}
+          {group.refundProcessedAt ? <p className="mt-2 text-sm text-emerald-800">Refund marked: {formatDateTime(group.refundProcessedAt)}</p> : null}
         </div>
         <div>
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Brand</p>

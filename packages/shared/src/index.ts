@@ -10,9 +10,20 @@ export type ProductBadge = "Sale" | "New" | "Limited" | "Out of Stock";
 
 export type PaymentMethod = "COD" | "JAZZCASH" | "EASYPAISA";
 
-export type PaymentStatus = "PENDING" | "HELD" | "BRAND_COLLECTS_COD" | "COMPLETED";
+export type PaymentStatus = "PENDING" | "HELD" | "BRAND_COLLECTS_COD" | "COMPLETED" | "FAILED" | "REFUNDED";
 
-export type OrderStatus = "PENDING" | "CONFIRMED" | "PACKED" | "PARTIALLY_SHIPPED" | "SHIPPED" | "DELIVERED" | "CANCELED";
+export type OrderStatus =
+  | "PENDING"
+  | "CONFIRMED"
+  | "PROCESSING"
+  | "PACKED"
+  | "PARTIALLY_SHIPPED"
+  | "SHIPPED"
+  | "OUT_FOR_DELIVERY"
+  | "DELIVERY_FAILED"
+  | "DELIVERED"
+  | "RETURNED"
+  | "CANCELED";
 
 export type Brand = {
   id: string;
@@ -90,6 +101,7 @@ export type Product = {
     endsAt?: string;
   };
   brand?: Brand;
+  soldCount?: number;
 };
 
 export type AuthUser = {

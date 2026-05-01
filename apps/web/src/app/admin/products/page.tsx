@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ProductsAdminListClient } from "./products-admin-list-client";
+import { ProductsAdminClient } from "./products-admin-client";
 
 export const metadata = {
   title: "Admin Products | BROADY",
@@ -39,7 +39,7 @@ export default async function AdminProductsPage() {
         </div>
       </header>
 
-      <ProductsAdminListClient />
+      <ProductsAdminClient />
     </main>
   );
 }

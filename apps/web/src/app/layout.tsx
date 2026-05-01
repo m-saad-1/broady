@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Bebas_Neue, Space_Grotesk } from "next/font/google";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
+import { PushNotificationRegistration } from "@/components/notifications/push-notification-registration";
 import { ToastViewport } from "@/components/ui/toast-viewport";
 import { QueryProvider } from "@/providers/query-provider";
 import "./globals.css";
@@ -54,6 +55,7 @@ export default function RootLayout({
             <div className="flex-1">{children}</div>
             <SiteFooter />
             <ToastViewport />
+            <PushNotificationRegistration />
           </div>
         </QueryProvider>
       </body>

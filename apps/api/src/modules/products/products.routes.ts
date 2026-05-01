@@ -75,6 +75,27 @@ async function getTemplateScope(userId: string) {
   return null;
 }
 
+async function attachSoldCounts<T extends { id: string }>(products: T[]) {
+  if (!products.length) {
+    return products;
+  }
+
+  const soldTotals = await prisma.orderItem.groupBy({
+    by: ["productId"],
+    where: {
+      productId: { in: products.map((product) => product.id) },
+      order: { status: "DELIVERED" },
+    },
+    _sum: { quantity: true },
+  });
+
+  const soldCountByProductId = new Map(soldTotals.map((entry) => [entry.productId, entry._sum.quantity || 0]));
+  return products.map((product) => ({
+    ...product,
+    soldCount: soldCountByProductId.get(product.id) || 0,
+  }));
+}
+
 const topSubCategories = productTypeMap.Top;
 const bottomSubCategories = productTypeMap.Bottom;
 const footwearSubCategories = productTypeMap.Footwear;
@@ -521,8 +542,9 @@ router.get("/", async (req, res) => {
     const byId = new Map(products.map((product) => [product.id, product]));
     const orderedProducts = orderedIds.map((id) => byId.get(id)).filter((product): product is (typeof products)[number] => Boolean(product));
 
-    cache.set(cacheKey, orderedProducts);
-    return res.json({ data: orderedProducts, correctedQuery });
+    const productsWithSoldCounts = await attachSoldCounts(orderedProducts);
+    cache.set(cacheKey, productsWithSoldCounts);
+    return res.json({ data: productsWithSoldCounts, correctedQuery });
   }
 
   const whereClause = {
@@ -553,9 +575,10 @@ router.get("/", async (req, res) => {
     include: { brand: true },
     orderBy: { createdAt: "desc" },
   });
+  const productsWithSoldCounts = await attachSoldCounts(products);
 
-  cache.set(cacheKey, products);
-  return res.json({ data: products });
+  cache.set(cacheKey, productsWithSoldCounts);
+  return res.json({ data: productsWithSoldCounts });
 });
 
 router.get("/templates", requireAuth, async (req, res) => {
@@ -767,8 +790,9 @@ router.get("/admin", requireAuth, requireAdmin, async (req, res) => {
     include: { brand: true },
     orderBy: { createdAt: "desc" },
   });
+  const productsWithSoldCounts = await attachSoldCounts(products);
 
-  return res.json({ data: products });
+  return res.json({ data: productsWithSoldCounts });
 });
 
 router.get("/approval/pending", requireAuth, requireAdmin, async (_req, res) => {
@@ -778,8 +802,9 @@ router.get("/approval/pending", requireAuth, requireAdmin, async (_req, res) => 
     include: { brand: true },
     orderBy: { createdAt: "desc" },
   });
+  const productsWithSoldCounts = await attachSoldCounts(products);
 
-  return res.json({ data: products });
+  return res.json({ data: productsWithSoldCounts });
 });
 
 router.patch("/:id/approval", requireAuth, requireAdmin, async (req, res) => {
@@ -835,7 +860,8 @@ router.get("/:slug", async (req, res) => {
   });
 
   if (!product) return res.status(404).json({ message: "Product not found" });
-  return res.json({ data: product });
+  const [productWithSoldCount] = await attachSoldCounts([product]);
+  return res.json({ data: productWithSoldCount });
 });
 
 router.get("/id/:id", async (req, res) => {
@@ -848,7 +874,8 @@ router.get("/id/:id", async (req, res) => {
   });
 
   if (!product) return res.status(404).json({ message: "Product not found" });
-  return res.json({ data: product });
+  const [productWithSoldCount] = await attachSoldCounts([product]);
+  return res.json({ data: productWithSoldCount });
 });
 
 router.post("/", requireAuth, requireAdmin, async (req, res) => {

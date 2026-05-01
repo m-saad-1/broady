@@ -707,6 +707,21 @@ export async function markNotificationAsRead(notificationId: string): Promise<vo
   await authFetch(`/users/notifications/${notificationId}/read`, { method: "PATCH" });
 }
 
+export async function markAllNotificationsAsRead(): Promise<void> {
+  await authFetch("/users/notifications/read-all", { method: "PATCH" });
+}
+
+export async function registerNotificationDeviceToken(payload: {
+  token: string;
+  platform?: string;
+  userAgent?: string;
+}): Promise<void> {
+  await authFetch("/users/notification-device-tokens", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function getBrandDashboardOverview(): Promise<BrandDashboardOverview> {
   const response = await authFetch<ApiEnvelope<BrandDashboardOverview>>("/brand-dashboard/overview", {
     method: "GET",
@@ -742,7 +757,7 @@ export async function updateBrandOrderStatus(
 
 export async function updateAdminOrderStatus(
   orderId: string,
-  payload: { status: string; trackingId?: string; note?: string; customerNote?: string },
+  payload: { status: string; trackingId?: string; note?: string; customerNote?: string; failureReason?: string; nextAttemptDate?: string },
 ): Promise<BrandDashboardOrder> {
   const response = await authFetch<ApiEnvelope<BrandDashboardOrder>>(`/orders/${orderId}/status`, {
     method: "PATCH",

@@ -2,10 +2,11 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, ReactNode } from "react";
 import { ProductCard } from "@/components/ui/product-card";
 import { trackUserBehaviorEvent } from "@/lib/api";
 import { getProductPricing } from "@/lib/pricing";
+import { useStableNow } from "@/hooks/use-stable-now";
 import { useMockFallback } from "@/lib/runtime-flags";
 import {
   filterProductsBySubCategoryContains,
@@ -23,6 +24,48 @@ type CatalogClientProps = {
   initialProducts: Product[];
   params: Record<string, string>;
 };
+
+type ProductTypeFilter = "Top" | "Bottom" | "Footwear" | "Accessories";
+
+const TOP_CATEGORY_OPTIONS = ["Men", "Women", "Kids"] as const;
+const PRODUCT_TYPE_OPTIONS: ProductTypeFilter[] = ["Top", "Bottom", "Footwear", "Accessories"];
+const JUNIOR_GROUP_OPTIONS = ["Toddler Boys", "Junior Boys", "Toddler Girls", "Junior Girls"] as const;
+const SORT_OPTIONS = [
+  { value: "latest", label: "Latest" },
+  { value: "price-asc", label: "Price Low" },
+  { value: "price-desc", label: "Price High" },
+  { value: "name", label: "Name A-Z" },
+  { value: "featured", label: "Featured" },
+  { value: "in-stock", label: "In Stock" },
+] as const;
+
+type JuniorGroupFilter = (typeof JUNIOR_GROUP_OPTIONS)[number];
+
+function isJuniorGroup(value: string): value is JuniorGroupFilter {
+  return (JUNIOR_GROUP_OPTIONS as readonly string[]).includes(value);
+}
+
+function normalizeJuniorGroup(value?: string) {
+  return value && isJuniorGroup(value) ? value : "";
+}
+
+function isFeaturedProduct(product: Product) {
+  return product.badge === "New" || product.badge === "Limited" || Boolean(product.offer?.isActive);
+}
+
+function getJuniorGroup(product: Product) {
+  const text = `${product.name} ${product.subCategory}`.toLowerCase();
+  const hasJuniorSizes = product.sizes.some((size) => /^(8Y|10Y|12Y|14Y|16Y)$/.test(size.toUpperCase()));
+  const age = hasJuniorSizes ? "Junior" : "Toddler";
+  const gender = text.includes("girl") ? "Girls" : text.includes("boy") ? "Boys" : "";
+
+  return gender ? `${age} ${gender}` : "";
+}
+
+function matchesJuniorGroup(product: Product, group: string) {
+  if (!group) return true;
+  return getJuniorGroup(product) === group;
+}
 
 function scoreProductMatch(product: Product, query: string) {
   const q = query.trim().toLowerCase();
@@ -100,6 +143,10 @@ async function fetchProducts(params: Record<string, string>) {
   }
 }
 
+function getMenuValueLabel(options: Array<{ value: string; label: string }>, value: string) {
+  return options.find((opt) => opt.value === value)?.label || "Select";
+}
+
 export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
@@ -110,73 +157,77 @@ export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
   const [subCategory, setSubCategory] = useState(params.subCategory || "");
   const [size, setSize] = useState(params.size || "");
   const [sortBy, setSortBy] = useState(params.sortBy || "latest");
+  const [juniorGroup, setJuniorGroup] = useState<JuniorGroupFilter | "">(normalizeJuniorGroup(params.juniorGroup));
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const renderNow = useStableNow();
 
   const queryFromRoute = useMemo(() => params.q?.trim() || "", [params.q]);
-  const hasActiveSearch = Boolean(queryFromRoute);
-  const normalizedQueryFromRoute = useMemo(
-    () => normalizeSearchQuery(queryFromRoute),
-    [queryFromRoute],
-  );
+  const normalizedQueryFromRoute = useMemo(() => normalizeSearchQuery(queryFromRoute), [queryFromRoute]);
+  const normalizedInitialProducts = useMemo(() => initialProducts.map(normalizeProduct), [initialProducts]);
+  const effectiveProductType = topCategory === "Kids" ? "" : productType && PRODUCT_TYPE_OPTIONS.includes(productType as ProductTypeFilter) ? productType : "";
+  const hasActiveSearch = Boolean(normalizedQueryFromRoute);
 
-  useEffect(() => {
-    setTopCategory(params.topCategory || "");
-    setProductType(params.productType || "");
-    setSubCategory(params.subCategory || "");
-    setSize(params.size || "");
-    setSortBy(params.sortBy || "latest");
-  }, [params.topCategory, params.productType, params.subCategory, params.size, params.sortBy]);
+  const facetParams = useMemo(() => {
+    const next: Record<string, string> = {};
+    if (queryFromRoute) next.q = queryFromRoute;
+    if (topCategory) next.topCategory = topCategory;
+    if (effectiveProductType) next.productType = effectiveProductType;
+    return next;
+  }, [effectiveProductType, queryFromRoute, topCategory]);
 
-  const normalizedInitialProducts = useMemo(() => {
-    const source = initialProducts.length ? initialProducts : fallbackProducts;
+  const { data: products = initialProducts } = useQuery({
+    queryKey: ["products", queryFromRoute, topCategory, effectiveProductType, subCategory, size, sortBy, juniorGroup],
+    queryFn: () => fetchProducts({
+      q: queryFromRoute,
+      topCategory,
+      productType: effectiveProductType,
+      subCategory,
+      size,
+      sortBy,
+      juniorGroup,
+    }),
+    initialData: initialProducts,
+  });
+
+  const { data: facetProducts = initialProducts } = useQuery({
+    queryKey: ["products-facets", facetParams],
+    queryFn: () => fetchProducts(facetParams),
+    initialData: initialProducts,
+  });
+
+  const normalizedFacetProducts = useMemo(() => {
+    const source = facetProducts.length ? facetProducts : initialProducts;
     return source.map(normalizeProduct);
-  }, [initialProducts]);
+  }, [facetProducts, initialProducts]);
 
-  const topCategoryOptions = useMemo(
-    () => Array.from(new Set(normalizedInitialProducts.map((item) => item.topCategory))).sort(),
-    [normalizedInitialProducts],
-  );
+  const facetTypeProducts = useMemo(() => {
+    if (!effectiveProductType) return normalizedFacetProducts;
+    return normalizedFacetProducts.filter((item) => item.productType === effectiveProductType);
+  }, [effectiveProductType, normalizedFacetProducts]);
 
-  const typeSource = useMemo(
-    () => normalizedInitialProducts.filter((item) => !topCategory || item.topCategory === topCategory),
-    [normalizedInitialProducts, topCategory],
-  );
-  const productTypeOptions = useMemo(
-    () => Array.from(new Set(typeSource.map((item) => item.productType))).sort() as string[],
-    [typeSource],
-  );
-  const effectiveProductType = productType && productTypeOptions.includes(productType) ? productType : "";
-
-  const subCategorySource = useMemo(
-    () =>
-      normalizedInitialProducts.filter(
-        (item) =>
-          (!topCategory || item.topCategory === topCategory) &&
-          (!effectiveProductType || item.productType === effectiveProductType),
-      ),
-    [effectiveProductType, normalizedInitialProducts, topCategory],
-  );
   const subCategoryOptions = useMemo(
-    () => Array.from(new Set(subCategorySource.map((item) => item.subCategory))).sort(),
-    [subCategorySource],
+    () => Array.from(new Set(facetTypeProducts.map((item) => item.subCategory))).sort(),
+    [facetTypeProducts],
   );
-  const effectiveSubCategory =
-    subCategory && subCategoryOptions.includes(subCategory) ? subCategory : "";
+  const effectiveSubCategory = topCategory === "Kids" ? "" : subCategory && subCategoryOptions.includes(subCategory) ? subCategory : "";
 
-  const sizeSource = useMemo(
-    () =>
-      normalizedInitialProducts.filter(
-        (item) =>
-          (!topCategory || item.topCategory === topCategory) &&
-          (!effectiveProductType || item.productType === effectiveProductType) &&
-          (!effectiveSubCategory || item.subCategory === effectiveSubCategory),
-      ),
-    [effectiveProductType, effectiveSubCategory, normalizedInitialProducts, topCategory],
-  );
-  const sizeOptions = useMemo(() => {
-    const values = Array.from(new Set(sizeSource.flatMap((item) => item.sizes))).sort();
-    return values;
-  }, [sizeSource]);
-  const effectiveSize = size && sizeOptions.includes(size) ? size : "";
+  const sizeSource = useMemo(() => {
+    let next = normalizedFacetProducts;
+
+    if (effectiveProductType) {
+      next = next.filter((item) => item.productType === effectiveProductType);
+    }
+
+    if (effectiveSubCategory) {
+      next = next.filter((item) => item.subCategory === effectiveSubCategory);
+    }
+
+    return next;
+  }, [effectiveProductType, effectiveSubCategory, normalizedFacetProducts]);
+
+  const sizeOptions = useMemo(() => Array.from(new Set(sizeSource.flatMap((item) => item.sizes))).sort(), [sizeSource]);
+  const effectiveSize = topCategory === "Kids" ? "" : size && sizeOptions.includes(size) ? size : "";
+  const effectiveJuniorGroup = topCategory === "Kids" && isJuniorGroup(juniorGroup) ? juniorGroup : "";
 
   const runtimeParams = useMemo(() => {
     const next: Record<string, string> = {};
@@ -188,12 +239,6 @@ export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
     if (sortBy !== "latest") next.sortBy = sortBy;
     return next;
   }, [effectiveProductType, effectiveSize, effectiveSubCategory, queryFromRoute, sortBy, topCategory]);
-
-  const { data: products = initialProducts } = useQuery({
-    queryKey: ["products", runtimeParams],
-    queryFn: () => fetchProducts(runtimeParams),
-    initialData: initialProducts,
-  });
 
   const fallbackCatalogProducts = useMemo(() => {
     if (products.length > 0 || !isEligibleSearchQuery(normalizedQueryFromRoute)) {
@@ -210,13 +255,56 @@ export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
     ? products
     : fallbackCatalogProducts;
 
+  const normalizedRenderableProducts = useMemo(
+    () => productsForRendering.map(normalizeProduct),
+    [productsForRendering],
+  );
+
+  const filteredProducts = useMemo(() => {
+    let next = [...normalizedRenderableProducts];
+
+    if (sortBy === "featured") {
+      next = next.filter(isFeaturedProduct);
+    }
+
+    if (sortBy === "in-stock") {
+      next = next.filter((product) => product.stock > 0);
+    }
+
+    if (topCategory === "Kids") {
+      next = next.filter((product) => matchesJuniorGroup(product, effectiveJuniorGroup));
+    }
+
+    return next;
+  }, [effectiveJuniorGroup, normalizedRenderableProducts, sortBy, topCategory]);
+
   const orderedProducts = useMemo(() => {
-    const copy = [...productsForRendering];
-    if (sortBy === "price-asc") return copy.sort((a, b) => getProductPricing(a).finalPrice - getProductPricing(b).finalPrice);
-    if (sortBy === "price-desc") return copy.sort((a, b) => getProductPricing(b).finalPrice - getProductPricing(a).finalPrice);
+    const copy = [...filteredProducts];
+    if (sortBy === "price-asc") return copy.sort((a, b) => getProductPricing(a, renderNow).finalPrice - getProductPricing(b, renderNow).finalPrice);
+    if (sortBy === "price-desc") return copy.sort((a, b) => getProductPricing(b, renderNow).finalPrice - getProductPricing(a, renderNow).finalPrice);
     if (sortBy === "name") return copy.sort((a, b) => a.name.localeCompare(b.name));
     return copy;
-  }, [productsForRendering, sortBy]);
+  }, [filteredProducts, renderNow, sortBy]);
+
+  useEffect(() => {
+    if (topCategory === "Kids") {
+      return;
+    }
+
+    if (subCategory && !subCategoryOptions.includes(subCategory)) {
+      setSubCategory("");
+    }
+  }, [subCategory, subCategoryOptions, topCategory]);
+
+  useEffect(() => {
+    if (topCategory === "Kids") {
+      return;
+    }
+
+    if (size && !sizeOptions.includes(size)) {
+      setSize("");
+    }
+  }, [size, sizeOptions, topCategory]);
 
   useEffect(() => {
     const next = new URLSearchParams(runtimeParams);
@@ -283,6 +371,7 @@ export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
                 setSubCategory("");
                 setSize("");
                 setSortBy("latest");
+                setJuniorGroup("");
                 router.replace("/catalog", { scroll: false });
               }}
               aria-label="Clear active search"
@@ -293,51 +382,176 @@ export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
           </div>
         ) : null}
 
-        <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.12em]">
-          <select className="h-9 border border-zinc-300 px-2" value={topCategory} onChange={(event) => setTopCategory(event.target.value)}>
-            <option value="">All genders</option>
-            {topCategoryOptions.map((item) => (
-              <option key={item} value={item}>
+        <div className="flex flex-wrap gap-2">
+          <DropdownMenu
+            title="Gender"
+            value={topCategory ? getTopCategoryLabel(topCategory as any) : "All"}
+            open={openMenu === "gender"}
+            onToggle={() => setOpenMenu(openMenu === "gender" ? null : "gender")}
+          >
+            <MenuOption
+              active={!topCategory}
+              onClick={() => {
+                setTopCategory("");
+                setOpenMenu(null);
+              }}
+            >
+              All
+            </MenuOption>
+            {TOP_CATEGORY_OPTIONS.map((item) => (
+              <MenuOption
+                key={item}
+                active={topCategory === item}
+                onClick={() => {
+                  setTopCategory(item);
+                  setOpenMenu(null);
+                }}
+              >
                 {getTopCategoryLabel(item)}
-              </option>
+              </MenuOption>
             ))}
-          </select>
-          <select className="h-9 border border-zinc-300 px-2" value={effectiveProductType} onChange={(event) => setProductType(event.target.value)}>
-            <option value="">All types</option>
-            {productTypeOptions.map((item) => (
-              <option key={item} value={item}>
+          </DropdownMenu>
+
+          <DropdownMenu
+            title="Type"
+            value={effectiveProductType || "All"}
+            open={openMenu === "type"}
+            onToggle={() => setOpenMenu(openMenu === "type" ? null : "type")}
+          >
+            <MenuOption
+              active={!effectiveProductType}
+              onClick={() => {
+                setProductType("");
+                setOpenMenu(null);
+              }}
+            >
+              All
+            </MenuOption>
+            {PRODUCT_TYPE_OPTIONS.map((item) => (
+              <MenuOption
+                key={item}
+                active={effectiveProductType === item}
+                onClick={() => {
+                  setProductType(item);
+                  setOpenMenu(null);
+                }}
+              >
                 {item}
-              </option>
+              </MenuOption>
             ))}
-          </select>
-          <select className="h-9 border border-zinc-300 px-2" value={effectiveSubCategory} onChange={(event) => setSubCategory(event.target.value)}>
-            <option value="">All subcategories</option>
+          </DropdownMenu>
+
+          <DropdownMenu
+            title="Category"
+            value={effectiveSubCategory || "All"}
+            open={openMenu === "category"}
+            onToggle={() => setOpenMenu(openMenu === "category" ? null : "category")}
+          >
+            <MenuOption
+              active={!effectiveSubCategory}
+              onClick={() => {
+                setSubCategory("");
+                setOpenMenu(null);
+              }}
+            >
+              All
+            </MenuOption>
             {subCategoryOptions.map((item) => (
-              <option key={item} value={item}>
+              <MenuOption
+                key={item}
+                active={effectiveSubCategory === item}
+                onClick={() => {
+                  setSubCategory(item);
+                  setOpenMenu(null);
+                }}
+              >
                 {item}
-              </option>
+              </MenuOption>
             ))}
-          </select>
-          <select className="h-9 border border-zinc-300 px-2" value={effectiveSize} onChange={(event) => setSize(event.target.value)}>
-            <option value="">All sizes</option>
+          </DropdownMenu>
+
+          <DropdownMenu
+            title="Size"
+            value={effectiveSize || "All"}
+            open={openMenu === "size"}
+            onToggle={() => setOpenMenu(openMenu === "size" ? null : "size")}
+          >
+            <MenuOption
+              active={!effectiveSize}
+              onClick={() => {
+                setSize("");
+                setOpenMenu(null);
+              }}
+            >
+              All
+            </MenuOption>
             {sizeOptions.map((item) => (
-              <option key={item} value={item}>
+              <MenuOption
+                key={item}
+                active={effectiveSize === item}
+                onClick={() => {
+                  setSize(item);
+                  setOpenMenu(null);
+                }}
+              >
                 {item}
-              </option>
+              </MenuOption>
             ))}
-          </select>
-          <select className="h-9 border border-zinc-300 px-2" value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
-            {[
-              { value: "latest", label: "Latest" },
-              { value: "price-asc", label: "Price Low to High" },
-              { value: "price-desc", label: "Price High to Low" },
-              { value: "name", label: "Name A-Z" },
-            ].map((item) => (
-              <option key={item.value} value={item.value}>
+          </DropdownMenu>
+
+          {topCategory === "Kids" ? (
+            <DropdownMenu
+              title="Age Group"
+              value={juniorGroup || "All"}
+              open={openMenu === "group"}
+              onToggle={() => setOpenMenu(openMenu === "group" ? null : "group")}
+            >
+              <MenuOption
+                active={!juniorGroup}
+                onClick={() => {
+                  setJuniorGroup("");
+                  setOpenMenu(null);
+                }}
+              >
+                All
+              </MenuOption>
+              {JUNIOR_GROUP_OPTIONS.map((item) => (
+                <MenuOption
+                  key={item}
+                  active={juniorGroup === item}
+                  onClick={() => {
+                    setJuniorGroup(item);
+                    setOpenMenu(null);
+                  }}
+                >
+                  {item}
+                </MenuOption>
+              ))}
+            </DropdownMenu>
+          ) : null}
+
+          <DropdownMenu
+            title="Sort"
+            value={getMenuValueLabel(
+              SORT_OPTIONS.map((item) => ({ value: item.value, label: item.label })),
+              sortBy,
+            )}
+            open={openMenu === "sort"}
+            onToggle={() => setOpenMenu(openMenu === "sort" ? null : "sort")}
+          >
+            {SORT_OPTIONS.map((item) => (
+              <MenuOption
+                key={item.value}
+                active={sortBy === item.value}
+                onClick={() => {
+                  setSortBy(item.value);
+                  setOpenMenu(null);
+                }}
+              >
                 {item.label}
-              </option>
+              </MenuOption>
             ))}
-          </select>
+          </DropdownMenu>
         </div>
       </section>
 
@@ -354,5 +568,63 @@ export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
         </section>
       ) : null}
     </div>
+  );
+}
+
+function DropdownMenu({
+  title,
+  value,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  value: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={onToggle}
+        className={`flex items-center gap-2 border px-3 py-2 text-sm font-medium transition-colors ${
+          open ? "border-black bg-black text-white" : "border-zinc-300 bg-white text-zinc-900 hover:border-black"
+        }`}
+      >
+        <span>{title}</span>
+        <span className="text-xs text-zinc-500">{value}</span>
+      </button>
+      {open ? (
+        <div className="absolute left-0 top-full z-20 mt-1 w-48 border border-zinc-300 bg-white shadow-lg">
+          <div className="max-h-64 overflow-y-auto">{children}</div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MenuOption({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+        active ? "bg-black text-white font-medium" : "bg-white text-zinc-900 hover:bg-zinc-100"
+      }`}
+    >
+      {children}
+    </button>
   );
 }

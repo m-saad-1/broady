@@ -11,7 +11,7 @@ type BrandOrdersClientProps = {
   mode?: "dashboard" | "orders";
 };
 
-type OrderFilter = "ALL" | "NEW" | "PENDING" | "CONFIRMED" | "SHIPPED" | "DELIVERED" | "CANCELLED";
+type OrderFilter = "ALL" | "NEW" | "PENDING" | "CONFIRMED" | "PROCESSING" | "SHIPPED" | "OUT_FOR_DELIVERY" | "DELIVERY_FAILED" | "DELIVERED" | "RETURNED" | "CANCELLED";
 
 const currencyFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
@@ -39,16 +39,24 @@ const filterOptions: Array<{ key: OrderFilter; label: string }> = [
   { key: "NEW", label: "New" },
   { key: "PENDING", label: "Pending" },
   { key: "CONFIRMED", label: "Confirmed" },
+  { key: "PROCESSING", label: "Processing" },
   { key: "SHIPPED", label: "Shipped" },
+  { key: "OUT_FOR_DELIVERY", label: "Out for Delivery" },
+  { key: "DELIVERY_FAILED", label: "Delivery Failed" },
   { key: "DELIVERED", label: "Delivered" },
+  { key: "RETURNED", label: "Returned" },
   { key: "CANCELLED", label: "Cancelled" },
 ];
 
 const statusTone: Record<string, string> = {
   PENDING: "text-amber-700",
   CONFIRMED: "text-blue-700",
-  SHIPPED: "text-indigo-700",
+  PROCESSING: "text-indigo-700",
+  SHIPPED: "text-violet-700",
+  OUT_FOR_DELIVERY: "text-blue-700",
+  DELIVERY_FAILED: "text-orange-700",
   DELIVERED: "text-emerald-700",
+  RETURNED: "text-zinc-700",
   CANCELED: "text-rose-700",
 };
 
@@ -69,11 +77,23 @@ function matchesFilter(order: BrandDashboardOrder, filter: OrderFilter) {
   if (filter === "CONFIRMED") {
     return order.status === "CONFIRMED";
   }
+  if (filter === "PROCESSING") {
+    return order.status === "PROCESSING";
+  }
   if (filter === "SHIPPED") {
     return order.status === "SHIPPED";
   }
+  if (filter === "OUT_FOR_DELIVERY") {
+    return order.status === "OUT_FOR_DELIVERY";
+  }
+  if (filter === "DELIVERY_FAILED") {
+    return order.status === "DELIVERY_FAILED";
+  }
   if (filter === "DELIVERED") {
     return order.status === "DELIVERED";
+  }
+  if (filter === "RETURNED") {
+    return order.status === "RETURNED";
   }
   if (filter === "CANCELLED") {
     return order.status === "CANCELED";

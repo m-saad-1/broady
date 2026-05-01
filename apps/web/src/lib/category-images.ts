@@ -57,6 +57,13 @@ export const WOMEN_PRESET_CATEGORIES = [
 
 export const JUNIOR_GROUPS = ["Junior Boys", "Toddler Boys", "Junior Girls", "Toddler Girls"] as const;
 
+export const JUNIOR_GROUP_IMAGES: Record<(typeof JUNIOR_GROUPS)[number], string> = {
+  "Junior Boys": "https://images.unsplash.com/photo-1519238263530-99bdd11df2ea?w=1200",
+  "Toddler Boys": "https://images.unsplash.com/photo-1503919005314-30d93d07d823?w=1200",
+  "Junior Girls": "https://images.unsplash.com/photo-1489424731084-a5d8b219a5bb?w=1200",
+  "Toddler Girls": "https://images.unsplash.com/photo-1519345182560-3f2917c472ef?w=1200",
+};
+
 export const JUNIORS_DEFAULT_SUBCATEGORIES = ["Hoodies", "Polo Shirts", "Joggers", "Slip Ons", "Caps"];
 
 export const JUNIOR_SUBCATEGORIES: Record<string, string[]> = {

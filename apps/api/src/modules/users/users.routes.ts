@@ -35,6 +35,12 @@ const notificationSchema = z.object({
   wishlistAlerts: z.boolean(),
 });
 
+const notificationDeviceTokenSchema = z.object({
+  token: z.string().trim().min(20).max(4096),
+  platform: z.string().trim().min(2).max(40).optional().default("WEB"),
+  userAgent: z.string().trim().max(500).optional(),
+});
+
 const cartSyncSchema = z.object({
   merge: z.boolean().optional(),
   items: z.array(
@@ -243,6 +249,45 @@ router.put("/notification-preferences", requireAuth, async (req, res) => {
   });
 
   return res.json({ data: preferences });
+});
+
+router.post("/notification-device-tokens", requireAuth, async (req, res) => {
+  const parsed = notificationDeviceTokenSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid payload", issues: parsed.error.flatten() });
+
+  const deviceToken = await prisma.userDeviceToken.upsert({
+    where: { token: parsed.data.token },
+    update: {
+      userId: req.auth!.userId,
+      platform: parsed.data.platform,
+      userAgent: parsed.data.userAgent,
+      disabledAt: null,
+      lastSeenAt: new Date(),
+    },
+    create: {
+      userId: req.auth!.userId,
+      token: parsed.data.token,
+      platform: parsed.data.platform,
+      userAgent: parsed.data.userAgent,
+    },
+  });
+
+  return res.status(201).json({ data: deviceToken });
+});
+
+router.delete("/notification-device-tokens", requireAuth, async (req, res) => {
+  const parsed = notificationDeviceTokenSchema.pick({ token: true }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid payload", issues: parsed.error.flatten() });
+
+  await prisma.userDeviceToken.updateMany({
+    where: {
+      token: parsed.data.token,
+      userId: req.auth!.userId,
+    },
+    data: { disabledAt: new Date() },
+  });
+
+  return res.status(204).send();
 });
 
 router.get("/notifications", requireAuth, async (req, res) => {

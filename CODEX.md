@@ -1,4 +1,4 @@
-# Copilot Instructions for Broady
+# CODEX Instructions for Broady
 
 ## Build, lint, and test commands
 

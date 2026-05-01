@@ -522,29 +522,51 @@ export function ProductsAdminClient() {
           {isLoading ? <p className="text-sm text-zinc-600">Loading products...</p> : null}
           <div className="space-y-3">
             {products.map((product) => (
-              <article key={product.id} className="space-y-2 border border-zinc-200 p-3">
-                <div className="grid gap-3 md:grid-cols-[2fr_1fr_auto] md:items-center">
-                  <div>
-                    <Link href={`/product/${product.slug}`} className="text-sm font-semibold uppercase tracking-[0.08em] underline decoration-zinc-400 underline-offset-2">
+              <article key={product.id} className="space-y-3 border border-zinc-200 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 space-y-1">
+                    <Link href={`/product/${product.slug}`} className="block text-sm font-semibold uppercase tracking-[0.08em] underline decoration-zinc-400 underline-offset-2">
                       {product.name}
                     </Link>
-                    <p className="text-xs text-zinc-600">{product.brand?.name || "-"} / {product.topCategory} / {product.subCategory}</p>
-                    <p className="mt-1 text-xs text-zinc-700 line-clamp-2">{product.description}</p>
+                    <p className="text-xs text-zinc-600">
+                      {product.brand?.name || "-"} / {product.topCategory} / {product.subCategory}
+                    </p>
+                    <p className="text-xs text-zinc-700 line-clamp-2">{product.description}</p>
                   </div>
-                  <div className="space-y-1 text-xs text-zinc-700">
-                    <p>Price: PKR {product.pricePkr.toLocaleString()}</p>
-                    <p>Stock: {product.stock}</p>
-                    <p>Status: {product.approvalStatus || "APPROVED"}</p>
-                    <p>Active: {product.isActive ? "Yes" : "No"}</p>
-                    <p>Sizes: {product.sizes.join(", ")}</p>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingProductId(product.id);
+                        setProductForm(toProductFormState(product));
+                      }}
+                      className="border border-zinc-300 px-3 py-1 text-xs uppercase tracking-[0.12em] hover:border-black"
+                    >
+                      Edit
+                    </button>
+                    <button type="button" onClick={() => void handleDeleteProduct(product)} className="border border-black bg-black px-3 py-1 text-xs uppercase tracking-[0.12em] text-white">
+                      Delete
+                    </button>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button type="button" onClick={() => {
-                      setEditingProductId(product.id);
-                      setProductForm(toProductFormState(product));
-                    }} className="border border-zinc-300 px-3 py-1 text-xs uppercase tracking-[0.12em]">Edit</button>
-                    <button type="button" onClick={() => void handleDeleteProduct(product)} className="border border-black bg-black px-3 py-1 text-xs uppercase tracking-[0.12em] text-white">Delete</button>
-                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-zinc-700">
+                  <p>
+                    <span className="font-semibold text-zinc-900">Price:</span> PKR {product.pricePkr.toLocaleString()}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-zinc-900">Stock:</span> {product.stock}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-zinc-900">Color:</span> {product.colors?.join(", ") || "-"}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-zinc-900">Size:</span> {product.sizes.join(", ")}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-zinc-900">Activity:</span> {product.isActive ? "Active" : "Inactive"}
+                  </p>
                 </div>
               </article>
             ))}

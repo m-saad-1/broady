@@ -110,6 +110,11 @@ export type BrandDashboardOrder = {
   totalPkr: number;
   deliveryAddress: string;
   trackingId?: string | null;
+  deliveryAttempts?: number;
+  failureReason?: string | null;
+  nextAttemptDate?: string | null;
+  finalDeliveryFailureAt?: string | null;
+  refundProcessedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   user: { id: string; fullName: string; email: string };
@@ -152,6 +157,11 @@ export type UserOrder = {
     status: OrderStatus;
     subtotalPkr: number;
     trackingId?: string | null;
+    deliveryAttempts?: number;
+    failureReason?: string | null;
+    nextAttemptDate?: string | null;
+    finalDeliveryFailureAt?: string | null;
+    refundProcessedAt?: string | null;
     createdAt: string;
     updatedAt: string;
     brand: Brand;
@@ -209,7 +219,7 @@ export type NotificationItem = {
   order?: { id: string; status: OrderStatus; trackingId?: string | null };
   channels: Array<{
     id: string;
-    channel: "DASHBOARD" | "EMAIL" | "WHATSAPP";
+    channel: "DASHBOARD" | "EMAIL" | "PUSH" | "WHATSAPP";
     status: "SENT" | "QUEUED" | "FAILED";
     recipient: string;
   }>;
@@ -251,6 +261,11 @@ export type AdminBrandDashboardRecord = {
     paymentStatus: PaymentStatus;
     deliveryAddress: string;
     trackingId?: string | null;
+    deliveryAttempts?: number;
+    failureReason?: string | null;
+    nextAttemptDate?: string | null;
+    finalDeliveryFailureAt?: string | null;
+    refundProcessedAt?: string | null;
     totalPkr: number;
     createdAt: string;
     updatedAt: string;

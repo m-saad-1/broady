@@ -1,23 +1,23 @@
 export const notificationEventNames = {
-  orderPlaced: "OrderPlaced",
-  orderConfirmed: "OrderConfirmed",
-  orderPacked: "OrderPacked",
-  orderShipped: "OrderShipped",
-  orderDelivered: "OrderDelivered",
-  orderCancelled: "OrderCancelled",
-  paymentInitiated: "PaymentInitiated",
-  paymentSuccess: "PaymentSuccess",
-  paymentFailed: "PaymentFailed",
-  refundProcessed: "RefundProcessed",
-  productSubmitted: "ProductSubmitted",
-  productApproved: "ProductApproved",
-  productRejected: "ProductRejected",
-  brandApproved: "BrandApproved",
-  reviewSubmitted: "ReviewSubmitted",
-  reviewHelpfulVoted: "ReviewHelpfulVoted",
-  reviewReported: "ReviewReported",
-  reviewModerated: "ReviewModerated",
-  reviewReplied: "ReviewReplied",
+  orderPlaced: "order_placed",
+  orderConfirmed: "suborder_confirmed",
+  orderProcessing: "suborder_processing",
+  orderShipped: "suborder_shipped",
+  orderDelivered: "suborder_delivered",
+  orderCancelled: "suborder_cancelled",
+  paymentInitiated: "payment_initiated",
+  paymentSuccess: "payment_success",
+  paymentFailed: "payment_failed",
+  refundProcessed: "refund_processed",
+  productSubmitted: "product_submitted",
+  productApproved: "product_approved",
+  productRejected: "product_rejected",
+  brandApproved: "brand_approved",
+  reviewSubmitted: "review_submitted",
+  reviewHelpfulVoted: "review_helpful_voted",
+  reviewReported: "review_reported",
+  reviewModerated: "review_moderated",
+  reviewReplied: "review_replied",
 } as const;
 
 export type NotificationEventName = (typeof notificationEventNames)[keyof typeof notificationEventNames];
@@ -33,7 +33,7 @@ export type NotificationEvent =
       name:
         | typeof notificationEventNames.orderPlaced
         | typeof notificationEventNames.orderConfirmed
-        | typeof notificationEventNames.orderPacked
+        | typeof notificationEventNames.orderProcessing
         | typeof notificationEventNames.orderShipped
         | typeof notificationEventNames.orderDelivered
         | typeof notificationEventNames.orderCancelled;

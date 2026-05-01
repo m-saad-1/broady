@@ -15,7 +15,10 @@ import {
   type NotificationAudience,
   type NotificationChannelPreference,
 } from "./notification.rules.js";
+import { sendSmtpEmail } from "./notification.email.js";
+import { sendPushNotification } from "./notification.push.js";
 import { buildNotificationTemplate } from "./notification.templates.js";
+import { resolveNotificationTargetPath } from "./notification.targets.js";
 
 type DispatchInput = {
   prismaClient: PrismaClient | Prisma.TransactionClient;
@@ -30,6 +33,8 @@ type DispatchInput = {
   emailSubject?: string;
   emailText?: string;
   emailHtml?: string;
+  pushTokens?: string[];
+  pushData?: Record<string, unknown>;
   whatsappPayload?: Record<string, unknown>;
 };
 
@@ -40,37 +45,38 @@ type ResolvedRecipient = {
   brandName?: string;
   email?: string | null;
   whatsapp?: string | null;
+  pushTokens: string[];
   channels: NotificationChannelPreference[];
 };
 
 function mapEventToNotificationType(event: NotificationEvent): NotificationType {
   switch (event.name) {
-    case "OrderPlaced":
+    case "order_placed":
       return NotificationType.ORDER_PLACED;
-    case "OrderConfirmed":
-    case "OrderPacked":
-    case "OrderShipped":
-    case "OrderDelivered":
-    case "OrderCancelled":
-    case "PaymentInitiated":
-    case "PaymentSuccess":
-    case "PaymentFailed":
-    case "RefundProcessed":
-    case "BrandApproved":
+    case "suborder_confirmed":
+    case "suborder_processing":
+    case "suborder_shipped":
+    case "suborder_delivered":
+    case "suborder_cancelled":
+    case "payment_initiated":
+    case "payment_success":
+    case "payment_failed":
+    case "refund_processed":
+    case "brand_approved":
       return NotificationType.ORDER_STATUS_UPDATED;
-    case "ProductSubmitted":
-    case "ProductApproved":
-    case "ProductRejected":
+    case "product_submitted":
+    case "product_approved":
+    case "product_rejected":
       return NotificationType.BRAND_ORDER_ASSIGNED;
-    case "ReviewSubmitted":
+    case "review_submitted":
       return NotificationType.PRODUCT_REVIEW_SUBMITTED;
-    case "ReviewHelpfulVoted":
+    case "review_helpful_voted":
       return NotificationType.PRODUCT_REVIEW_REPLIED;
-    case "ReviewReported":
+    case "review_reported":
       return NotificationType.PRODUCT_REVIEW_REPORTED;
-    case "ReviewModerated":
+    case "review_moderated":
       return NotificationType.PRODUCT_REVIEW_MODERATED;
-    case "ReviewReplied":
+    case "review_replied":
       return NotificationType.PRODUCT_REVIEW_REPLIED;
     default:
       return NotificationType.ORDER_STATUS_UPDATED;
@@ -83,6 +89,11 @@ async function sendEmailNotification(input: {
   text: string;
   html?: string;
 }) {
+  if (env.smtpHost) {
+    await sendSmtpEmail(input);
+    return;
+  }
+
   if (!env.resendApiKey) {
     throw new Error("Email provider is not configured");
   }
@@ -125,16 +136,16 @@ async function withRetries(task: () => Promise<void>, attempts = 3) {
 
 function isOrderOrPaymentEvent(event: NotificationEvent) {
   return (
-    event.name === "OrderPlaced" ||
-    event.name === "OrderConfirmed" ||
-    event.name === "OrderPacked" ||
-    event.name === "OrderShipped" ||
-    event.name === "OrderDelivered" ||
-    event.name === "OrderCancelled" ||
-    event.name === "PaymentInitiated" ||
-    event.name === "PaymentSuccess" ||
-    event.name === "PaymentFailed" ||
-    event.name === "RefundProcessed"
+    event.name === "order_placed" ||
+    event.name === "suborder_confirmed" ||
+    event.name === "suborder_processing" ||
+    event.name === "suborder_shipped" ||
+    event.name === "suborder_delivered" ||
+    event.name === "suborder_cancelled" ||
+    event.name === "payment_initiated" ||
+    event.name === "payment_success" ||
+    event.name === "payment_failed" ||
+    event.name === "refund_processed"
   );
 }
 
@@ -219,6 +230,7 @@ async function resolveRecipients(
           audience: "USER",
           userId: user.id,
           email: user.email,
+          pushTokens: [],
           channels: channelsForAudience("USER"),
         });
       }
@@ -227,7 +239,7 @@ async function resolveRecipients(
 
   if (audiences.has("ADMIN")) {
     const shouldSkipAdminAudience =
-      (event.name === "OrderDelivered" || event.name === "OrderCancelled") &&
+      (event.name === "suborder_delivered" || event.name === "suborder_cancelled") &&
       "notifyAdmin" in event &&
       event.notifyAdmin === false;
 
@@ -242,6 +254,7 @@ async function resolveRecipients(
           audience: "ADMIN" as const,
           userId: admin.id,
           email: admin.email,
+          pushTokens: [],
           channels: channelsForAudience("ADMIN"),
         })),
       );
@@ -286,6 +299,7 @@ async function resolveRecipients(
             brandName: member.brand.name,
             email: member.user.email || member.brand.contactEmail,
             whatsapp: member.brand.whatsappNumber,
+            pushTokens: [],
             channels: channelsForAudience("BRAND_MEMBERS"),
         })),
       );
@@ -300,6 +314,7 @@ async function resolveRecipients(
             brandName: owner.brand?.name,
             email: owner.email || owner.brand?.contactEmail,
             whatsapp: owner.brand?.whatsappNumber,
+            pushTokens: [],
             channels: channelsForAudience("BRAND_MEMBERS"),
           })),
       );
@@ -314,7 +329,38 @@ async function resolveRecipients(
     }
   }
 
-  return Array.from(deduped.values());
+  const resolved = Array.from(deduped.values());
+  const pushUserIds = Array.from(
+    new Set(
+      resolved
+        .filter((recipient) => recipient.userId && recipient.channels.includes("PUSH"))
+        .map((recipient) => recipient.userId!),
+    ),
+  );
+
+  if (!pushUserIds.length) {
+    return resolved;
+  }
+
+  const deviceTokens = await prismaClient.userDeviceToken.findMany({
+    where: {
+      userId: { in: pushUserIds },
+      disabledAt: null,
+    },
+    select: { userId: true, token: true },
+  });
+  const tokensByUserId = new Map<string, string[]>();
+
+  for (const deviceToken of deviceTokens) {
+    const tokens = tokensByUserId.get(deviceToken.userId) || [];
+    tokens.push(deviceToken.token);
+    tokensByUserId.set(deviceToken.userId, tokens);
+  }
+
+  return resolved.map((recipient) => ({
+    ...recipient,
+    pushTokens: recipient.userId ? tokensByUserId.get(recipient.userId) || [] : [],
+  }));
 }
 
 async function sendWhatsappNotification(input: {
@@ -381,6 +427,7 @@ export async function createNotificationWithChannels(input: DispatchInput) {
 
   let emailLog: { id: string } | null = null;
   let whatsappLog: { id: string } | null = null;
+  const pushLogs: Array<{ id: string; token: string }> = [];
 
   if (input.emailRecipient) {
     emailLog = await input.prismaClient.notificationChannelLog.create({
@@ -404,6 +451,19 @@ export async function createNotificationWithChannels(input: DispatchInput) {
       },
       select: { id: true },
     });
+  }
+
+  for (const token of Array.from(new Set(input.pushTokens || []))) {
+    const pushLog = await input.prismaClient.notificationChannelLog.create({
+      data: {
+        notificationId: notification.id,
+        channel: NotificationChannel.PUSH,
+        status: NotificationDeliveryStatus.QUEUED,
+        recipient: token,
+      },
+      select: { id: true },
+    });
+    pushLogs.push({ id: pushLog.id, token });
   }
 
   if (emailLog && input.emailRecipient) {
@@ -458,6 +518,46 @@ export async function createNotificationWithChannels(input: DispatchInput) {
     }
   }
 
+  for (const pushLog of pushLogs) {
+    try {
+      await withRetries(async () => {
+        const result = await sendPushNotification({
+          token: pushLog.token,
+          title: input.title,
+          message: input.message,
+          data: input.pushData,
+        });
+
+        if (!result.ok) {
+          const error = new Error(result.error || "Push delivery failed") as Error & { shouldDisableToken?: boolean };
+          error.shouldDisableToken = result.shouldDisableToken;
+          throw error;
+        }
+      });
+
+      await input.prismaClient.notificationChannelLog.update({
+        where: { id: pushLog.id },
+        data: { status: NotificationDeliveryStatus.SENT, error: null },
+      });
+    } catch (error) {
+      const deliveryError = error as Error & { shouldDisableToken?: boolean };
+      await input.prismaClient.notificationChannelLog.update({
+        where: { id: pushLog.id },
+        data: {
+          status: NotificationDeliveryStatus.FAILED,
+          error: deliveryError.message.slice(0, 500) || "Push delivery failed",
+        },
+      });
+
+      if (deliveryError.shouldDisableToken) {
+        await input.prismaClient.userDeviceToken.updateMany({
+          where: { token: pushLog.token },
+          data: { disabledAt: new Date() },
+        });
+      }
+    }
+  }
+
   return notification;
 }
 
@@ -506,6 +606,20 @@ export async function emitNotificationEvent(
         event,
       }));
 
+    const targetPath = resolveNotificationTargetPath({
+      type,
+      orderId: event.orderId,
+      title: template.title,
+      message: template.message,
+      role:
+        recipient.audience === "ADMIN"
+          ? "ADMIN"
+          : recipient.audience === "BRAND_MEMBERS"
+            ? "BRAND"
+            : "USER",
+      isBrandContext: recipient.audience === "BRAND_MEMBERS",
+    });
+
     await createNotificationWithChannels({
       prismaClient,
       type,
@@ -518,6 +632,14 @@ export async function emitNotificationEvent(
       whatsappRecipient: recipient.channels.includes("WHATSAPP") ? recipient.whatsapp : undefined,
       emailSubject: `[Broady] ${template.title}`,
       emailText: template.message,
+      pushTokens: recipient.channels.includes("PUSH") ? recipient.pushTokens : [],
+      pushData: {
+        eventName: event.name,
+        orderId: event.orderId,
+        brandId: event.brandId,
+        userId: recipient.userId,
+        targetPath,
+      },
     });
   }
 }
@@ -529,16 +651,6 @@ export function queueNotificationEvent(event: NotificationEvent) {
       orderId: event.orderId,
       brandId: event.brandId,
       error: error instanceof Error ? error.message : String(error),
-    });
-
-    // Reliability fallback: still attempt direct delivery when the queue layer is unavailable.
-    void emitNotificationEvent(event).catch((directError) => {
-      console.error("[notifications] failed to deliver event after enqueue fallback", {
-        event: event.name,
-        orderId: event.orderId,
-        brandId: event.brandId,
-        error: directError instanceof Error ? directError.message : String(directError),
-      });
     });
   });
 }

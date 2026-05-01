@@ -30,7 +30,7 @@ export function getNotificationHref(item: NotificationItem, role?: User["role"])
     return "/brand/dashboard";
   }
 
-  if (item.order?.id) return `/account/orders/${item.order.id}`;
+  if (item.order?.id) return `/account/orders?orderId=${item.order.id}`;
   if (isReviewNotification(item.type)) return "/account/reviews";
   return "/account/notifications";
 }

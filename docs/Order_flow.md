@@ -30,8 +30,7 @@ Sub-order status values:
 
 - `PENDING`
 - `CONFIRMED`
-- `PACKED`
-- `PARTIALLY_SHIPPED`
+- `PROCESSING`
 - `SHIPPED`
 - `DELIVERED`
 - `CANCELED`

@@ -47,7 +47,7 @@ const CANCEL_REASON_OPTIONS: Array<{ code: CancelReasonCode; label: string }> = 
 const CANCEL_RETENTION_MS = 48 * 60 * 60 * 1000;
 
 function canReorderBySubOrders(order: UserOrder) {
-  return order.subOrders.length > 0 && order.subOrders.every((subOrder) => ["DELIVERED", "CANCELED"].includes(subOrder.status));
+  return order.subOrders.length > 0 && order.subOrders.every((subOrder) => ["DELIVERED", "RETURNED", "CANCELED"].includes(subOrder.status));
 }
 
 export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps) {
@@ -194,7 +194,7 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
   );
 
   const activeOrders = useMemo(
-    () => visibleOrders.filter((order) => !["DELIVERED", "CANCELED"].includes(order.status)),
+    () => visibleOrders.filter((order) => !["DELIVERED", "RETURNED", "CANCELED"].includes(order.status)),
     [visibleOrders],
   );
 
@@ -232,7 +232,7 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
 
   const visibleSubOrders = useMemo(() => visibleOrders.flatMap((order) => order.subOrders || []), [visibleOrders]);
   const openItems = useMemo(
-    () => visibleSubOrders.filter((subOrder) => !["DELIVERED", "CANCELED"].includes(subOrder.status)).length,
+    () => visibleSubOrders.filter((subOrder) => !["DELIVERED", "RETURNED", "CANCELED"].includes(subOrder.status)).length,
     [visibleSubOrders],
   );
   const deliveredItems = useMemo(() => visibleSubOrders.filter((subOrder) => subOrder.status === "DELIVERED").length, [visibleSubOrders]);
@@ -342,7 +342,7 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
 
         <div className="grid gap-3 md:grid-cols-2">
           {visibleOrders.map((order) => (
-            <Link key={order.id} href={`/account/orders/${order.id}`} className="block border border-zinc-300 p-4 transition hover:border-black hover:bg-zinc-50">
+            <Link key={order.id} href={`/account/orders?orderId=${order.id}`} className="block border border-zinc-300 p-4 transition hover:border-black hover:bg-zinc-50">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-sm font-semibold uppercase tracking-[0.08em]">Order #{formatShortOrderId(order.id)}</p>
                 <p className="text-sm font-semibold">{formatPkr(order.totalPkr)}</p>
@@ -411,7 +411,8 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
                 {startsDeliveredSection ? <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">Delivered</p> : null}
                 {startsCanceledSection ? <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">Cancelled</p> : null}
                 <Link
-                  href={`/account/orders/${order.id}`}
+                  href={`/account/orders?orderId=${order.id}`}
+                  scroll={false}
                   onClick={() => setSelectedOrderId(order.id)}
                   className={`block w-full border p-4 text-left transition-colors ${selectedOrder?.id === order.id ? "border-black bg-black text-white" : "border-zinc-300"}`}
                 >
@@ -544,7 +545,15 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
                       </button>
                     ) : null}
 
-                    {["DELIVERED", "CANCELED"].includes(subOrder.status) ? (
+                    {subOrder.failureReason ? (
+                      <div className="mt-3 border border-orange-200 bg-orange-50 p-2 text-xs text-orange-900">
+                        <p><span className="font-semibold">Failure reason:</span> {subOrder.failureReason}</p>
+                        {subOrder.nextAttemptDate ? <p><span className="font-semibold">Next attempt:</span> {formatDateTime(subOrder.nextAttemptDate)}</p> : null}
+                        <p><span className="font-semibold">Attempts:</span> {subOrder.deliveryAttempts || 0}</p>
+                      </div>
+                    ) : null}
+
+                    {["DELIVERED", "RETURNED", "CANCELED"].includes(subOrder.status) ? (
                       <button
                         type="button"
                         onClick={(event) => {

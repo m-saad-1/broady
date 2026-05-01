@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { OrderStatus, PaymentStatus, Prisma, UserActivityEventType } from "@prisma/client";
+import crypto from "node:crypto";
 import { z } from "zod";
+import { env } from "../../config/env.js";
 import { prisma } from "../../config/prisma.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { createUserAndIpRateLimiters } from "../../middleware/rate-limit.js";
@@ -31,21 +33,37 @@ const cancelReasonLabelByCode: Record<z.infer<typeof cancelReasonCodeSchema>, st
 };
 
 const paymentMethodSchema = z.enum(["COD", "JAZZCASH", "EASYPAISA"]);
-const brandOrderStatusSchema = z.enum(["PENDING", "CONFIRMED", "PACKED", "SHIPPED", "DELIVERED", "CANCELED", "CANCELLED"]);
+const brandOrderStatusSchema = z.enum([
+  "PENDING",
+  "CONFIRMED",
+  "PROCESSING",
+  "SHIPPED",
+  "OUT_FOR_DELIVERY",
+  "DELIVERY_FAILED",
+  "DELIVERED",
+  "RETURNED",
+  "CANCELED",
+  "CANCELLED",
+]);
 const orderTransitionMap: Record<OrderStatus, OrderStatus[]> = {
   PENDING: ["CONFIRMED", "CANCELED"],
-  CONFIRMED: ["PACKED", "SHIPPED", "CANCELED"],
+  CONFIRMED: ["PROCESSING", "CANCELED"],
+  PROCESSING: ["SHIPPED", "CANCELED"],
   PACKED: ["SHIPPED", "CANCELED"],
-  PARTIALLY_SHIPPED: ["SHIPPED", "DELIVERED", "CANCELED"],
-  SHIPPED: ["DELIVERED", "CANCELED"],
+  PARTIALLY_SHIPPED: ["SHIPPED", "CANCELED"],
+  SHIPPED: ["OUT_FOR_DELIVERY", "DELIVERED", "CANCELED"],
+  OUT_FOR_DELIVERY: ["DELIVERED", "DELIVERY_FAILED", "CANCELED"],
+  DELIVERY_FAILED: ["OUT_FOR_DELIVERY", "RETURNED", "CANCELED"],
   DELIVERED: [],
+  RETURNED: [],
   CANCELED: [],
 };
+const MAX_DELIVERY_ATTEMPTS = 3;
 
 type OrderLifecycleEventName =
   | typeof notificationEventNames.orderPlaced
   | typeof notificationEventNames.orderConfirmed
-  | typeof notificationEventNames.orderPacked
+  | typeof notificationEventNames.orderProcessing
   | typeof notificationEventNames.orderShipped
   | typeof notificationEventNames.orderDelivered
   | typeof notificationEventNames.orderCancelled;
@@ -111,13 +129,17 @@ function isWithinOrderActionWindow(createdAt: Date) {
 function deriveParentOrderStatus(subOrderStatuses: OrderStatus[]): OrderStatus {
   if (subOrderStatuses.length === 0) return OrderStatus.PENDING;
   if (subOrderStatuses.every((status) => status === OrderStatus.CANCELED)) return OrderStatus.CANCELED;
+  if (subOrderStatuses.every((status) => status === OrderStatus.RETURNED || status === OrderStatus.CANCELED)) return OrderStatus.RETURNED;
   if (subOrderStatuses.every((status) => status === OrderStatus.DELIVERED)) return OrderStatus.DELIVERED;
-  if (subOrderStatuses.every((status) => status === OrderStatus.SHIPPED || status === OrderStatus.DELIVERED)) return OrderStatus.SHIPPED;
-  if (subOrderStatuses.some((status) => status === OrderStatus.SHIPPED || status === OrderStatus.DELIVERED)) {
-    return OrderStatus.PARTIALLY_SHIPPED;
+  if (subOrderStatuses.some((status) => status === OrderStatus.DELIVERY_FAILED)) return OrderStatus.DELIVERY_FAILED;
+  if (subOrderStatuses.some((status) => status === OrderStatus.OUT_FOR_DELIVERY)) return OrderStatus.OUT_FOR_DELIVERY;
+  if (subOrderStatuses.every((status) => status === OrderStatus.SHIPPED || status === OrderStatus.OUT_FOR_DELIVERY || status === OrderStatus.DELIVERED || status === OrderStatus.RETURNED)) return OrderStatus.SHIPPED;
+  if (subOrderStatuses.some((status) => status === OrderStatus.SHIPPED || status === OrderStatus.DELIVERED || status === OrderStatus.RETURNED)) {
+    return OrderStatus.SHIPPED;
   }
+  if (subOrderStatuses.every((status) => status === OrderStatus.PROCESSING)) return OrderStatus.PROCESSING;
+  if (subOrderStatuses.some((status) => status === OrderStatus.PROCESSING)) return OrderStatus.PROCESSING;
   if (subOrderStatuses.every((status) => status === OrderStatus.CONFIRMED)) return OrderStatus.CONFIRMED;
-  if (subOrderStatuses.some((status) => status === OrderStatus.PACKED)) return OrderStatus.PACKED;
   return OrderStatus.PENDING;
 }
 
@@ -127,19 +149,72 @@ function buildSubOrderUpdateNote(status: OrderStatus, brandName: string, parentS
   switch (status) {
     case OrderStatus.CONFIRMED:
       return `Your ${brandName} item has been confirmed.`;
-    case OrderStatus.PACKED:
-      return `Your ${brandName} item has been packed.`;
+    case OrderStatus.PROCESSING:
+      return `Your ${brandName} item is being processed.`;
     case OrderStatus.SHIPPED:
       return `Your ${brandName} item has been shipped.`;
+    case OrderStatus.OUT_FOR_DELIVERY:
+      return `Your ${brandName} item is out for delivery.`;
+    case OrderStatus.DELIVERY_FAILED:
+      return `Delivery failed for your ${brandName} item.`;
     case OrderStatus.DELIVERED:
       return parentStatus === OrderStatus.DELIVERED
         ? "Your order has been fully delivered."
         : `Your ${brandName} item has been delivered.`;
+    case OrderStatus.RETURNED:
+      return `Your ${brandName} item has been returned.`;
     case OrderStatus.CANCELED:
       return `Your ${brandName} item has been canceled.`;
     default:
       return `Your ${brandName} item status is now ${status.toLowerCase()}.`;
   }
+}
+
+function resolveOrderEventName(status: OrderStatus): OrderLifecycleEventName {
+  switch (status) {
+    case OrderStatus.CONFIRMED:
+      return notificationEventNames.orderConfirmed;
+    case OrderStatus.PROCESSING:
+    case OrderStatus.PACKED:
+    case OrderStatus.PARTIALLY_SHIPPED:
+      return notificationEventNames.orderProcessing;
+    case OrderStatus.SHIPPED:
+    case OrderStatus.OUT_FOR_DELIVERY:
+    case OrderStatus.DELIVERY_FAILED:
+    case OrderStatus.RETURNED:
+      return notificationEventNames.orderShipped;
+    case OrderStatus.DELIVERED:
+      return notificationEventNames.orderDelivered;
+    case OrderStatus.CANCELED:
+      return notificationEventNames.orderCancelled;
+    case OrderStatus.PENDING:
+    default:
+      return notificationEventNames.orderPlaced;
+  }
+}
+
+function normalizePaymentSignaturePayload(input: {
+  orderId: string;
+  paymentMethod: string;
+  gatewayTransactionId: string;
+  amountPkr: number;
+  status: string;
+}) {
+  return `${input.orderId}:${input.paymentMethod}:${input.gatewayTransactionId}:${input.amountPkr}:${input.status}`;
+}
+
+function isValidPaymentWebhookSignature(payload: ReturnType<typeof normalizePaymentSignaturePayload>, signature?: string) {
+  if (!env.paymentWebhookSecret) {
+    return env.nodeEnv !== "production";
+  }
+
+  if (!signature) return false;
+
+  const digest = crypto.createHmac("sha256", env.paymentWebhookSecret).update(payload).digest("hex");
+  const expected = Buffer.from(digest);
+  const actual = Buffer.from(signature);
+  if (expected.length !== actual.length) return false;
+  return crypto.timingSafeEqual(expected, actual);
 }
 
 async function restockOrderItems(tx: Prisma.TransactionClient, items: Array<{ productId: string; quantity: number }>) {
@@ -163,6 +238,181 @@ async function getAllowedBrandIdsForUser(userId: string, brandId?: string | null
 
   return memberships.map((membership) => membership.brandId);
 }
+
+router.post("/payments/webhook", async (req, res) => {
+  const parsed = z
+    .object({
+      orderId: z.string().trim().min(3),
+      paymentMethod: paymentMethodSchema,
+      gatewayTransactionId: z.string().trim().min(3).max(160),
+      amountPkr: z.number().int().positive(),
+      status: z.enum(["VERIFIED", "SUCCESS", "FAILED"]),
+      reason: z.string().trim().max(240).optional(),
+    })
+    .safeParse(req.body);
+
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payment webhook payload", issues: parsed.error.flatten() });
+  }
+
+  const signaturePayload = normalizePaymentSignaturePayload(parsed.data);
+  const signature = String(req.header("x-broady-payment-signature") || req.body?.signature || "");
+  if (!isValidPaymentWebhookSignature(signaturePayload, signature)) {
+    return res.status(401).json({ message: "Invalid payment webhook signature" });
+  }
+
+  const order = await prisma.order.findUnique({
+    where: { id: parsed.data.orderId },
+    include: {
+      subOrders: { include: { brand: true, items: true } },
+      paymentTransactions: {
+        where: { gatewayTransactionId: parsed.data.gatewayTransactionId },
+        take: 1,
+      },
+    },
+  });
+
+  if (!order) return res.status(404).json({ message: "Order not found" });
+  if (order.paymentMethod !== parsed.data.paymentMethod) {
+    return res.status(409).json({ message: "Payment method does not match order" });
+  }
+  if (order.paymentMethod === "COD") {
+    return res.status(409).json({ message: "COD orders do not use payment webhooks" });
+  }
+  if (order.totalPkr !== parsed.data.amountPkr) {
+    return res.status(409).json({ message: "Payment amount does not match order total" });
+  }
+
+  if (order.paymentTransactions.length > 0) {
+    return res.json({ data: { accepted: true, duplicate: true, orderId: order.id, status: order.status } });
+  }
+
+  const paymentVerified = parsed.data.status === "VERIFIED" || parsed.data.status === "SUCCESS";
+
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.paymentTransaction.create({
+      data: {
+        orderId: order.id,
+        gateway: parsed.data.paymentMethod,
+        gatewayTransactionId: parsed.data.gatewayTransactionId,
+        status: paymentVerified ? "VERIFIED" : "FAILED",
+        amountPkr: parsed.data.amountPkr,
+        rawPayload: req.body as Prisma.InputJsonValue,
+      },
+    });
+
+    if (!paymentVerified) {
+      await tx.order.update({
+        where: { id: order.id },
+        data: { paymentStatus: PaymentStatus.FAILED, status: OrderStatus.CANCELED },
+      });
+
+      await tx.subOrder.updateMany({
+        where: { orderId: order.id, status: OrderStatus.PENDING },
+        data: { status: OrderStatus.CANCELED },
+      });
+
+      await restockOrderItems(
+        tx,
+        order.subOrders
+          .filter((entry) => entry.status === OrderStatus.PENDING)
+          .flatMap((entry) => entry.items.map((item) => ({ productId: item.productId, quantity: item.quantity }))),
+      );
+
+      for (const subOrder of order.subOrders.filter((entry) => entry.status === OrderStatus.PENDING)) {
+        await tx.subOrderStatusLog.create({
+          data: {
+            subOrderId: subOrder.id,
+            status: OrderStatus.CANCELED,
+            updatedBy: "SYSTEM",
+            note: parsed.data.reason || "Payment failed before order confirmation",
+          },
+        });
+      }
+
+      await tx.orderStatusLog.create({
+        data: {
+          orderId: order.id,
+          status: OrderStatus.CANCELED,
+          updatedBy: "SYSTEM",
+          note: parsed.data.reason || "Payment failed before order confirmation",
+        },
+      });
+
+      return tx.order.findUniqueOrThrow({ where: { id: order.id } });
+    }
+
+    await tx.order.update({
+      where: { id: order.id },
+      data: {
+        status: OrderStatus.CONFIRMED,
+        paymentStatus: PaymentStatus.HELD,
+      },
+    });
+
+    await tx.subOrder.updateMany({
+      where: { orderId: order.id, status: OrderStatus.PENDING },
+      data: { status: OrderStatus.CONFIRMED },
+    });
+
+    for (const subOrder of order.subOrders.filter((entry) => entry.status === OrderStatus.PENDING)) {
+      await tx.subOrderStatusLog.create({
+        data: {
+          subOrderId: subOrder.id,
+          status: OrderStatus.CONFIRMED,
+          updatedBy: "SYSTEM",
+          note: "Payment verified by gateway webhook",
+        },
+      });
+    }
+
+    await tx.orderStatusLog.create({
+      data: {
+        orderId: order.id,
+        status: OrderStatus.CONFIRMED,
+        updatedBy: "SYSTEM",
+        note: "Payment verified by gateway webhook",
+      },
+    });
+
+    return tx.order.findUniqueOrThrow({ where: { id: order.id } });
+  });
+
+  if (paymentVerified) {
+    queueNotificationEvent({
+      name: notificationEventNames.paymentSuccess,
+      orderId: order.id,
+      userId: order.userId,
+      paymentMethod: order.paymentMethod,
+    });
+    queueNotificationEvent({
+      name: notificationEventNames.orderConfirmed,
+      orderId: order.id,
+      userId: order.userId,
+      changedByRole: "SYSTEM",
+      note: "Payment verified.",
+      notifyAdmin: true,
+    });
+  } else {
+    queueNotificationEvent({
+      name: notificationEventNames.paymentFailed,
+      orderId: order.id,
+      userId: order.userId,
+      paymentMethod: order.paymentMethod,
+      reason: parsed.data.reason,
+    });
+    queueNotificationEvent({
+      name: notificationEventNames.orderCancelled,
+      orderId: order.id,
+      userId: order.userId,
+      changedByRole: "SYSTEM",
+      note: parsed.data.reason || "Payment failed before order confirmation.",
+      notifyAdmin: true,
+    });
+  }
+
+  return res.json({ data: { accepted: true, orderId: updated.id, status: updated.status, paymentStatus: updated.paymentStatus } });
+});
 
 router.post("/", requireAuth, orderPlacementIpLimit, orderPlacementUserLimit, async (req, res) => {
   const schema = z.object({
@@ -245,8 +495,9 @@ router.post("/", requireAuth, orderPlacementIpLimit, orderPlacementUserLimit, as
       const created = await tx.order.create({
         data: {
           userId: req.auth!.userId,
+          status: parsed.data.paymentMethod === "COD" ? OrderStatus.CONFIRMED : OrderStatus.PENDING,
           paymentMethod: parsed.data.paymentMethod,
-          paymentStatus: parsed.data.paymentMethod === "COD" ? PaymentStatus.BRAND_COLLECTS_COD : PaymentStatus.HELD,
+          paymentStatus: parsed.data.paymentMethod === "COD" ? PaymentStatus.BRAND_COLLECTS_COD : PaymentStatus.PENDING,
           deliveryAddress: parsed.data.deliveryAddress,
           totalPkr: subtotal,
         },
@@ -298,7 +549,7 @@ router.post("/", requireAuth, orderPlacementIpLimit, orderPlacementUserLimit, as
           data: {
             orderId: created.id,
             brandId,
-            status: OrderStatus.PENDING,
+            status: parsed.data.paymentMethod === "COD" ? OrderStatus.CONFIRMED : OrderStatus.PENDING,
             subtotalPkr: group.subtotalPkr,
           },
         });
@@ -325,6 +576,18 @@ router.post("/", requireAuth, orderPlacementIpLimit, orderPlacementUserLimit, as
             note: "Vendor group created from checkout",
           },
         });
+
+        if (parsed.data.paymentMethod === "COD") {
+          await tx.subOrderStatusLog.create({
+            data: {
+              subOrderId: subOrder.id,
+              status: OrderStatus.CONFIRMED,
+              updatedBy: "SYSTEM",
+              updatedById: req.auth!.userId,
+              note: "COD order auto-confirmed by system",
+            },
+          });
+        }
       }
 
       await tx.orderStatusLog.create({
@@ -336,6 +599,18 @@ router.post("/", requireAuth, orderPlacementIpLimit, orderPlacementUserLimit, as
           note: "Order placed by customer",
         },
       });
+
+      if (parsed.data.paymentMethod === "COD") {
+        await tx.orderStatusLog.create({
+          data: {
+            orderId: created.id,
+            status: OrderStatus.CONFIRMED,
+            updatedBy: "SYSTEM",
+            updatedById: req.auth!.userId,
+            note: "COD order auto-confirmed by system",
+          },
+        });
+      }
 
       return tx.order.findUniqueOrThrow({
         where: { id: created.id },
@@ -376,7 +651,16 @@ router.post("/", requireAuth, orderPlacementIpLimit, orderPlacementUserLimit, as
     changedByRole: "USER",
   });
 
-  if (parsed.data.paymentMethod !== "COD") {
+  if (parsed.data.paymentMethod === "COD") {
+    queueNotificationEvent({
+      name: notificationEventNames.orderConfirmed,
+      orderId: order.id,
+      userId: order.userId,
+      changedByRole: "SYSTEM",
+      note: "COD order auto-confirmed.",
+      notifyAdmin: true,
+    });
+  } else {
     queueNotificationEvent({
       name: notificationEventNames.paymentInitiated,
       orderId: order.id,
@@ -426,6 +710,8 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
       trackingId: z.string().trim().min(4).max(120).optional(),
       note: z.string().trim().max(240).optional(),
       customerNote: z.string().trim().max(240).optional(),
+      failureReason: z.string().trim().max(240).optional(),
+      nextAttemptDate: z.coerce.date().optional(),
     })
     .safeParse(req.body);
 
@@ -481,6 +767,20 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
     return res.status(400).json({ message: "A valid vendorGroupId is required for this status update." });
   }
 
+  if (status === OrderStatus.CONFIRMED) {
+    return res.status(409).json({ message: "Orders are confirmed automatically after COD checkout or verified online payment." });
+  }
+
+  const systemDeliveryStatuses: OrderStatus[] = [
+    OrderStatus.OUT_FOR_DELIVERY,
+    OrderStatus.DELIVERY_FAILED,
+    OrderStatus.RETURNED,
+    OrderStatus.DELIVERED,
+  ];
+  if (systemDeliveryStatuses.includes(status) && !actingAsPlatformAdmin) {
+    return res.status(403).json({ message: "Delivery status updates are handled by the system or platform admins." });
+  }
+
   const trackingId = parsed.data.trackingId ?? targetSubOrder.trackingId;
   const statusChanged = status !== targetSubOrder.status;
   const trackingChanged = trackingId !== targetSubOrder.trackingId;
@@ -495,7 +795,23 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
     return res.status(400).json({ message: "Tracking ID is required when setting status to SHIPPED." });
   }
 
-  if (!statusChanged && !trackingChanged && !parsed.data.note && !parsed.data.customerNote) {
+  if (status === OrderStatus.DELIVERY_FAILED && !parsed.data.failureReason?.trim()) {
+    return res.status(400).json({ message: "failureReason is required when delivery fails." });
+  }
+
+  const isFinalDeliveryFailure = status === OrderStatus.DELIVERY_FAILED && targetSubOrder.deliveryAttempts >= MAX_DELIVERY_ATTEMPTS;
+  if (status === OrderStatus.DELIVERY_FAILED && !isFinalDeliveryFailure && !parsed.data.nextAttemptDate) {
+    return res.status(400).json({ message: "nextAttemptDate is required before the final delivery attempt." });
+  }
+
+  const effectiveStatus =
+    isFinalDeliveryFailure
+      ? order.paymentMethod === "COD"
+        ? OrderStatus.CANCELED
+        : OrderStatus.RETURNED
+      : status;
+
+  if (!statusChanged && !trackingChanged && !parsed.data.note && !parsed.data.customerNote && !parsed.data.failureReason && !parsed.data.nextAttemptDate) {
     return res.json({ data: order });
   }
 
@@ -503,28 +819,63 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
     await tx.subOrder.update({
       where: { id: targetSubOrder.id },
       data: {
-        status,
+        status: effectiveStatus,
         trackingId,
+        deliveryAttempts: status === OrderStatus.OUT_FOR_DELIVERY ? { increment: 1 } : undefined,
+        failureReason: status === OrderStatus.DELIVERY_FAILED ? parsed.data.failureReason : status === OrderStatus.OUT_FOR_DELIVERY || status === OrderStatus.DELIVERED ? null : undefined,
+        nextAttemptDate: status === OrderStatus.DELIVERY_FAILED ? parsed.data.nextAttemptDate || null : status === OrderStatus.OUT_FOR_DELIVERY || status === OrderStatus.DELIVERED ? null : undefined,
+        finalDeliveryFailureAt: isFinalDeliveryFailure ? new Date() : undefined,
+        refundProcessedAt: isFinalDeliveryFailure && order.paymentMethod !== "COD" ? new Date() : undefined,
       },
     });
 
-    if (status === OrderStatus.CANCELED && targetSubOrder.status !== OrderStatus.CANCELED) {
+    if (effectiveStatus === OrderStatus.CANCELED && targetSubOrder.status !== OrderStatus.CANCELED && !isFinalDeliveryFailure) {
       await restockOrderItems(
         tx,
         targetSubOrder.items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
       );
     }
 
+    if (isFinalDeliveryFailure) {
+      await tx.subOrderStatusLog.create({
+        data: {
+          subOrderId: targetSubOrder.id,
+          status: OrderStatus.DELIVERY_FAILED,
+          updatedBy: actingAsPlatformAdmin ? "ADMIN" : "BRAND",
+          updatedById: req.auth!.userId,
+          note: buildStatusLogNote({
+            internalNote: `Final delivery attempt failed: ${parsed.data.failureReason}`,
+            customerNote: parsed.data.failureReason,
+          }),
+        },
+      });
+    }
+
     await tx.subOrderStatusLog.create({
       data: {
         subOrderId: targetSubOrder.id,
-        status,
+        status: effectiveStatus,
         updatedBy: actingAsPlatformAdmin ? "ADMIN" : "BRAND",
         updatedById: req.auth!.userId,
         note: buildStatusLogNote({
-          internalNote: parsed.data.note,
+          internalNote:
+            isFinalDeliveryFailure
+              ? order.paymentMethod === "COD"
+                ? "COD delivery failed after final attempt; vendor group canceled"
+                : "Prepaid delivery failed after final attempt; vendor group returned and refund marked"
+              : parsed.data.failureReason
+                ? `Delivery failed: ${parsed.data.failureReason}`
+                : parsed.data.note,
           trackingId: trackingChanged ? trackingId : undefined,
-          customerNote: parsed.data.customerNote,
+          customerNote:
+            parsed.data.customerNote ||
+            (status === OrderStatus.DELIVERY_FAILED
+              ? isFinalDeliveryFailure
+                ? order.paymentMethod === "COD"
+                  ? "Delivery failed after the final attempt. This COD vendor group has been cancelled."
+                  : "Delivery failed after the final attempt. This prepaid vendor group has been returned and refunded."
+                : `Delivery failed. Next attempt: ${parsed.data.nextAttemptDate?.toISOString()}`
+              : undefined),
         }),
       },
     });
@@ -542,10 +893,17 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
           ? refreshedSubOrders[0].trackingId
           : null;
 
+    const allTerminalAfterReturn = refreshedSubOrders.every(
+      (subOrder) =>
+        subOrder.status === OrderStatus.RETURNED ||
+        subOrder.status === OrderStatus.CANCELED,
+    );
     const nextPaymentStatus =
       nextParentStatus === OrderStatus.DELIVERED && order.paymentMethod === "COD"
         ? PaymentStatus.COMPLETED
-        : order.paymentStatus;
+        : order.paymentMethod !== "COD" && isFinalDeliveryFailure && allTerminalAfterReturn
+          ? PaymentStatus.REFUNDED
+          : order.paymentStatus;
 
     await tx.order.update({
       where: { id: order.id },
@@ -563,9 +921,11 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
         updatedBy: actingAsPlatformAdmin ? "ADMIN" : "BRAND",
         updatedById: req.auth!.userId,
         note: buildStatusLogNote({
-          internalNote: parsed.data.note
+          internalNote: isFinalDeliveryFailure
+            ? `Vendor group (${targetSubOrder.brand.name}) reached final delivery failure`
+            : parsed.data.note
             ? `Vendor group (${targetSubOrder.brand.name}) update: ${parsed.data.note}`
-            : `Vendor group (${targetSubOrder.brand.name}) updated to ${status}`,
+            : `Vendor group (${targetSubOrder.brand.name}) updated to ${effectiveStatus}`,
           trackingId: trackingChanged ? trackingId : undefined,
           customerNote: parsed.data.customerNote,
         }),
@@ -590,20 +950,10 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
     });
   });
 
-  const orderEventByStatus: Record<OrderStatus, OrderLifecycleEventName> = {
-    PENDING: notificationEventNames.orderPlaced,
-    CONFIRMED: notificationEventNames.orderConfirmed,
-    PACKED: notificationEventNames.orderPacked,
-    PARTIALLY_SHIPPED: notificationEventNames.orderShipped,
-    SHIPPED: notificationEventNames.orderShipped,
-    DELIVERED: notificationEventNames.orderDelivered,
-    CANCELED: notificationEventNames.orderCancelled,
-  };
-
   const parentStatusAfterUpdate = updated.status;
 
   const customerFacingNote = buildSubOrderUpdateNote(
-    status,
+    effectiveStatus,
     targetSubOrder.brand.name,
     parentStatusAfterUpdate,
     parsed.data.customerNote,
@@ -611,24 +961,37 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
 
   if (statusChanged) {
     queueNotificationEvent({
-      name: orderEventByStatus[status],
+      name: resolveOrderEventName(effectiveStatus),
       orderId: order.id,
       subOrderId: targetSubOrder.id,
       userId: order.userId,
       brandId: targetSubOrder.brandId,
       brandName: targetSubOrder.brand.name,
       changedByRole: actingAsPlatformAdmin ? "ADMIN" : "BRAND",
-      note: customerFacingNote,
+      note:
+        status === OrderStatus.DELIVERY_FAILED && !isFinalDeliveryFailure
+          ? `${customerFacingNote} Reason: ${parsed.data.failureReason}. Next attempt: ${parsed.data.nextAttemptDate?.toISOString()}.`
+          : customerFacingNote,
       notifyAdmin: true,
     });
   }
 
-  if (status === OrderStatus.DELIVERED && order.paymentMethod === "COD" && order.paymentStatus !== PaymentStatus.COMPLETED) {
+  if (effectiveStatus === OrderStatus.DELIVERED && order.paymentMethod === "COD" && order.paymentStatus !== PaymentStatus.COMPLETED) {
     queueNotificationEvent({
       name: notificationEventNames.paymentSuccess,
       orderId: order.id,
       userId: order.userId,
       paymentMethod: order.paymentMethod,
+    });
+  }
+
+  if (isFinalDeliveryFailure && order.paymentMethod !== "COD") {
+    queueNotificationEvent({
+      name: notificationEventNames.refundProcessed,
+      orderId: order.id,
+      userId: order.userId,
+      paymentMethod: order.paymentMethod,
+      reason: parsed.data.failureReason,
     });
   }
 
@@ -676,7 +1039,14 @@ router.post("/me/:orderId/cancel", requireAuth, async (req, res) => {
     return res.status(409).json({ message: "Cancel window has expired for this order." });
   }
 
-  const blockingStatuses: OrderStatus[] = [OrderStatus.PACKED, OrderStatus.SHIPPED, OrderStatus.DELIVERED];
+  const blockingStatuses: OrderStatus[] = [
+    OrderStatus.PROCESSING,
+    OrderStatus.SHIPPED,
+    OrderStatus.OUT_FOR_DELIVERY,
+    OrderStatus.DELIVERY_FAILED,
+    OrderStatus.DELIVERED,
+    OrderStatus.RETURNED,
+  ];
   if (order.subOrders.some((subOrder) => blockingStatuses.includes(subOrder.status))) {
     return res.status(409).json({ message: "This order can no longer be canceled." });
   }
@@ -822,7 +1192,7 @@ router.post("/me/:orderId/sub-orders/:subOrderId/cancel", requireAuth, async (re
     return res.status(404).json({ message: "Vendor group not found" });
   }
 
-  if (["PACKED", "SHIPPED", "DELIVERED"].includes(targetSubOrder.status)) {
+  if (["PROCESSING", "SHIPPED", "OUT_FOR_DELIVERY", "DELIVERY_FAILED", "DELIVERED", "RETURNED"].includes(targetSubOrder.status)) {
     return res.status(409).json({ message: "This vendor group can no longer be canceled." });
   }
 
@@ -930,7 +1300,7 @@ router.post("/me/:orderId/reorder", requireAuth, async (req, res) => {
   if (!order) return res.status(404).json({ message: "Order not found" });
 
   const hasOnlyCompletedOrCanceledGroups = order.subOrders.every(
-    (subOrder) => subOrder.status === OrderStatus.DELIVERED || subOrder.status === OrderStatus.CANCELED,
+    (subOrder) => subOrder.status === OrderStatus.DELIVERED || subOrder.status === OrderStatus.CANCELED || subOrder.status === OrderStatus.RETURNED,
   );
 
   if (!hasOnlyCompletedOrCanceledGroups) {
@@ -997,8 +1367,8 @@ router.post("/me/:orderId/sub-orders/:subOrderId/reorder", requireAuth, async (r
     return res.status(404).json({ message: "Vendor group not found" });
   }
 
-  if (!["DELIVERED", "CANCELED"].includes(targetSubOrder.status)) {
-    return res.status(409).json({ message: "Reorder is available only for delivered or canceled vendor groups." });
+  if (!["DELIVERED", "CANCELED", "RETURNED"].includes(targetSubOrder.status)) {
+    return res.status(409).json({ message: "Reorder is available only for delivered, returned, or canceled vendor groups." });
   }
 
   const productIds = Array.from(new Set(targetSubOrder.items.map((item) => item.productId)));

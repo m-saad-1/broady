@@ -10,7 +10,7 @@ import {
 import { getNotificationWorkerStats } from "../modules/notifications/notification.worker.js";
 
 const router = Router();
-const OPEN_ORDER_STATUSES = new Set(["PENDING", "CONFIRMED", "PACKED", "PARTIALLY_SHIPPED", "SHIPPED"]);
+const OPEN_ORDER_STATUSES = new Set(["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "OUT_FOR_DELIVERY", "DELIVERY_FAILED"]);
 
 router.use(requireAuth, requireAdmin);
 
@@ -182,6 +182,11 @@ router.get("/brand-dashboard", async (_req, res) => {
         paymentMethod: subOrder.order.paymentMethod,
         paymentStatus: subOrder.order.paymentStatus,
         trackingId: subOrder.trackingId,
+        deliveryAttempts: subOrder.deliveryAttempts,
+        failureReason: subOrder.failureReason,
+        nextAttemptDate: subOrder.nextAttemptDate,
+        finalDeliveryFailureAt: subOrder.finalDeliveryFailureAt,
+        refundProcessedAt: subOrder.refundProcessedAt,
         subtotalPkr: subOrder.subtotalPkr,
         totalPkr: subOrder.order.totalPkr,
         createdAt: subOrder.createdAt,
@@ -290,6 +295,11 @@ router.get("/brand-dashboard/:brandId", async (req, res) => {
       paymentMethod: subOrder.order.paymentMethod,
       paymentStatus: subOrder.order.paymentStatus,
       trackingId: subOrder.trackingId,
+      deliveryAttempts: subOrder.deliveryAttempts,
+      failureReason: subOrder.failureReason,
+      nextAttemptDate: subOrder.nextAttemptDate,
+      finalDeliveryFailureAt: subOrder.finalDeliveryFailureAt,
+      refundProcessedAt: subOrder.refundProcessedAt,
       subtotalPkr: subOrder.subtotalPkr,
       totalPkr: subOrder.order.totalPkr,
       createdAt: subOrder.createdAt,

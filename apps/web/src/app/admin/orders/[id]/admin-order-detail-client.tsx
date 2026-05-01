@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { useSearchParams } from "next/navigation";
+import { getOrderStatusLabel } from "@/lib/order-status";
 import { formatPkr } from "@/lib/utils";
 import type { UserOrder } from "@/types/marketplace";
 
@@ -18,6 +19,11 @@ export function AdminOrderDetailClient({ initialOrder }: AdminOrderDetailClientP
     () => order.subOrders.find((subOrder) => subOrder.id === focusedSubOrderId) || null,
     [focusedSubOrderId, order.subOrders],
   );
+  const sortedStatusLogs = useMemo(
+    () => [...order.statusLogs].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    [order.statusLogs],
+  );
+  const latestStatusLog = sortedStatusLogs[0] || null;
 
   return (
     <section className="space-y-5">
@@ -26,6 +32,8 @@ export function AdminOrderDetailClient({ initialOrder }: AdminOrderDetailClientP
           <p className="text-xs uppercase tracking-[0.12em] text-emerald-700">Focused Vendor Group</p>
           <p className="text-sm font-semibold uppercase tracking-[0.08em]">{focusedSubOrder.brand?.name || "Brand"} - {focusedSubOrder.id}</p>
           <p className="text-sm text-emerald-900">Status: {focusedSubOrder.status}</p>
+          {focusedSubOrder.failureReason ? <p className="text-sm text-emerald-900">Failure reason: {focusedSubOrder.failureReason}</p> : null}
+          {focusedSubOrder.nextAttemptDate ? <p className="text-sm text-emerald-900">Next attempt: {new Date(focusedSubOrder.nextAttemptDate).toLocaleString("en-PK")}</p> : null}
         </section>
       ) : null}
 
@@ -55,7 +63,7 @@ export function AdminOrderDetailClient({ initialOrder }: AdminOrderDetailClientP
         <h2 className="font-heading text-3xl uppercase">Order Status</h2>
         <p className="text-sm text-zinc-700">Status updates are disabled in the Admin Brand Dashboard. This page is read-only for monitoring.</p>
         <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">
-          Latest update: {order.statusLogs[0]?.status || order.status} by {order.statusLogs[0]?.updatedBy || "SYSTEM"} at {new Date(order.statusLogs[0]?.createdAt || order.updatedAt).toLocaleString("en-PK")}
+          Latest update: {latestStatusLog ? getOrderStatusLabel(latestStatusLog.status) : getOrderStatusLabel(order.status)} by {latestStatusLog?.updatedBy || "SYSTEM"} at {new Date(latestStatusLog?.createdAt || order.updatedAt).toLocaleString("en-PK")}
         </p>
       </section>
 
@@ -89,9 +97,9 @@ export function AdminOrderDetailClient({ initialOrder }: AdminOrderDetailClientP
       <section className="space-y-3 border border-zinc-300 p-5">
         <h2 className="font-heading text-3xl uppercase">Status Timeline</h2>
         <div className="space-y-3">
-          {order.statusLogs.map((log) => (
+          {sortedStatusLogs.map((log) => (
             <article key={log.id} className="border border-zinc-200 p-3 text-sm">
-              <p className="font-semibold uppercase tracking-[0.08em]">{log.status}</p>
+              <p className="font-semibold uppercase tracking-[0.08em]">{getOrderStatusLabel(log.status)}</p>
               <p className="text-zinc-600">{log.updatedBy}{log.note ? ` - ${log.note}` : ""}</p>
               <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">{new Date(log.createdAt).toLocaleString("en-PK")}</p>
             </article>

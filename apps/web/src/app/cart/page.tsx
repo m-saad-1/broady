@@ -8,6 +8,7 @@ import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { ProductImage } from "@/components/ui/product-image";
 import { getProductPricing } from "@/lib/pricing";
 import { formatPkr } from "@/lib/utils";
+import { useStableNow } from "@/hooks/use-stable-now";
 import { useCartStore } from "@/stores/cart-store";
 import { useToastStore } from "@/stores/toast-store";
 
@@ -20,6 +21,7 @@ export default function CartPage() {
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [previewItemKey, setPreviewItemKey] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<{ productId: string; selectedColor?: string; selectedSize?: string } | null>(null);
+  const renderNow = useStableNow();
 
   const getRowKey = useCallback(
     (item: (typeof items)[number]) => `${item.product.id}:${item.selectedSize || ""}:${item.selectedColor || ""}`,
@@ -40,13 +42,16 @@ export default function CartPage() {
     setSelectedRows((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]));
   };
 
-  const subtotal = items.reduce((total, item) => total + getProductPricing(item.product).finalPrice * item.quantity, 0);
+  const subtotal = useMemo(
+    () => items.reduce((total, item) => total + getProductPricing(item.product, renderNow).finalPrice * item.quantity, 0),
+    [items, renderNow],
+  );
   const selectedSubtotal = useMemo(
     () =>
       items
         .filter((item) => selectedRows.includes(getRowKey(item)))
-        .reduce((total, item) => total + getProductPricing(item.product).finalPrice * item.quantity, 0),
-    [getRowKey, items, selectedRows],
+        .reduce((total, item) => total + getProductPricing(item.product, renderNow).finalPrice * item.quantity, 0),
+    [getRowKey, items, renderNow, selectedRows],
   );
 
   const previewItem = items.find((item) => getRowKey(item) === previewItemKey) || null;
@@ -82,7 +87,7 @@ export default function CartPage() {
 
             {items.map((item) => {
               const rowKey = getRowKey(item);
-              const pricing = getProductPricing(item.product);
+              const pricing = getProductPricing(item.product, renderNow);
               return (
                 <article key={rowKey} className="grid gap-3 border border-zinc-300 p-4 md:grid-cols-[auto_88px_1fr_auto_auto] md:items-center">
                   <input type="checkbox" checked={selectedRows.includes(rowKey)} onChange={() => toggleRow(rowKey)} />

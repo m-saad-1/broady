@@ -25,10 +25,14 @@ enum AuthProvider {
 enum OrderStatus {
   PENDING
   CONFIRMED
+  PROCESSING
   PACKED
   PARTIALLY_SHIPPED
   SHIPPED
+  OUT_FOR_DELIVERY
+  DELIVERY_FAILED
   DELIVERED
+  RETURNED
   CANCELED
 }
 
@@ -37,6 +41,8 @@ enum PaymentStatus {
   HELD
   BRAND_COLLECTS_COD
   COMPLETED
+  FAILED
+  REFUNDED
 }
 
 enum PaymentMethod {
@@ -60,8 +66,15 @@ enum OrderStatusUpdatedBy {
 
 enum NotificationType {
   ORDER_PLACED
+  PAYMENT_SUCCESS
   ORDER_STATUS_UPDATED
+  SUBORDER_CONFIRMED
+  SUBORDER_SHIPPED
+  SUBORDER_DELIVERED
+  SUBORDER_CANCELLED
   BRAND_ORDER_ASSIGNED
+  PRODUCT_APPROVED
+  PRODUCT_REJECTED
   PRODUCT_REVIEW_SUBMITTED
   PRODUCT_REVIEW_REPORTED
   PRODUCT_REVIEW_MODERATED
@@ -99,6 +112,7 @@ enum ReviewModerationAction {
 enum NotificationChannel {
   DASHBOARD
   EMAIL
+  PUSH
   WHATSAPP
 }
 
@@ -106,6 +120,7 @@ enum NotificationDeliveryStatus {
   SENT
   QUEUED
   FAILED
+  READ 
 }
 
 enum ProductApprovalStatus {
@@ -152,6 +167,7 @@ model User {
   wishlistItems WishlistItem[]
   paymentMethods UserPaymentMethod[]
   notificationPreference NotificationPreference?
+  deviceTokens UserDeviceToken[]
   brandMemberships BrandMember[]
   notifications Notification[]
   reviews      Review[]
@@ -190,6 +206,21 @@ model NotificationPreference {
   securityAlerts    Boolean  @default(true)
   wishlistAlerts    Boolean  @default(true)
   updatedAt         DateTime @updatedAt
+}
+
+model UserDeviceToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token      String    @unique
+  platform   String    @default("WEB")
+  userAgent  String?
+  disabledAt DateTime?
+  lastSeenAt DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([userId, disabledAt])
 }
 
 model Cart {
@@ -352,8 +383,23 @@ model Order {
   subOrders     SubOrder[]
   statusLogs    OrderStatusLog[]
   notifications Notification[]
+  paymentTransactions PaymentTransaction[]
 
   @@index([userId, status])
+}
+
+model PaymentTransaction {
+  id                   String   @id @default(cuid())
+  orderId              String
+  order                Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  gateway              PaymentMethod
+  gatewayTransactionId String   @unique
+  status               String
+  amountPkr            Int
+  rawPayload           Json?
+  createdAt            DateTime @default(now())
+
+  @@index([orderId, createdAt])
 }
 
 model OrderItem {
@@ -385,6 +431,11 @@ model SubOrder {
   status         OrderStatus   @default(PENDING)
   subtotalPkr    Int
   trackingId     String?
+  deliveryAttempts Int       @default(0)
+  failureReason  String?
+  nextAttemptDate DateTime?
+  finalDeliveryFailureAt DateTime?
+  refundProcessedAt DateTime?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   items          OrderItem[]
@@ -541,19 +592,25 @@ model SubOrderStatusLog {
 }
 
 model Notification {
-  id        String                @id @default(cuid())
-  type      NotificationType
-  title     String
-  message   String
-  userId    String?
-  user      User?                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  brandId   String?
-  brand     Brand?                @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  orderId   String?
-  order     Order?                @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  readAt    DateTime?
-  createdAt DateTime              @default(now())
-  channels  NotificationChannelLog[]
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brandId     String?
+  brand       Brand?    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  orderId     String?
+  order       Order?    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  type        NotificationType
+  title       String
+  message     String
+  readAt      DateTime?
+  channel     NotificationChannel
+  deliveryStatus NotificationDeliveryStatus @default(QUEUED)
+  deliveryAttempts Int    @default(0)
+  failedReason   String?
+  nextAttemptAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  channelLogs NotificationChannelLog[]
 
   @@index([userId, createdAt])
   @@index([brandId, createdAt])

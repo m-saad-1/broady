@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { type ReactNode, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   MEN_CATEGORY_CARD_IMAGES,
   WOMEN_CATEGORY_CARD_IMAGES,
@@ -11,7 +11,9 @@ import {
   MEN_PRESET_CATEGORIES,
   WOMEN_PRESET_CATEGORIES,
   JUNIOR_GROUPS,
+  JUNIOR_GROUP_IMAGES,
   JUNIOR_SUBCATEGORIES,
+  JUNIORS_DEFAULT_SUBCATEGORIES,
 } from "@/lib/category-images";
 import { fetchCurrentUser } from "@/lib/auth-client";
 import {
@@ -20,12 +22,15 @@ import {
   getProducts,
   getUserCartItems,
   getUserNotifications,
+  getBrandDashboardNotifications,
+  markAllNotificationsAsRead,
   getWishlistProducts,
   syncUserCartItems,
 } from "@/lib/api";
 import { fallbackProducts } from "@/lib/mock-data";
 import { filterProductsBySubCategoryContains, isEligibleSearchQuery } from "@/lib/search-fallback";
 import { inferProductType, normalizeProduct, resolveTopCategoryFilter } from "@/lib/taxonomy";
+import { getNotificationHref } from "@/lib/notification-routing";
 import { useAuthStore } from "@/stores/auth-store";
 import { useCartStore } from "@/stores/cart-store";
 import { useWishlistStore } from "@/stores/wishlist-store";
@@ -35,10 +40,14 @@ function getCartKey(item: { product: Product; selectedColor?: string; selectedSi
   return `${item.product.id}:${item.selectedSize || ""}:${item.selectedColor || ""}`;
 }
 
-const baseNavLinkClass =
-  "relative whitespace-nowrap after:absolute after:-bottom-1 after:left-0 after:h-px after:w-full after:origin-left after:bg-black after:transition-transform after:duration-200";
+const baseNavLinkClass = "relative whitespace-nowrap text-xs font-semibold uppercase tracking-[0.14em] decoration-1 underline-offset-8";
 
-const dropdownNavLinkClass = "relative whitespace-nowrap text-xs font-semibold uppercase tracking-[0.14em]";
+const dropdownNavLinkClass = "relative whitespace-nowrap text-xs font-semibold uppercase tracking-[0.14em] decoration-1 underline-offset-8 hover:underline";
+
+const dropdownMenuShellClass =
+  "fixed left-1/2 top-[73px] z-50 w-[calc(100vw-2rem)] max-w-7xl -translate-x-1/2 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-xl";
+
+const dropdownCardLabelClass = "mt-3 inline-flex text-sm font-medium uppercase tracking-[0.08em] text-zinc-900 group-hover:underline";
 
 type CatalogFilters = {
   q?: string;
@@ -63,14 +72,6 @@ const MEN_WOMEN_MENU_ITEMS: CatalogCard[] = [
   { label: "Accessories", filters: { q: "Accessories", productType: "Accessories", subCategory: "Accessories" } },
 ];
 
-const JUNIORS_MENU_ITEMS: CatalogCard[] = [
-  { label: "Hoodies", filters: { q: "Hoodies", productType: "Top", subCategory: "Hoodies" } },
-  { label: "Polo Shirts", filters: { q: "Polo Shirts", productType: "Top", subCategory: "Polo Shirts" } },
-  { label: "Joggers", filters: { q: "Joggers", productType: "Bottom", subCategory: "Joggers" } },
-  { label: "Slip Ons", filters: { q: "Slip Ons", productType: "Footwear", subCategory: "Slip Ons" } },
-  { label: "Caps", filters: { q: "Caps", productType: "Accessories", subCategory: "Caps" } },
-];
-
 const primaryNavItems = [
   { href: "/category/Men", label: "Men" },
   { href: "/category/Women", label: "Women" },
@@ -92,7 +93,7 @@ function isLinkActive(pathname: string, href: string) {
 
 function navLinkClass(pathname: string, href: string) {
   const active = isLinkActive(pathname, href);
-  return `${baseNavLinkClass} ${active ? "after:scale-x-100" : "after:scale-x-0 hover:after:scale-x-100"}`;
+  return `${baseNavLinkClass} ${active ? "underline" : "hover:underline"}`;
 }
 
 function buildCatalogHref(filters: CatalogFilters) {
@@ -187,6 +188,7 @@ export function SiteHeader() {
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationError, setNotificationError] = useState<string | null>(null);
+  const [sessionNewNotificationIds, setSessionNewNotificationIds] = useState<Set<string>>(new Set());
   const cartSyncEnabledRef = useRef(false);
   const dropdownCloseTimerRef = useRef<number | null>(null);
 
@@ -230,6 +232,12 @@ export function SiteHeader() {
     const scopedTopCategory = item.topCategory || topCategoryContext;
     runCatalogSearch(item.query, scopedTopCategory);
   };
+
+  const getLatestNotifications = useCallback(async () => {
+    if (!user) return [];
+    const isBrandUser = user.role === "BRAND" || user.role === "BRAND_ADMIN" || user.role === "BRAND_STAFF";
+    return isBrandUser ? getBrandDashboardNotifications() : getUserNotifications();
+  }, [user]);
 
   const clearDropdownCloseTimer = () => {
     if (dropdownCloseTimerRef.current !== null) {
@@ -357,25 +365,78 @@ export function SiteHeader() {
     let active = true;
     setNotificationsLoading(true);
     setNotificationError(null);
-    getUserNotifications()
-      .then((items) => {
+
+    (async () => {
+      try {
+        const items = await getLatestNotifications();
         if (!active) return;
-        setNotifications(items);
-      })
-      .catch((error) => {
+
+        // Track which notifications are "new" (unread) on first open
+        const sessionKey = `notificationSession_${user.id}`;
+        const hasSeenThisSession = sessionStorage.getItem(sessionKey) === "true";
+
+        if (!hasSeenThisSession) {
+          // First open: store the IDs of currently unread notifications
+          const newIds = new Set<string>(items.filter((item: NotificationItem) => !item.readAt).map((item: NotificationItem) => item.id));
+          setSessionNewNotificationIds(newIds);
+          sessionStorage.setItem(sessionKey, "true");
+
+          // Mark all as read
+          try {
+            await markAllNotificationsAsRead();
+            // After marking, update notifications to show all as read
+            const updated = items.map((item: NotificationItem) => ({
+              ...item,
+              readAt: item.readAt || new Date().toISOString(),
+            }));
+            setNotifications(updated);
+          } catch (readError) {
+            console.error("Failed to mark all as read:", readError);
+            setNotifications(items);
+          }
+        } else {
+          // Subsequent opens: just fetch the latest, clear new badge set
+          setNotifications(items);
+          setSessionNewNotificationIds(new Set<string>());
+        }
+      } catch (error) {
         if (!active) return;
         setNotificationError(error instanceof Error ? error.message : "Unable to load notifications.");
-      })
-      .finally(() => {
+        setNotifications([]);
+      } finally {
         if (active) {
           setNotificationsLoading(false);
         }
-      });
+      }
+    })();
 
     return () => {
       active = false;
     };
-  }, [notificationsOpen, user]);
+  }, [notificationsOpen, user, getLatestNotifications]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    let active = true;
+    const interval = window.setInterval(async () => {
+      if (!active) return;
+      try {
+        const items = await getLatestNotifications();
+        if (!active) return;
+        setNotifications(items);
+      } catch (error) {
+        console.error("Failed to poll notifications:", error);
+      }
+    }, 30000); // Poll every 30 seconds
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [user, getLatestNotifications]);
 
   useEffect(() => {
     if (!searchOpen || searchTerm.trim().length < 2) {
@@ -474,35 +535,39 @@ export function SiteHeader() {
                   onMouseLeave={scheduleDropdownClose}
                   className="relative"
                 >
-                  <button
-                    type="button"
-                    onClick={() => setOpenMenu(openMenu === "men" ? null : "men")}
-                    className={`${dropdownNavLinkClass} inline-flex cursor-pointer items-center py-1`}
-                    aria-haspopup="true"
-                    aria-expanded={openMenu === "men"}
+                  <Link
+                    href={item.href}
+                    onClick={closeDropdownMenu}
+                    className={`${dropdownNavLinkClass} inline-flex items-center py-1`}
                   >
                     {item.label}
-                  </button>
+                  </Link>
                   {openMenu === "men" ? (
                     <div
                       onMouseEnter={clearDropdownCloseTimer}
                       onMouseLeave={scheduleDropdownClose}
-                      className="absolute left-1/2 top-full z-50 w-screen -translate-x-1/2 rounded-b border border-zinc-200 bg-white shadow-lg"
+                      className={dropdownMenuShellClass}
                     >
                       <div className="mx-auto grid max-w-7xl grid-cols-4 gap-4 px-4 py-6 lg:px-10">
                         {MEN_PRESET_CATEGORIES.map((cat) => {
-                          const menuItem = MEN_WOMEN_MENU_ITEMS.find((item) => item.label === cat);
+                          const menuItem = MEN_WOMEN_MENU_ITEMS.find((menu) => menu.label === cat);
                           return (
                             <button
                               key={cat}
                               type="button"
                               onClick={() => navigateToCatalog({ topCategory: "Men", ...menuItem?.filters })}
-                              className="block w-full text-left"
+                              className="group block w-full text-left"
                             >
-                              <div className="relative h-28 w-full overflow-hidden rounded bg-zinc-100">
-                                <Image src={MEN_CATEGORY_CARD_IMAGES[cat] || FALLBACK_CATEGORY_IMAGE} alt={cat} fill className="object-cover" sizes="(max-width: 768px) 100vw, 25vw" />
+                              <div className="relative aspect-[4/3] w-full overflow-hidden border border-zinc-200 bg-zinc-100">
+                                <Image
+                                  src={MEN_CATEGORY_CARD_IMAGES[cat] || FALLBACK_CATEGORY_IMAGE}
+                                  alt={cat}
+                                  fill
+                                  className="object-cover"
+                                  sizes="(max-width: 768px) 50vw, 20vw"
+                                />
                               </div>
-                              <div className="mt-2 text-sm font-medium tracking-[0.08em] text-zinc-900">{cat}</div>
+                              <div className={dropdownCardLabelClass}>{cat}</div>
                             </button>
                           );
                         })}
@@ -512,6 +577,7 @@ export function SiteHeader() {
                 </div>
               );
             }
+
             if (item.label === "Women") {
               return (
                 <div
@@ -523,35 +589,39 @@ export function SiteHeader() {
                   onMouseLeave={scheduleDropdownClose}
                   className="relative"
                 >
-                  <button
-                    type="button"
-                    onClick={() => setOpenMenu(openMenu === "women" ? null : "women")}
-                    className={`${dropdownNavLinkClass} inline-flex cursor-pointer items-center py-1`}
-                    aria-haspopup="true"
-                    aria-expanded={openMenu === "women"}
+                  <Link
+                    href={item.href}
+                    onClick={closeDropdownMenu}
+                    className={`${dropdownNavLinkClass} inline-flex items-center py-1`}
                   >
                     {item.label}
-                  </button>
+                  </Link>
                   {openMenu === "women" ? (
                     <div
                       onMouseEnter={clearDropdownCloseTimer}
                       onMouseLeave={scheduleDropdownClose}
-                      className="absolute left-1/2 top-full z-50 w-screen -translate-x-1/2 rounded-b border border-zinc-200 bg-white shadow-lg"
+                      className={dropdownMenuShellClass}
                     >
                       <div className="mx-auto grid max-w-7xl grid-cols-4 gap-4 px-4 py-6 lg:px-10">
                         {WOMEN_PRESET_CATEGORIES.map((cat) => {
-                          const menuItem = MEN_WOMEN_MENU_ITEMS.find((item) => item.label === cat);
+                          const menuItem = MEN_WOMEN_MENU_ITEMS.find((menu) => menu.label === cat);
                           return (
                             <button
                               key={cat}
                               type="button"
                               onClick={() => navigateToCatalog({ topCategory: "Women", ...menuItem?.filters })}
-                              className="block w-full text-left"
+                              className="group block w-full text-left"
                             >
-                              <div className="relative h-28 w-full overflow-hidden rounded bg-zinc-100">
-                                <Image src={WOMEN_CATEGORY_CARD_IMAGES[cat] || FALLBACK_CATEGORY_IMAGE} alt={cat} fill className="object-cover" sizes="(max-width: 768px) 100vw, 25vw" />
+                              <div className="relative aspect-[4/3] w-full overflow-hidden border border-zinc-200 bg-zinc-100">
+                                <Image
+                                  src={WOMEN_CATEGORY_CARD_IMAGES[cat] || FALLBACK_CATEGORY_IMAGE}
+                                  alt={cat}
+                                  fill
+                                  className="object-cover"
+                                  sizes="(max-width: 768px) 50vw, 20vw"
+                                />
                               </div>
-                              <div className="mt-2 text-sm font-medium tracking-[0.08em] text-zinc-900">{cat}</div>
+                              <div className={dropdownCardLabelClass}>{cat}</div>
                             </button>
                           );
                         })}
@@ -561,6 +631,7 @@ export function SiteHeader() {
                 </div>
               );
             }
+
             if (item.label === "Juniors") {
               return (
                 <div
@@ -572,64 +643,61 @@ export function SiteHeader() {
                   onMouseLeave={scheduleDropdownClose}
                   className="relative"
                 >
-                  <button
-                    type="button"
-                    onClick={() => setOpenMenu(openMenu === "juniors" ? null : "juniors")}
-                    className={`${dropdownNavLinkClass} inline-flex cursor-pointer items-center py-1`}
-                    aria-haspopup="true"
-                    aria-expanded={openMenu === "juniors"}
+                  <Link
+                    href={item.href}
+                    onClick={closeDropdownMenu}
+                    className={`${dropdownNavLinkClass} inline-flex items-center py-1`}
                   >
                     {item.label}
-                  </button>
+                  </Link>
                   {openMenu === "juniors" ? (
                     <div
                       onMouseEnter={clearDropdownCloseTimer}
                       onMouseLeave={scheduleDropdownClose}
-                      className="absolute left-1/2 top-full z-50 w-screen -translate-x-1/2 rounded-b border border-zinc-200 bg-white shadow-lg"
+                      className={dropdownMenuShellClass}
                     >
-                      <div className="mx-auto max-w-7xl px-4 py-6 lg:px-10">
-                        <div className="grid grid-cols-2 gap-4 mb-6 border-b border-zinc-200 pb-6">
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-600 mb-3">By Category</p>
-                            <div className="grid grid-cols-2 gap-4">
-                              {JUNIORS_MENU_ITEMS.map((cat) => (
-                                <button
-                                  key={cat.label}
-                                  type="button"
-                                  onClick={() => navigateToCatalog({ topCategory: "Kids", ...cat.filters })}
-                                  className="block w-full text-left"
-                                >
-                                  <div className="relative h-24 w-full overflow-hidden rounded bg-zinc-100">
-                                    <Image src={FALLBACK_CATEGORY_IMAGE} alt={cat.label} fill className="object-cover" sizes="(max-width: 768px) 100vw, 25vw" />
-                                  </div>
-                                  <div className="mt-2 text-sm font-medium tracking-[0.08em] text-zinc-900">{cat.label}</div>
-                                </button>
-                              ))}
+                      <div className="mx-auto grid max-w-7xl grid-cols-4 gap-4 px-4 py-6 lg:px-10">
+                        {JUNIOR_GROUPS.map((group) => {
+                          const groupSlug = group.toLowerCase().replace(/\s+/g, "-");
+                          return (
+                            <div key={group} className="space-y-3">
+                              <Link href={`/category/${groupSlug}`} onClick={closeDropdownMenu} className="group block">
+                                <div className="relative aspect-[4/3] w-full overflow-hidden border border-zinc-200 bg-zinc-100">
+                                  <Image
+                                    src={JUNIOR_GROUP_IMAGES[group]}
+                                    alt={group}
+                                    fill
+                                    className="object-cover"
+                                    sizes="(max-width: 768px) 50vw, 20vw"
+                                  />
+                                </div>
+                                <div className="mt-3 text-lg font-semibold uppercase tracking-[0.08em] text-zinc-900 group-hover:underline">
+                                  {group}
+                                </div>
+                              </Link>
+                              <ul className="space-y-2">
+                                {(JUNIOR_SUBCATEGORIES[group] || JUNIORS_DEFAULT_SUBCATEGORIES).map((sub) => (
+                                  <li key={sub}>
+                                    <button
+                                      type="button"
+                                      onClick={() => navigateToCatalog({ topCategory: "Kids", subCategory: sub, q: group })}
+                                      className="text-sm uppercase tracking-[0.08em] text-zinc-700 hover:underline"
+                                    >
+                                      {sub}
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
                             </div>
-                          </div>
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-600 mb-3">By Group</p>
-                            <ul className="space-y-2">
-                              {JUNIOR_GROUPS.map((group) => (
-                                <li key={group}>
-                                  <button
-                                    type="button"
-                                    onClick={() => navigateToCatalog({ topCategory: "Kids", q: group, subCategory: group })}
-                                    className="block w-full rounded px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50 hover:text-black border border-zinc-200"
-                                  >
-                                    {group}
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        </div>
+                          );
+                        })}
                       </div>
                     </div>
                   ) : null}
                 </div>
               );
             }
+
             return (
               <Link key={item.href} href={item.href} className={navLinkClass(pathname, item.href)}>
                 {item.label}
@@ -840,10 +908,24 @@ export function SiteHeader() {
               <p className="text-sm text-amber-700">{notificationError}</p>
             ) : notifications.length ? (
               notifications.slice(0, 5).map((item) => (
-                <article key={item.id} className="border border-zinc-200 p-3 text-sm">
-                  <p className="font-semibold uppercase tracking-[0.08em]">{item.title}</p>
-                  <p className="mt-1 text-zinc-600">{item.message}</p>
-                </article>
+                <Link
+                  key={item.id}
+                  href={getNotificationHref(item, user?.role)}
+                  onClick={() => setNotificationsOpen(false)}
+                  className="block border border-zinc-200 p-3 text-sm hover:border-black hover:bg-zinc-50 transition"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1">
+                      <p className="font-semibold uppercase tracking-[0.08em]">{item.title}</p>
+                      <p className="mt-1 text-zinc-600">{item.message}</p>
+                    </div>
+                    {sessionNewNotificationIds.has(item.id) && (
+                      <span className="whitespace-nowrap rounded bg-black px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-white">
+                        New
+                      </span>
+                    )}
+                  </div>
+                </Link>
               ))
             ) : (
               <p className="text-sm text-zinc-700">No notifications yet.</p>

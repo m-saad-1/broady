@@ -47,33 +47,38 @@ function clearProductCache() {
 const brandProductCreateSchema = productBaseSchema;
 
 const orderTransitionMap: Record<OrderStatus, OrderStatus[]> = {
-  PENDING: ["CONFIRMED", "CANCELED"],
-  CONFIRMED: ["PACKED", "SHIPPED", "CANCELED"],
+  PENDING: ["CANCELED"],
+  CONFIRMED: ["PROCESSING", "CANCELED"],
+  PROCESSING: ["SHIPPED", "CANCELED"],
   PACKED: ["SHIPPED", "CANCELED"],
-  PARTIALLY_SHIPPED: ["SHIPPED", "DELIVERED", "CANCELED"],
-  SHIPPED: ["DELIVERED", "CANCELED"],
+  PARTIALLY_SHIPPED: ["SHIPPED", "CANCELED"],
+  SHIPPED: ["CANCELED"],
+  OUT_FOR_DELIVERY: [],
+  DELIVERY_FAILED: [],
   DELIVERED: [],
+  RETURNED: [],
   CANCELED: [],
 };
 
 type OrderLifecycleEventName =
   | typeof notificationEventNames.orderPlaced
   | typeof notificationEventNames.orderConfirmed
-  | typeof notificationEventNames.orderPacked
+  | typeof notificationEventNames.orderProcessing
   | typeof notificationEventNames.orderShipped
   | typeof notificationEventNames.orderDelivered
   | typeof notificationEventNames.orderCancelled;
 
-function normalizeStatus(status: "PENDING" | "CONFIRMED" | "PACKED" | "SHIPPED" | "DELIVERED" | "CANCELED" | "CANCELLED"): OrderStatus {
+function normalizeStatus(status: "PENDING" | "CONFIRMED" | "PROCESSING" | "SHIPPED" | "DELIVERED" | "CANCELED" | "CANCELLED"): OrderStatus {
   return status === "CANCELLED" ? "CANCELED" : status;
 }
 
 const OPEN_ORDER_STATUSES: OrderStatus[] = [
   OrderStatus.PENDING,
   OrderStatus.CONFIRMED,
-  OrderStatus.PACKED,
-  OrderStatus.PARTIALLY_SHIPPED,
+  OrderStatus.PROCESSING,
   OrderStatus.SHIPPED,
+  OrderStatus.OUT_FOR_DELIVERY,
+  OrderStatus.DELIVERY_FAILED,
 ];
 
 function isOpenOrderStatus(status: OrderStatus) {
@@ -103,13 +108,17 @@ function buildStatusLogNote(params: { internalNote?: string; trackingId?: string
 function deriveParentOrderStatus(subOrderStatuses: OrderStatus[]): OrderStatus {
   if (subOrderStatuses.length === 0) return OrderStatus.PENDING;
   if (subOrderStatuses.every((status) => status === OrderStatus.CANCELED)) return OrderStatus.CANCELED;
+  if (subOrderStatuses.every((status) => status === OrderStatus.RETURNED || status === OrderStatus.CANCELED)) return OrderStatus.RETURNED;
   if (subOrderStatuses.every((status) => status === OrderStatus.DELIVERED)) return OrderStatus.DELIVERED;
-  if (subOrderStatuses.every((status) => status === OrderStatus.SHIPPED || status === OrderStatus.DELIVERED)) return OrderStatus.SHIPPED;
-  if (subOrderStatuses.some((status) => status === OrderStatus.SHIPPED || status === OrderStatus.DELIVERED)) {
-    return OrderStatus.PARTIALLY_SHIPPED;
+  if (subOrderStatuses.some((status) => status === OrderStatus.DELIVERY_FAILED)) return OrderStatus.DELIVERY_FAILED;
+  if (subOrderStatuses.some((status) => status === OrderStatus.OUT_FOR_DELIVERY)) return OrderStatus.OUT_FOR_DELIVERY;
+  if (subOrderStatuses.every((status) => status === OrderStatus.SHIPPED || status === OrderStatus.OUT_FOR_DELIVERY || status === OrderStatus.DELIVERED || status === OrderStatus.RETURNED)) return OrderStatus.SHIPPED;
+  if (subOrderStatuses.some((status) => status === OrderStatus.SHIPPED || status === OrderStatus.DELIVERED || status === OrderStatus.RETURNED)) {
+    return OrderStatus.SHIPPED;
   }
+  if (subOrderStatuses.every((status) => status === OrderStatus.PROCESSING)) return OrderStatus.PROCESSING;
+  if (subOrderStatuses.some((status) => status === OrderStatus.PROCESSING)) return OrderStatus.PROCESSING;
   if (subOrderStatuses.every((status) => status === OrderStatus.CONFIRMED)) return OrderStatus.CONFIRMED;
-  if (subOrderStatuses.some((status) => status === OrderStatus.PACKED)) return OrderStatus.PACKED;
   return OrderStatus.PENDING;
 }
 
@@ -119,18 +128,47 @@ function buildSubOrderUpdateNote(status: OrderStatus, brandName: string, parentS
   switch (status) {
     case OrderStatus.CONFIRMED:
       return `Your ${brandName} item has been confirmed.`;
-    case OrderStatus.PACKED:
-      return `Your ${brandName} item has been packed.`;
+    case OrderStatus.PROCESSING:
+      return `Your ${brandName} item is being processed.`;
     case OrderStatus.SHIPPED:
       return `Your ${brandName} item has been shipped.`;
+    case OrderStatus.OUT_FOR_DELIVERY:
+      return `Your ${brandName} item is out for delivery.`;
+    case OrderStatus.DELIVERY_FAILED:
+      return `Delivery failed for your ${brandName} item.`;
     case OrderStatus.DELIVERED:
       return parentStatus === OrderStatus.DELIVERED
         ? "Your order has been fully delivered."
         : `Your ${brandName} item has been delivered.`;
     case OrderStatus.CANCELED:
       return `Your ${brandName} item has been canceled.`;
+    case OrderStatus.RETURNED:
+      return `Your ${brandName} item has been returned.`;
     default:
       return `Your ${brandName} item status is now ${status.toLowerCase()}.`;
+  }
+}
+
+function resolveOrderEventName(status: OrderStatus): OrderLifecycleEventName {
+  switch (status) {
+    case OrderStatus.CONFIRMED:
+      return notificationEventNames.orderConfirmed;
+    case OrderStatus.PROCESSING:
+    case OrderStatus.PACKED:
+    case OrderStatus.PARTIALLY_SHIPPED:
+      return notificationEventNames.orderProcessing;
+    case OrderStatus.SHIPPED:
+    case OrderStatus.OUT_FOR_DELIVERY:
+    case OrderStatus.DELIVERY_FAILED:
+    case OrderStatus.RETURNED:
+      return notificationEventNames.orderShipped;
+    case OrderStatus.DELIVERED:
+      return notificationEventNames.orderDelivered;
+    case OrderStatus.CANCELED:
+      return notificationEventNames.orderCancelled;
+    case OrderStatus.PENDING:
+    default:
+      return notificationEventNames.orderPlaced;
   }
 }
 
@@ -306,7 +344,7 @@ router.get("/orders", async (req, res) => {
 
   const query = z
     .object({
-      status: z.enum(["PENDING", "CONFIRMED", "PACKED", "SHIPPED", "DELIVERED", "CANCELED"]).optional(),
+      status: z.enum(["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "OUT_FOR_DELIVERY", "DELIVERY_FAILED", "DELIVERED", "RETURNED", "CANCELED"]).optional(),
     })
     .safeParse(req.query);
 
@@ -382,7 +420,7 @@ router.patch("/orders/:orderId/status", async (req, res) => {
 
   const parsed = z
     .object({
-      status: z.enum(["PENDING", "CONFIRMED", "PACKED", "SHIPPED", "DELIVERED", "CANCELED", "CANCELLED"]),
+      status: z.enum(["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELED", "CANCELLED"]),
       trackingId: z.string().trim().min(4).max(120).optional(),
       note: z.string().trim().max(240).optional(),
       customerNote: z.string().trim().max(240).optional(),
@@ -415,6 +453,20 @@ router.patch("/orders/:orderId/status", async (req, res) => {
   const trackingId = parsed.data.trackingId ?? order.trackingId;
   const statusChanged = status !== order.status;
   const trackingChanged = trackingId !== order.trackingId;
+
+  if (status === OrderStatus.CONFIRMED) {
+    return res.status(409).json({ message: "Orders are confirmed automatically after COD checkout or verified online payment." });
+  }
+
+  const deliveryOutcomeStatuses: OrderStatus[] = [
+    OrderStatus.DELIVERED,
+    OrderStatus.OUT_FOR_DELIVERY,
+    OrderStatus.DELIVERY_FAILED,
+    OrderStatus.RETURNED,
+  ];
+  if (deliveryOutcomeStatuses.includes(status)) {
+    return res.status(403).json({ message: "Delivery outcome updates are handled by the system or platform admins." });
+  }
 
   if (statusChanged && !orderTransitionMap[order.status].includes(status)) {
     return res.status(409).json({ message: `Order status cannot move from ${order.status} to ${status}.` });
@@ -514,16 +566,6 @@ router.patch("/orders/:orderId/status", async (req, res) => {
     });
   });
 
-  const orderEventByStatus: Record<OrderStatus, OrderLifecycleEventName> = {
-    PENDING: notificationEventNames.orderPlaced,
-    CONFIRMED: notificationEventNames.orderConfirmed,
-    PACKED: notificationEventNames.orderPacked,
-    PARTIALLY_SHIPPED: notificationEventNames.orderShipped,
-    SHIPPED: notificationEventNames.orderShipped,
-    DELIVERED: notificationEventNames.orderDelivered,
-    CANCELED: notificationEventNames.orderCancelled,
-  };
-
   const parentStatusAfterUpdate = updated.order.status;
 
   const customerFacingNote = buildSubOrderUpdateNote(
@@ -535,7 +577,7 @@ router.patch("/orders/:orderId/status", async (req, res) => {
 
   if (statusChanged) {
     queueNotificationEvent({
-      name: orderEventByStatus[status],
+      name: resolveOrderEventName(status),
       orderId: order.orderId,
       subOrderId: order.id,
       userId: order.order.userId,

@@ -13,21 +13,29 @@ type NotificationTemplateContext = {
 
 function orderTitle(name: NotificationEvent["name"]) {
   switch (name) {
-    case "OrderPlaced":
+    case "order_placed":
       return "Order Placed";
-    case "OrderConfirmed":
+    case "suborder_confirmed":
       return "Order Confirmed";
-    case "OrderPacked":
-      return "Order Packed";
-    case "OrderShipped":
+    case "suborder_processing":
+      return "Order Processing";
+    case "suborder_shipped":
       return "Order Shipped";
-    case "OrderDelivered":
+    case "suborder_delivered":
       return "Order Delivered";
-    case "OrderCancelled":
+    case "suborder_cancelled":
       return "Order Cancelled";
     default:
       return "Order Update";
   }
+}
+
+function resolveOrderUpdateTitle(event: NotificationEvent) {
+  const note = "note" in event ? event.note?.toLowerCase() || "" : "";
+  if (note.includes("out for delivery")) return "Out For Delivery";
+  if (note.includes("delivery failed")) return "Delivery Failed";
+  if (note.includes("returned")) return "Order Returned";
+  return orderTitle(event.name);
 }
 
 function appendNote(note?: string) {
@@ -48,51 +56,51 @@ export function buildNotificationTemplate(
   context?: NotificationTemplateContext,
 ): TemplatePayload {
   if (
-    event.name === "OrderPlaced" ||
-    event.name === "OrderConfirmed" ||
-    event.name === "OrderPacked" ||
-    event.name === "OrderShipped" ||
-    event.name === "OrderDelivered" ||
-    event.name === "OrderCancelled"
+    event.name === "order_placed" ||
+    event.name === "suborder_confirmed" ||
+    event.name === "suborder_processing" ||
+    event.name === "suborder_shipped" ||
+    event.name === "suborder_delivered" ||
+    event.name === "suborder_cancelled"
   ) {
     const normalizedOrderEventName =
-      event.name === "OrderShipped" && event.note?.toLowerCase().includes("delivered") ? "OrderDelivered" : event.name;
+      event.name === "suborder_shipped" && event.note?.toLowerCase().includes("delivered") ? "suborder_delivered" : event.name;
     const noteSuffix = appendNote(event.note);
-    const title = orderTitle(normalizedOrderEventName);
+    const title = resolveOrderUpdateTitle({ ...event, name: normalizedOrderEventName } as NotificationEvent);
     const recipientBrand = context?.recipientBrandName || event.brandName || "your brand";
     const orderBrandLabel = resolveOrderBrandLabel(context);
 
     if (audience === "USER") {
-      if (normalizedOrderEventName === "OrderPlaced") {
+      if (normalizedOrderEventName === "order_placed") {
         return {
           title,
           message: `Your order ${event.orderId} has been placed successfully on Broady.`,
         };
       }
 
-      if (normalizedOrderEventName === "OrderConfirmed") {
+      if (normalizedOrderEventName === "suborder_confirmed") {
         return {
           title,
           message: `Order ${event.orderId} has been confirmed.`,
         };
       }
 
-      if (normalizedOrderEventName === "OrderPacked") {
+      if (normalizedOrderEventName === "suborder_processing") {
         return {
           title,
-          message: `Order ${event.orderId} has been packed.`,
+          message: `Order ${event.orderId} is being processed.`,
         };
       }
 
-      if (normalizedOrderEventName === "OrderShipped") {
+      if (normalizedOrderEventName === "suborder_shipped") {
         const shippedByBrandName = context?.recipientBrandName || event.brandName || orderBrandLabel || "the brand";
         return {
           title,
-          message: `Order ${event.orderId} has been shipped by ${shippedByBrandName}.`,
+          message: noteSuffix.trim() || `Order ${event.orderId} has been shipped by ${shippedByBrandName}.`,
         };
       }
 
-      if (normalizedOrderEventName === "OrderCancelled") {
+      if (normalizedOrderEventName === "suborder_cancelled") {
         const cancelledRef = event.subOrderId ? `Sub-order ${event.subOrderId}` : `Your order ${event.orderId}`;
         return {
           title,
@@ -100,14 +108,14 @@ export function buildNotificationTemplate(
         };
       }
 
-      if (normalizedOrderEventName === "OrderDelivered" && event.note?.toLowerCase().includes("fully delivered")) {
+      if (normalizedOrderEventName === "suborder_delivered" && event.note?.toLowerCase().includes("fully delivered")) {
         return {
           title,
           message: `Your order ${event.orderId} has been fully delivered.`,
         };
       }
 
-      if (normalizedOrderEventName === "OrderDelivered") {
+      if (normalizedOrderEventName === "suborder_delivered") {
         const deliveredBrandName = context?.recipientBrandName || event.brandName || orderBrandLabel || "brand";
         const deliveredRef = event.subOrderId ? `Sub-order ${event.subOrderId}` : `Order ${event.orderId}`;
         return {
@@ -118,35 +126,35 @@ export function buildNotificationTemplate(
     }
 
     if (audience === "BRAND_MEMBERS") {
-      if (normalizedOrderEventName === "OrderPlaced") {
+      if (normalizedOrderEventName === "order_placed") {
         return {
           title,
-          message: `New order ${event.orderId} received for ${recipientBrand}. Please review and confirm it.`,
+          message: `New order ${event.orderId} received for ${recipientBrand}. Confirmation is handled by Broady automatically.`,
         };
       }
 
-      if (normalizedOrderEventName === "OrderConfirmed") {
+      if (normalizedOrderEventName === "suborder_confirmed") {
         return {
           title,
           message: `Order ${event.orderId} has been confirmed.`,
         };
       }
 
-      if (normalizedOrderEventName === "OrderPacked") {
+      if (normalizedOrderEventName === "suborder_processing") {
         return {
           title,
-          message: `Order ${event.orderId} has been packed.`,
+          message: `Order ${event.orderId} is being processed.`,
         };
       }
 
-      if (normalizedOrderEventName === "OrderShipped") {
+      if (normalizedOrderEventName === "suborder_shipped") {
         return {
           title,
-          message: `Order ${event.orderId} has been shipped.`,
+          message: noteSuffix.trim() || `Order ${event.orderId} has been shipped.`,
         };
       }
 
-      if (normalizedOrderEventName === "OrderCancelled") {
+      if (normalizedOrderEventName === "suborder_cancelled") {
         const cancelledRef = event.subOrderId ? `Sub-order ${event.subOrderId}` : `Order ${event.orderId}`;
         return {
           title,
@@ -154,7 +162,7 @@ export function buildNotificationTemplate(
         };
       }
 
-      if (normalizedOrderEventName === "OrderDelivered") {
+      if (normalizedOrderEventName === "suborder_delivered") {
         const deliveredRef = event.subOrderId ? `Sub-order ${event.subOrderId}` : `Order ${event.orderId}`;
         return {
           title,
@@ -163,7 +171,7 @@ export function buildNotificationTemplate(
       }
     }
 
-    if (normalizedOrderEventName === "OrderPlaced") {
+    if (normalizedOrderEventName === "order_placed") {
       return {
         title,
         message: orderBrandLabel
@@ -172,29 +180,29 @@ export function buildNotificationTemplate(
       };
     }
 
-    if (normalizedOrderEventName === "OrderConfirmed") {
+    if (normalizedOrderEventName === "suborder_confirmed") {
       return {
         title,
         message: `Order ${event.orderId} has been confirmed.`,
       };
     }
 
-    if (normalizedOrderEventName === "OrderPacked") {
+    if (normalizedOrderEventName === "suborder_processing") {
       return {
         title,
-        message: `Order ${event.orderId} has been packed.`,
+        message: `Order ${event.orderId} is being processed.`,
       };
     }
 
-    if (normalizedOrderEventName === "OrderShipped") {
+    if (normalizedOrderEventName === "suborder_shipped") {
       const shippedByBrandName = event.brandName || orderBrandLabel || "the brand";
       return {
         title,
-        message: `Order ${event.orderId} has been shipped by ${shippedByBrandName}.`,
+        message: noteSuffix.trim() || `Order ${event.orderId} has been shipped by ${shippedByBrandName}.`,
       };
     }
 
-    if (normalizedOrderEventName === "OrderCancelled") {
+    if (normalizedOrderEventName === "suborder_cancelled") {
       const cancelledRef = event.subOrderId ? `Sub-order ${event.subOrderId}` : `Order ${event.orderId}`;
       return {
         title,
@@ -204,7 +212,7 @@ export function buildNotificationTemplate(
       };
     }
 
-    if (normalizedOrderEventName === "OrderDelivered") {
+    if (normalizedOrderEventName === "suborder_delivered") {
       const deliveredByBrandName = event.brandName || orderBrandLabel || "the brand";
       const deliveredRef = event.subOrderId ? `Sub-order ${event.subOrderId}` : `Order ${event.orderId}`;
       return {
@@ -214,7 +222,7 @@ export function buildNotificationTemplate(
     }
   }
 
-  if (event.name === "PaymentInitiated") {
+  if (event.name === "payment_initiated") {
     if (audience === "ADMIN") {
       return {
         title: "Payment Started",
@@ -228,7 +236,7 @@ export function buildNotificationTemplate(
     };
   }
 
-  if (event.name === "PaymentSuccess") {
+  if (event.name === "payment_success") {
     if (audience === "ADMIN") {
       return {
         title: "Payment Successful",
@@ -242,7 +250,7 @@ export function buildNotificationTemplate(
     };
   }
 
-  if (event.name === "PaymentFailed") {
+  if (event.name === "payment_failed") {
     if (audience === "ADMIN") {
       return {
         title: "Payment Failed",
@@ -256,7 +264,7 @@ export function buildNotificationTemplate(
     };
   }
 
-  if (event.name === "RefundProcessed") {
+  if (event.name === "refund_processed") {
     if (audience === "ADMIN") {
       return {
         title: "Refund Processed",
@@ -270,7 +278,7 @@ export function buildNotificationTemplate(
     };
   }
 
-  if (event.name === "ProductSubmitted") {
+  if (event.name === "product_submitted") {
     const recipientBrand = context?.recipientBrandName || "a brand";
     return {
       title: "Product Added",
@@ -278,28 +286,28 @@ export function buildNotificationTemplate(
     };
   }
 
-  if (event.name === "ProductApproved") {
+  if (event.name === "product_approved") {
     return {
       title: "Product Approved by Broady",
       message: `Your product ${event.productId} has been approved and is now live.`,
     };
   }
 
-  if (event.name === "ProductRejected") {
+  if (event.name === "product_rejected") {
     return {
       title: "Product Rejected by Broady",
       message: `Your product ${event.productId} was rejected${event.note ? `. Reason: ${event.note}` : ""}.`,
     };
   }
 
-  if (event.name === "BrandApproved") {
+  if (event.name === "brand_approved") {
     return {
       title: "Brand Approved by Broady",
       message: `Your brand has been approved on Broady${event.note ? `. Note: ${event.note}` : ""}.`,
     };
   }
 
-  if (event.name === "ReviewSubmitted") {
+  if (event.name === "review_submitted") {
     if (audience === "USER") {
       return {
         title: "Review Submitted",
@@ -320,28 +328,28 @@ export function buildNotificationTemplate(
     };
   }
 
-  if (event.name === "ReviewHelpfulVoted") {
+  if (event.name === "review_helpful_voted") {
     return {
       title: "Review Marked Helpful",
       message: `Someone marked your review for ${event.productName} as helpful.`,
     };
   }
 
-  if (event.name === "ReviewReported") {
+  if (event.name === "review_reported") {
     return {
       title: "Review Reported",
       message: `A review for ${event.productName} was reported and needs moderation.`,
     };
   }
 
-  if (event.name === "ReviewModerated") {
+  if (event.name === "review_moderated") {
     return {
       title: "Review Moderated",
       message: `Your review for ${event.productName} is now ${event.moderationStatus.toLowerCase()}.`,
     };
   }
 
-  if (event.name === "ReviewReplied") {
+  if (event.name === "review_replied") {
     const brandPrefix = event.brandName ? `${event.brandName} replied` : "A brand replied";
     return {
       title: "Brand Reply on Review",

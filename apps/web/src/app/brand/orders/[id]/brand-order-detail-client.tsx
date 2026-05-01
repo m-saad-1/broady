@@ -135,6 +135,9 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
         <div>
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Tracking</p>
           <p className="mt-2 text-sm font-semibold">{order.trackingId || "Not assigned"}</p>
+          <p className="mt-2 text-sm text-zinc-600">Delivery attempts: {order.deliveryAttempts || 0}</p>
+          {order.failureReason ? <p className="mt-2 text-sm text-orange-800">Failure reason: {order.failureReason}</p> : null}
+          {order.nextAttemptDate ? <p className="mt-2 text-sm text-blue-800">Next attempt: {formatDateTime(order.nextAttemptDate)}</p> : null}
         </div>
         <div>
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Total</p>

@@ -6,6 +6,7 @@ import { ProductImage } from "@/components/ui/product-image";
 import { addWishlistProduct, removeWishlistProduct, trackUserBehaviorEvent } from "@/lib/api";
 import { getProductPricing } from "@/lib/pricing";
 import { formatPkr } from "@/lib/utils";
+import { useStableNow } from "@/hooks/use-stable-now";
 import { useAuthStore } from "@/stores/auth-store";
 import { useCartStore } from "@/stores/cart-store";
 import { useToastStore } from "@/stores/toast-store";
@@ -31,7 +32,8 @@ export function ProductDetailClient({ product }: Props) {
   const toggleWishlist = useWishlistStore((state) => state.toggleWishlist);
   const isInWishlist = useWishlistStore((state) => state.isInWishlist(product.id));
   const wishlistActive = hasHydrated ? isInWishlist : false;
-  const pricing = getProductPricing(product);
+  const renderNow = useStableNow();
+  const pricing = useMemo(() => getProductPricing(product, renderNow), [product, renderNow]);
 
   useEffect(() => {
     setHasHydrated(true);
@@ -71,6 +73,17 @@ export function ProductDetailClient({ product }: Props) {
 
   const canAdd = product.stock > 0;
 
+  // Remove brand name from product title
+  const stripBrandPrefix = (title: string, brandName?: string) => {
+    if (!brandName) return title;
+    const escapedBrand = brandName.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const cleaned = title.replace(new RegExp(`^${escapedBrand}(?:\\s|:|-)+?`, "i"), "").trim();
+    return cleaned || title;
+  };
+
+  const displayTitle = stripBrandPrefix(product.name, product.brand?.name);
+  const soldCount = product.soldCount || 0;
+
   return (
     <section className="grid gap-6 md:grid-cols-12">
       <div className="space-y-3 md:col-span-7">
@@ -81,7 +94,7 @@ export function ProductDetailClient({ product }: Props) {
           title="Click to zoom"
           aria-label="Zoom product image"
         >
-          <ProductImage src={product.imageUrl} alt={product.name} fill className="object-cover" sizes="(max-width: 768px) 100vw, 60vw" priority />
+          <ProductImage src={product.imageUrl} alt={displayTitle} fill className="object-cover" sizes="(max-width: 768px) 100vw, 60vw" priority />
           <span className="absolute bottom-3 right-3 border border-black bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]">
             Zoom
           </span>
@@ -96,15 +109,20 @@ export function ProductDetailClient({ product }: Props) {
           <span className={`border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${badgeClass}`}>{badge}</span>
         </div>
 
-        <h1 className="font-heading text-5xl uppercase leading-[0.95]">{product.name}</h1>
-        {pricing.hasDiscount ? (
+        <h1 className="font-heading text-5xl uppercase leading-[0.95]" title={product.name}>{displayTitle}</h1>
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <p className="text-lg font-semibold">{formatPkr(pricing.finalPrice)}</p>
-            <p className="text-sm text-zinc-500 line-through">{formatPkr(pricing.basePrice)}</p>
+            {pricing.hasDiscount ? (
+              <>
+                <p className="text-lg font-semibold">{formatPkr(pricing.finalPrice)}</p>
+                <p className="text-sm text-zinc-500 line-through">{formatPkr(pricing.basePrice)}</p>
+              </>
+            ) : (
+              <p className="text-lg font-semibold">{formatPkr(pricing.basePrice)}</p>
+            )}
           </div>
-        ) : (
-          <p className="text-lg">{formatPkr(pricing.basePrice)}</p>
-        )}
+          <p className="text-xs font-semibold text-rose-600 uppercase tracking-[0.12em]">{soldCount} Sold</p>
+        </div>
         <p className="text-sm leading-7 text-zinc-700">{product.descriptionLong || product.description}</p>
 
         <div className="space-y-1 text-xs uppercase tracking-[0.12em]">
