@@ -7,6 +7,8 @@ export const customerOrderStatusOptions: OrderStatus[] = [
   "SHIPPED",
   "OUT_FOR_DELIVERY",
   "DELIVERY_FAILED",
+  "ADDRESS_CORRECTION_REQUIRED",
+  "READY_FOR_REDELIVERY",
   "DELIVERED",
   "RETURNED",
   "CANCELED",
@@ -14,14 +16,24 @@ export const customerOrderStatusOptions: OrderStatus[] = [
 
 export function getOrderStatusOptions(currentStatus: OrderStatus) {
   switch (currentStatus) {
+    case "PENDING":
+      return [] satisfies OrderStatus[];
     case "CONFIRMED":
-      return ["CONFIRMED", "PROCESSING", "CANCELED"] satisfies OrderStatus[];
+      return ["PROCESSING"] satisfies OrderStatus[];
     case "PROCESSING":
-      return ["PROCESSING", "SHIPPED", "CANCELED"] satisfies OrderStatus[];
+      return ["SHIPPED"] satisfies OrderStatus[];
     case "SHIPPED":
-      return ["SHIPPED", "CANCELED"] satisfies OrderStatus[];
+      return ["OUT_FOR_DELIVERY"] satisfies OrderStatus[];
+    case "OUT_FOR_DELIVERY":
+      return ["DELIVERY_FAILED", "DELIVERED"] satisfies OrderStatus[];
+    case "DELIVERY_FAILED":
+      return ["OUT_FOR_DELIVERY", "ADDRESS_CORRECTION_REQUIRED"] satisfies OrderStatus[];
+    case "ADDRESS_CORRECTION_REQUIRED":
+      return ["READY_FOR_REDELIVERY"] satisfies OrderStatus[];
+    case "READY_FOR_REDELIVERY":
+      return ["OUT_FOR_DELIVERY"] satisfies OrderStatus[];
     default:
-      return [currentStatus] satisfies OrderStatus[];
+      return [] satisfies OrderStatus[];
   }
 }
 
@@ -36,13 +48,17 @@ export function getOrderStatusLabel(status: OrderStatus) {
     case "PACKED":
       return "Processing";
     case "PARTIALLY_SHIPPED":
-      return "Shipped";
+      return "Partially Delivered / In Progress";
     case "SHIPPED":
       return "Shipped";
     case "OUT_FOR_DELIVERY":
       return "Out for Delivery";
     case "DELIVERY_FAILED":
       return "Delivery Failed";
+    case "ADDRESS_CORRECTION_REQUIRED":
+      return "Address Correction Required";
+    case "READY_FOR_REDELIVERY":
+      return "Ready for Re-delivery";
     case "DELIVERED":
       return "Delivered";
     case "RETURNED":
@@ -72,6 +88,10 @@ export function getOrderStatusTone(status: OrderStatus) {
       return "border-blue-300 bg-blue-50 text-blue-700";
     case "DELIVERY_FAILED":
       return "border-orange-300 bg-orange-50 text-orange-700";
+    case "ADDRESS_CORRECTION_REQUIRED":
+      return "border-orange-400 bg-orange-100 text-orange-800";
+    case "READY_FOR_REDELIVERY":
+      return "border-emerald-400 bg-emerald-50 text-emerald-800";
     case "DELIVERED":
       return "border-emerald-300 bg-emerald-50 text-emerald-700";
     case "RETURNED":

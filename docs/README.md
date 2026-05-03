@@ -19,4 +19,5 @@
 
 ## Deep-Dive Working Notes
 
+- `Meilisearch.md`: product index UID, document schema, env keys, and sync commands.
 - `superpowers/`: implementation plans and design notes used during feature delivery.

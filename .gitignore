@@ -22,3 +22,6 @@ apps/web/.next
 
 # Local uploads generated during development
 apps/api/uploads
+
+# Vendor binaries (installed via npm run meilisearch:install)
+vendor/meilisearch/

@@ -17,6 +17,7 @@ import {
   productTemplateTypes,
 } from "./product.validation.js";
 import {
+  expandCatalogTopCategory,
   buildPrefixTsQuery,
   colorWords,
   detectTopCategoryToken,
@@ -104,6 +105,7 @@ const accessoriesSubCategories = productTypeMap.Accessories;
 type ProductSearchFilters = {
   brand?: string;
   topCategory?: string;
+  juniorCategory?: string;
   productType?: string;
   subCategory?: string;
   subCategoryHints?: string[];
@@ -118,6 +120,7 @@ type ProductSearchFilters = {
 function buildFilterConditions(parsed: {
   brand?: string;
   topCategory?: string;
+  juniorCategory?: string;
   productType?: string;
   subCategory?: string;
   size?: string;
@@ -133,9 +136,12 @@ function buildFilterConditions(parsed: {
     conditions.push(Prisma.sql`b."slug" = ${parsed.brand}`);
   }
 
-   if (parsed.topCategory) {
-     conditions.push(Prisma.sql`p."topCategory" = ${parsed.topCategory}`);
-   }
+  const topCategoryValues = expandCatalogTopCategory(parsed.topCategory, parsed.juniorCategory);
+  if (topCategoryValues.length === 1) {
+    conditions.push(Prisma.sql`p."topCategory" = ${topCategoryValues[0]}`);
+  } else if (topCategoryValues.length > 1) {
+    conditions.push(Prisma.sql`p."topCategory" IN (${Prisma.join(topCategoryValues)})`);
+  }
 
   if (parsed.productType && productTypeMap[parsed.productType]) {
     conditions.push(Prisma.sql`p."subCategory" IN (${Prisma.join(productTypeMap[parsed.productType])})`);
@@ -471,6 +477,7 @@ router.get("/", async (req, res) => {
   const querySchema = z.object({
     brand: z.string().optional(),
     topCategory: z.string().optional(),
+    juniorCategory: z.string().optional(),
     productType: z.string().optional(),
     subCategory: z.string().optional(),
     size: z.string().optional(),
@@ -559,6 +566,13 @@ router.get("/", async (req, res) => {
       lte: parsed.data.maxPrice,
     },
   } as Prisma.ProductWhereInput;
+
+  const topCategoryValues = expandCatalogTopCategory(parsed.data.topCategory, parsed.data.juniorCategory);
+  if (topCategoryValues.length === 1) {
+    whereClause.topCategory = topCategoryValues[0];
+  } else if (topCategoryValues.length > 1) {
+    whereClause.topCategory = { in: topCategoryValues };
+  }
 
   if (parsed.data.productType && productTypeMap[parsed.data.productType]) {
     const typeFilter = { subCategory: { in: productTypeMap[parsed.data.productType] } };

@@ -12,9 +12,12 @@
     "dev:worker": "npm run dev:worker -w @broady/api",
     "dev": "concurrently \"npm run dev:web\" \"npm run dev:api\"",
     "dev:all": "concurrently \"npm run dev:web\" \"npm run dev:api\" \"npm run dev:worker\"",
-    "db:up": "docker compose up -d postgres redis",
+    "db:up": "docker compose up -d postgres redis meilisearch",
     "db:down": "docker compose down",
-    "db:logs": "docker compose logs -f postgres redis",
+    "db:logs": "docker compose logs -f postgres redis meilisearch",
+    "meilisearch:install": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-meilisearch.ps1",
+    "meilisearch:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-meilisearch.ps1",
+    "search:meili:sync": "npm run search:meili:sync -w @broady/api",
     "build": "npm run build -w @broady/web && npm run build -w @broady/api",
     "start:worker": "npm run start:worker -w @broady/api",
     "lint": "npm run lint -w @broady/web && npm run lint -w @broady/api",
@@ -25,6 +28,7 @@
     "pm2": "^6.0.14"
   },
   "dependencies": {
-    "docx": "^9.6.1"
+    "docx": "^9.6.1",
+    "meilisearch": "^0.58.0"
   }
 }

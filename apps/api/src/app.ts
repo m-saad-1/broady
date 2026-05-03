@@ -17,6 +17,8 @@ import usersRoutes from "./modules/users/users.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { createIpRateLimiter } from "./middleware/rate-limit.js";
+import { validateDBConnectionMiddleware } from "./middleware/db-validation.js";
+import { getDetailedDBHealth } from "./utils/db-health.js";
 
 const app = express();
 
@@ -45,9 +47,17 @@ app.use(cookieParser());
 app.use(express.json({ limit: "1mb" }));
 app.use(morgan("dev"));
 app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
-app.use("/api", createIpRateLimiter("api-abuse", 60_000, 300));
 
-app.get("/health", (_req, res) => res.json({ status: "ok", service: "broady-api" }));
+// Health check endpoint - no DB validation required for status check
+app.get("/health", async (_req, res) => {
+	const health = await getDetailedDBHealth();
+	const statusCode = health.status === "unavailable" ? 503 : 200;
+	res.status(statusCode).json(health);
+});
+
+app.use("/api", createIpRateLimiter("api-abuse", 60_000, 300));
+// Validate DB connection before processing API requests
+app.use("/api", validateDBConnectionMiddleware);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/brands", brandsRoutes);

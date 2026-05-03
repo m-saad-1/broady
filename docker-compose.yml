@@ -32,6 +32,26 @@ services:
       timeout: 5s
       retries: 20
 
+  meilisearch:
+    image: getmeili/meilisearch:v1.13
+    container_name: broady-meilisearch
+    restart: unless-stopped
+    environment:
+      MEILI_ENV: development
+      MEILI_HTTP_ADDR: 0.0.0.0:7700
+      MEILI_MASTER_KEY: "${MEILI_MASTER_KEY:-dev-meili-master-key}"
+    ports:
+      - "7700:7700"
+    volumes:
+      - broady_meilisearch_data:/meili_data
+    healthcheck:
+      test:
+        ["CMD-SHELL", "set -o pipefail; curl -fsS http://127.0.0.1:7700/health | grep -q '\"status\":\"available\"'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
 volumes:
   broady_postgres_data:
   broady_redis_data:
+  broady_meilisearch_data:

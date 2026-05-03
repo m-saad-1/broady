@@ -41,7 +41,7 @@ export const MEN_PRESET_CATEGORIES = [
   "Jeans",
   "Sneakers",
   "Boots",
-  "Accessories",
+  "Belts",
 ];
 
 export const WOMEN_PRESET_CATEGORIES = [
@@ -52,7 +52,8 @@ export const WOMEN_PRESET_CATEGORIES = [
   "Dresses",
   "Jeans",
   "Skirts",
-  "Accessories",
+  "Bags",
+  "Jewelry",
 ];
 
 export const JUNIOR_GROUPS = ["Junior Boys", "Toddler Boys", "Junior Girls", "Toddler Girls"] as const;

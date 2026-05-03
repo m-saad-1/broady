@@ -15,7 +15,8 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "node prisma/seed.js",
     "prisma:verify-crud": "node prisma/verify-crud.js",
-    "search:smoke": "node prisma/search-subcategory-smoke.js"
+    "search:smoke": "node prisma/search-subcategory-smoke.js",
+    "search:meili:sync": "tsx src/scripts/meilisearch-sync.ts"
   },
   "dependencies": {
     "@broady/shared": "*",
@@ -29,6 +30,7 @@
     "google-auth-library": "^10.6.2",
     "helmet": "^8.0.0",
     "ioredis": "^5.10.1",
+    "meilisearch": "^0.58.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.2",

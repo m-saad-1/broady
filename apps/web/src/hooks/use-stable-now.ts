@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 
 export function useStableNow() {
-  const [now, setNow] = useState(0);
+  const [now, setNow] = useState<number | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setNow(Date.now());
   }, []);
 
-  return now;
+  // Return 0 on server (no hydration mismatch) and Date.now() on client after hydration
+  return now ?? 0;
 }

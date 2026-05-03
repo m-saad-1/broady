@@ -56,6 +56,9 @@ function mapEventToNotificationType(event: NotificationEvent): NotificationType 
     case "suborder_confirmed":
     case "suborder_processing":
     case "suborder_shipped":
+    case "suborder_delivery_failed":
+    case "suborder_retry_scheduled":
+    case "suborder_returned":
     case "suborder_delivered":
     case "suborder_cancelled":
     case "payment_initiated":
@@ -78,6 +81,9 @@ function mapEventToNotificationType(event: NotificationEvent): NotificationType 
       return NotificationType.PRODUCT_REVIEW_MODERATED;
     case "review_replied":
       return NotificationType.PRODUCT_REVIEW_REPLIED;
+    case "order_address_correction_required":
+    case "order_address_updated":
+      return NotificationType.ORDER_STATUS_UPDATED;
     default:
       return NotificationType.ORDER_STATUS_UPDATED;
   }
@@ -140,6 +146,9 @@ function isOrderOrPaymentEvent(event: NotificationEvent) {
     event.name === "suborder_confirmed" ||
     event.name === "suborder_processing" ||
     event.name === "suborder_shipped" ||
+    event.name === "suborder_delivery_failed" ||
+    event.name === "suborder_retry_scheduled" ||
+    event.name === "suborder_returned" ||
     event.name === "suborder_delivered" ||
     event.name === "suborder_cancelled" ||
     event.name === "payment_initiated" ||
@@ -185,7 +194,6 @@ async function isDuplicateNotification(input: {
       userId: input.userId,
       brandId: input.brandId,
       orderId: input.orderId,
-      createdAt: { gte: new Date(Date.now() - 60_000) },
     },
     select: { id: true },
   });
@@ -410,9 +418,9 @@ export async function createNotificationWithChannels(input: DispatchInput) {
       type: input.type,
       title: input.title,
       message: input.message,
-      userId: input.userId,
-      brandId: input.brandId,
-      orderId: input.orderId,
+      userId: input.userId ?? null,
+      brandId: input.brandId ?? null,
+      orderId: input.orderId ?? null,
     },
   });
 

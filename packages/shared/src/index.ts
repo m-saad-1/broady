@@ -1,6 +1,34 @@
 export type UserRole = "USER" | "ADMIN" | "BRAND" | "BRAND_ADMIN" | "BRAND_STAFF" | "SUPER_ADMIN";
 
-export type ProductTopCategory = "Men" | "Women" | "Kids";
+export type ProductTopCategory = "Men" | "Women" | "Toddler Boys" | "Toddler Girls" | "Junior Boys" | "Junior Girls";
+
+export const CATALOG_TOP_CATEGORY_OPTIONS = ["Men", "Women", "Juniors"] as const;
+
+export const JUNIOR_TOP_CATEGORIES = ["Toddler Boys", "Junior Boys", "Toddler Girls", "Junior Girls"] as const;
+
+export type CatalogTopCategory = (typeof CATALOG_TOP_CATEGORY_OPTIONS)[number];
+
+export type JuniorTopCategory = (typeof JUNIOR_TOP_CATEGORIES)[number];
+
+export function isJuniorTopCategory(value: string): value is JuniorTopCategory {
+  return (JUNIOR_TOP_CATEGORIES as readonly string[]).includes(value);
+}
+
+export function expandCatalogTopCategory(topCategory?: string, juniorCategory?: string) {
+  if (!topCategory) {
+    return [] as string[];
+  }
+
+  if (topCategory === "Juniors") {
+    if (juniorCategory && isJuniorTopCategory(juniorCategory)) {
+      return [juniorCategory];
+    }
+
+    return [...JUNIOR_TOP_CATEGORIES];
+  }
+
+  return [topCategory];
+}
 
 export type ProductType = "Top" | "Bottom" | "Footwear" | "Accessories";
 
@@ -21,6 +49,8 @@ export type OrderStatus =
   | "SHIPPED"
   | "OUT_FOR_DELIVERY"
   | "DELIVERY_FAILED"
+  | "ADDRESS_CORRECTION_REQUIRED"
+  | "READY_FOR_REDELIVERY"
   | "DELIVERED"
   | "RETURNED"
   | "CANCELED";

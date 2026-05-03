@@ -122,48 +122,75 @@ async function safeFetch<T>(path: string): Promise<T> {
   }
 }
 
+function getApiBaseCandidates() {
+  const candidates = [API_BASE];
+
+  if (typeof window !== "undefined" && !process.env.NEXT_PUBLIC_API_URL && /^https?:\/\/localhost:4000\/api\/?$/.test(API_BASE)) {
+    for (const port of [4001, 4002, 4003, 4004]) {
+      candidates.push(`http://localhost:${port}/api`);
+    }
+  }
+
+  return candidates;
+}
+
 async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const authToken = getStoredAuthToken();
   const isFormDataBody = typeof FormData !== "undefined" && init?.body instanceof FormData;
-  const response = await fetch(`${API_BASE}${path}`, {
-    credentials: "include",
-    ...init,
-    headers: {
-      ...(isFormDataBody ? {} : { "Content-Type": "application/json" }),
-      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-      ...(init?.headers || {}),
-    },
-  });
+  let lastTransportError: unknown;
 
-  if (!response.ok) {
-    let message = `Request failed: ${response.status}`;
-    let code: string | undefined;
+  for (const apiBase of getApiBaseCandidates()) {
     try {
-      const json = (await response.json()) as ApiErrorBody;
-      if (json.message) {
-        message = json.message;
+      const response = await fetch(`${apiBase}${path}`, {
+        credentials: "include",
+        ...init,
+        headers: {
+          ...(isFormDataBody ? {} : { "Content-Type": "application/json" }),
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          ...(init?.headers || {}),
+        },
+      });
+
+      if (!response.ok) {
+        let message = `Request failed: ${response.status}`;
+        let code: string | undefined;
+        try {
+          const json = (await response.json()) as ApiErrorBody;
+          if (json.message) {
+            message = json.message;
+          }
+          code = json.code;
+        } catch {
+          // Ignore non-JSON error bodies.
+        }
+
+        if (
+          response.status === 401 &&
+          /unauthorized|token expired|session expired|invalid token|session revoked/i.test(message)
+        ) {
+          clearStoredAuthToken();
+          throw new ApiRequestError("Your session expired. Please sign in again and retry.", response.status, code || "AUTH_SESSION_EXPIRED");
+        }
+
+        throw new ApiRequestError(message, response.status, code);
       }
-      code = json.code;
-    } catch {
-      // Ignore non-JSON error bodies.
-    }
 
-    if (
-      response.status === 401 &&
-      /unauthorized|token expired|session expired|invalid token|session revoked/i.test(message)
-    ) {
-      clearStoredAuthToken();
-      throw new ApiRequestError("Your session expired. Please sign in again and retry.", response.status, code || "AUTH_SESSION_EXPIRED");
-    }
+      if (response.status === 204) {
+        return undefined as T;
+      }
 
-    throw new ApiRequestError(message, response.status, code);
+      return (await response.json()) as T;
+    } catch (error) {
+      lastTransportError = error;
+      const isTransportFailure = error instanceof TypeError || (error instanceof DOMException && error.name === "AbortError");
+      if (!isTransportFailure) {
+        throw error;
+      }
+    }
   }
 
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return (await response.json()) as T;
+  const transportMessage = lastTransportError instanceof Error ? lastTransportError.message : "The API server could not be reached.";
+  throw new ApiRequestError(`Unable to reach the API server. ${transportMessage}`.trim(), 0, "NETWORK_ERROR");
 }
 
 export async function getBrands(): Promise<Brand[]> {
@@ -240,6 +267,7 @@ export async function getProducts(params?: Record<string, string>): Promise<Prod
     params?.q ||
       params?.brand ||
       params?.topCategory ||
+      params?.juniorCategory ||
       params?.productType ||
       params?.subCategory ||
       params?.size ||
@@ -396,6 +424,14 @@ export async function getUserOrder(orderId: string): Promise<UserOrder> {
   return response.data;
 }
 
+export async function updateUserOrderAddress(orderId: string, deliveryAddress: string): Promise<UserOrder> {
+  const response = await authFetch<ApiEnvelope<UserOrder>>(`/orders/me/${orderId}/address`, {
+    method: "PATCH",
+    body: JSON.stringify({ deliveryAddress }),
+  });
+  return response.data;
+}
+
 export type CancelReasonCode = "CHANGED_MIND" | "ORDERED_BY_MISTAKE" | "FOUND_BETTER_PRICE" | "DELIVERY_TOO_SLOW" | "PAYMENT_ISSUE" | "OTHER";
 
 export type CancelPayload = {
@@ -520,7 +556,7 @@ export type ProductMutationPayload = {
   slug: string;
   description: string;
   pricePkr: number;
-  topCategory: "Men" | "Women" | "Kids";
+  topCategory: "Men" | "Women" | "Toddler Boys" | "Toddler Girls" | "Junior Boys" | "Junior Girls";
   subCategory: string;
   sizes: string[];
   imageUrl: string;
@@ -746,11 +782,20 @@ export async function getBrandDashboardOrder(orderId: string): Promise<BrandDash
 
 export async function updateBrandOrderStatus(
   orderId: string,
-  payload: { status: string; trackingId?: string; note?: string; customerNote?: string },
+  payload: { status: string; trackingId?: string; note?: string; customerNote?: string; failureReason?: string; failureReasonMessage?: string; nextAttemptDate?: Date },
 ): Promise<BrandDashboardOrder> {
+  const body = {
+    status: payload.status,
+    trackingId: payload.trackingId,
+    note: payload.note,
+    customerNote: payload.customerNote,
+    failureReason: payload.failureReason,
+    failureReasonMessage: payload.failureReasonMessage,
+    nextAttemptDate: payload.nextAttemptDate ? payload.nextAttemptDate.toISOString() : undefined,
+  };
   const response = await authFetch<ApiEnvelope<BrandDashboardOrder>>(`/brand-dashboard/orders/${orderId}/status`, {
     method: "PATCH",
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
   return normalizeBrandDashboardOrder(response.data);
 }

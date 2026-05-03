@@ -3,6 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import app from "./app.js";
 import { env } from "./config/env.js";
+import { prisma } from "./config/prisma.js";
+import { startOrderDeliveryFailureWorker, stopOrderDeliveryFailureWorker } from "./modules/orders/deliveryFailure.worker.js";
 import { stopNotificationWorker, startNotificationWorker } from "./modules/notifications/notification.worker.js";
 import type { AddressInfo } from "node:net";
 
@@ -32,6 +34,7 @@ function runPrismaMigrations() {
 
 let workerStarted = false;
 let server: ReturnType<typeof app.listen> | null = null;
+let dbKeepAliveTimer: ReturnType<typeof setInterval> | null = null;
 
 function bootServer(port: number, attempt = 0) {
   const server = app.listen(port);
@@ -42,6 +45,7 @@ function bootServer(port: number, attempt = 0) {
 
     if (!workerStarted && env.notificationWorkerEmbedded) {
       startNotificationWorker();
+      startOrderDeliveryFailureWorker();
       workerStarted = true;
     }
 
@@ -50,6 +54,24 @@ function bootServer(port: number, attempt = 0) {
       enabled: env.notificationWorkerEmbedded,
       adapter: env.notificationQueueAdapter,
     });
+
+    // Start a periodic keep-alive ping to keep DB connections active
+    try {
+      const keepAliveMs = Number(process.env.DB_KEEPALIVE_MS) || 60000; // default 60s
+      if (dbKeepAliveTimer) clearInterval(dbKeepAliveTimer);
+      dbKeepAliveTimer = setInterval(async () => {
+        try {
+          // lightweight ping
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+          await prisma.$queryRaw`SELECT 1`;
+        } catch (err) {
+          console.error("[db] keepalive ping failed", err);
+        }
+      }, keepAliveMs);
+      console.log(`[db] keepalive ping scheduled every ${keepAliveMs}ms`);
+    } catch (e) {
+      console.warn("[db] failed to schedule keepalive ping", e);
+    }
   });
 
   server.on("error", (error: NodeJS.ErrnoException) => {
@@ -94,13 +116,19 @@ async function shutdown(signal: string) {
   console.log(`[server] received ${signal}, shutting down`);
 
   if (!server) {
+    await stopOrderDeliveryFailureWorker();
     await stopNotificationWorker();
     process.exit(0);
     return;
   }
 
   server.close(async () => {
+    await stopOrderDeliveryFailureWorker();
     await stopNotificationWorker();
+    if (dbKeepAliveTimer) {
+      clearInterval(dbKeepAliveTimer);
+      dbKeepAliveTimer = null;
+    }
     process.exit(0);
   });
 }

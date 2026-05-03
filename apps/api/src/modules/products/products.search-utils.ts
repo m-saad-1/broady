@@ -1,4 +1,4 @@
-const topCategoryTokenMap: Record<string, "Men" | "Women" | "Kids"> = {
+const topCategoryTokenMap: Record<string, "Men" | "Women" | "Juniors" | "Toddler Boys" | "Toddler Girls" | "Junior Boys" | "Junior Girls"> = {
   men: "Men",
   mens: "Men",
   male: "Men",
@@ -7,15 +7,42 @@ const topCategoryTokenMap: Record<string, "Men" | "Women" | "Kids"> = {
   womens: "Women",
   female: "Women",
   woman: "Women",
-  kids: "Kids",
-  kid: "Kids",
-  child: "Kids",
-  children: "Kids",
-  boys: "Kids",
-  girls: "Kids",
+  kids: "Juniors",
+  kid: "Juniors",
+  child: "Juniors",
+  children: "Juniors",
+  boy: "Juniors",
+  boys: "Juniors",
+  girl: "Juniors",
+  girls: "Juniors",
 };
 
 const searchStopWords = new Set(["for", "and", "the", "a", "an", "of", "to", "in", "on", "with", "by"]);
+
+/**
+ * Expands catalog top category with junior category refinement
+ * Used to filter products by their target demographic
+ * 
+ * @param topCategory - Main category (Men, Women, Juniors, etc.)
+ * @param juniorCategory - Specific junior variant (Junior Boys, Junior Girls, Toddler Boys, etc.) - only used if topCategory is "Juniors"
+ * @returns Array of expanded top category values for filtering
+ */
+export function expandCatalogTopCategory(
+  topCategory?: string,
+  juniorCategory?: string
+): string[] {
+  if (!topCategory) {
+    return [];
+  }
+
+  // If a specific junior category is requested and topCategory is "Juniors", return the specific variant
+  if (juniorCategory && topCategory.toLowerCase() === "juniors") {
+    return [juniorCategory];
+  }
+
+  // Return the top category as-is
+  return [topCategory];
+}
 
 export const subCategoryHintMap: Record<string, string[]> = {
   shirt: ["T-Shirts", "Polo Shirts", "V-Neck", "Formal Shirts"],
@@ -110,10 +137,10 @@ export function inferSubCategoryHints(query: string) {
 export function inferQueryCategory(query: string) {
   const tokens = tokenizeSearchQuery(query);
   if (!tokens.length) {
-    return { normalizedQuery: query } as { normalizedQuery: string; inferredTopCategory?: "Men" | "Women" | "Kids" };
+    return { normalizedQuery: query } as { normalizedQuery: string; inferredTopCategory?: "Men" | "Women" | "Juniors" | "Toddler Boys" | "Toddler Girls" | "Junior Boys" | "Junior Girls" };
   }
 
-  const categoryTokenCount = new Map<"Men" | "Women" | "Kids", number>();
+  const categoryTokenCount = new Map<"Men" | "Women" | "Juniors" | "Toddler Boys" | "Toddler Girls" | "Junior Boys" | "Junior Girls", number>();
   for (const token of tokens) {
     const mapped = topCategoryTokenMap[token];
     if (!mapped) continue;
@@ -121,12 +148,12 @@ export function inferQueryCategory(query: string) {
     categoryTokenCount.set(mapped, (categoryTokenCount.get(mapped) ?? 0) + 1);
   }
 
-  let inferredTopCategory: "Men" | "Women" | "Kids" | undefined;
+  let inferredTopCategory: "Men" | "Women" | "Juniors" | "Toddler Boys" | "Toddler Girls" | "Junior Boys" | "Junior Girls" | undefined;
   const maxCoverage = Math.max(...Array.from(categoryTokenCount.values()), 0);
   const requiredCoverage = Math.ceil(tokens.length * 0.5);
 
   if (maxCoverage >= requiredCoverage) {
-    let bestCategory: "Men" | "Women" | "Kids" | undefined;
+    let bestCategory: "Men" | "Women" | "Juniors" | "Toddler Boys" | "Toddler Girls" | "Junior Boys" | "Junior Girls" | undefined;
     let bestCount = 0;
     for (const [category, count] of categoryTokenCount) {
       if (count <= bestCount) continue;

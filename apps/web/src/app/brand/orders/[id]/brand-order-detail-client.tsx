@@ -15,6 +15,15 @@ type BrandOrderDetailClientProps = {
   orderId: string;
 };
 
+const DELIVERY_FAILURE_REASONS = [
+  { code: "CUSTOMER_NOT_AVAILABLE", label: "Customer not available" },
+  { code: "INCORRECT_ADDRESS", label: "Incorrect address" },
+  { code: "PHONE_UNREACHABLE", label: "Phone unreachable" },
+  { code: "REFUSED_DELIVERY", label: "Refused delivery" },
+  { code: "AREA_NOT_SERVICEABLE", label: "Area not serviceable" },
+  { code: "OTHER", label: "Other" },
+];
+
 function formatDateTime(value?: string | null) {
   if (!value) return "N/A";
 
@@ -38,7 +47,15 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState(false);
-  const [draft, setDraft] = useState<{ status: OrderStatus; trackingId: string; note: string; customerNote: string } | null>(null);
+  const [draft, setDraft] = useState<{
+    status: OrderStatus;
+    trackingId: string;
+    note: string;
+    customerNote: string;
+    failureReason: string;
+    failureReasonMessage: string;
+    nextAttemptDate: string;
+  } | null>(null);
 
   const loadOrder = useCallback(async () => {
     setLoading(true);
@@ -50,6 +67,9 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
         trackingId: nextOrder.trackingId || "",
         note: "",
         customerNote: "",
+        failureReason: "",
+        failureReasonMessage: "",
+        nextAttemptDate: "",
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to load order details";
@@ -73,6 +93,21 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
       return;
     }
 
+    if (draft.status === "DELIVERY_FAILED" && !draft.failureReason.trim()) {
+      pushToast("Failure reason is required when marking delivery as failed.", "error");
+      return;
+    }
+
+    if (draft.status === "DELIVERY_FAILED" && draft.failureReason === "OTHER" && !draft.failureReasonMessage.trim()) {
+      pushToast("Custom failure text is required when choosing Other.", "error");
+      return;
+    }
+
+    if (draft.status === "DELIVERY_FAILED" && draft.failureReason === "INCORRECT_ADDRESS" && !draft.note.trim()) {
+      pushToast("Internal note is required when marking delivery failed for an incorrect address.", "error");
+      return;
+    }
+
     setSaving(true);
     try {
       await updateBrandOrderStatus(order.id, {
@@ -80,6 +115,9 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
         trackingId: draft.trackingId.trim() || undefined,
         note: draft.note.trim() || undefined,
         customerNote: draft.customerNote.trim() || undefined,
+        failureReason: draft.failureReason.trim() || undefined,
+        failureReasonMessage: draft.failureReasonMessage.trim() || undefined,
+        nextAttemptDate: draft.nextAttemptDate ? new Date(draft.nextAttemptDate) : undefined,
       });
       pushToast("Order updated", "success");
       await loadOrder();
@@ -165,6 +203,9 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
             value={draft.status}
             onChange={(event) => setDraft((current) => current ? { ...current, status: event.target.value as OrderStatus } : current)}
           >
+            <option value={order.status} disabled>
+              Current: {getOrderStatusLabel(order.status)}
+            </option>
             {getOrderStatusOptions(order.status).map((status) => (
               <option key={status} value={status}>{status}</option>
             ))}
@@ -197,6 +238,40 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
             value={draft.customerNote}
             onChange={(event) => setDraft((current) => current ? { ...current, customerNote: event.target.value } : current)}
           />
+
+          {draft.status === "DELIVERY_FAILED" && (
+            <>
+              <select
+                className="h-10 border border-orange-300 bg-orange-50 px-3 text-sm"
+                value={draft.failureReason}
+                onChange={(event) => setDraft((current) => current ? { ...current, failureReason: event.target.value } : current)}
+              >
+                <option value="">-- Select failure reason (required) --</option>
+                {DELIVERY_FAILURE_REASONS.map((reason) => (
+                  <option key={reason.code} value={reason.code}>
+                    {reason.label}
+                  </option>
+                ))}
+              </select>
+
+              {draft.failureReason === "OTHER" ? (
+                <textarea
+                  className="min-h-24 border border-orange-300 bg-orange-50 px-3 py-2 text-sm md:col-span-2"
+                  placeholder="Describe the failure reason"
+                  value={draft.failureReasonMessage}
+                  onChange={(event) => setDraft((current) => current ? { ...current, failureReasonMessage: event.target.value } : current)}
+                />
+              ) : null}
+
+              <input
+                type="datetime-local"
+                className="h-10 border border-blue-300 bg-blue-50 px-3 text-sm"
+                placeholder="Next attempt date (optional)"
+                value={draft.nextAttemptDate}
+                onChange={(event) => setDraft((current) => current ? { ...current, nextAttemptDate: event.target.value } : current)}
+              />
+            </>
+          )}
         </div>
       </section>
 

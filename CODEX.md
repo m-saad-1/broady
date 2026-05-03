@@ -5,8 +5,9 @@
 Run from repository root unless noted.
 
 - Install dependencies: `npm install`
-- Start local infra (Postgres + Redis): `npm run db:up`
-- Stop local infra: `npm run db:down`
+- [IMPORTANT] Docker is NOT installed. Run PostgreSQL/Redis as local services.
+- Database: Ensure local PostgreSQL is running on port 5432.
+- Notifications: Set `NOTIFICATION_QUEUE_ADAPTER=postgres` if Redis is not available.
 - Run web + API dev: `npm run dev`
 - Run web + API + standalone worker dev: `npm run dev:all`
 - Run only web dev: `npm run dev:web`
@@ -26,6 +27,61 @@ Run from repository root unless noted.
   - `npm run prisma:seed -w @broady/api`
 
 There is currently no `test` script in workspace `package.json` files, so there is no project-defined full-suite or single-test command yet.
+
+## ⚠️ CRITICAL: Database Health Verification (AUTO-VERIFY REQUIREMENT)
+
+**MANDATORY AGENT BEHAVIOR: After every task completion, automatically verify database connectivity.**
+
+### DB Health Check Implementation
+
+The application has automatic database connectivity validation built-in:
+
+- **Health Endpoint**: `GET /health` returns detailed DB status (healthy/degraded/unavailable)
+- **Auto-Validation**: Every API request (`/api/*`) validates DB connection before processing
+- **Keep-Alive Ping**: Runs every 60s to maintain persistent connection
+- **Auto-Failover**: Returns 503 Service Unavailable if DB is unreachable
+
+### Agent Verification Workflow
+
+**After completing ANY of the following:**
+- API response handling
+- Code changes or new features
+- Database schema modifications
+- Error handling updates
+- Configuration changes
+
+**You MUST automatically:**
+1. Verify the application is still running: `npm run dev -w @broady/api` and `npm run dev:web`
+2. Test database connectivity by making a request to: `curl http://localhost:4003/health` or `curl http://localhost:4003/api/health`
+3. Verify the health endpoint returns `{"status":"healthy","connected":true,...}`
+4. If DB is unavailable, check logs and resolve before proceeding
+
+**Expected Health Response:**
+```json
+{
+  "status": "healthy",
+  "connected": true,
+  "responseTimeMs": <number>,
+  "timestamp": <unix-ms>,
+  "message": "Database connection is healthy and responsive"
+}
+```
+
+**If health check fails:**
+- DO NOT ignore the failure
+- Check PostgreSQL is running on localhost:5432
+- Review API logs for connection errors
+- Verify DATABASE_URL is configured correctly
+- Restart the application if needed
+
+### Key Files for DB Health
+
+- `apps/api/src/utils/db-health.ts` - Health check utilities
+- `apps/api/src/middleware/db-validation.ts` - DB validation middleware
+- `apps/api/src/server.ts` - DB keep-alive mechanism
+- `.env` - DB configuration (PostgreSQL URL)
+
+
 
 ## High-level architecture (cross-file)
 
@@ -56,9 +112,11 @@ There is currently no `test` script in workspace `package.json` files, so there 
   - Core roles/order/payment/product contracts are defined in `packages/shared/src/index.ts`
   - Web marketplace types in `apps/web/src/types/marketplace.ts` extend/reuse shared contracts instead of redefining canonical enums
 - Startup behavior is important:
-  - HTTP bootstrap runs `prisma migrate deploy` before listening
-  - Current entrypoint implementation is non-obvious: `src/notification-worker.ts` boots the HTTP API, while `src/server.ts` boots the standalone notification worker
-  - Notification worker can run embedded or standalone
+  - Docker is NOT installed on the host system.
+  - Infrastructure (Postgres, Redis) runs as native local services.
+  - Use `npx prisma db push` if `prisma migrate deploy` hangs on startup.
+  - HTTP bootstrap skip migrations if `PRISMA_MIGRATE_ON_BOOT=false`.
+  - Notification worker can run embedded or standalone.
   - Keep graceful shutdown paths intact when editing runtime entrypoints
 
 ## Repository conventions (strict)

@@ -9,6 +9,15 @@ import { createUserAndIpRateLimiters } from "../../middleware/rate-limit.js";
 import { addCartItem, getCart, getCartScopeFromUser, syncCheckoutCart } from "../carts/cart.service.js";
 import { notificationEventNames } from "../notifications/notification.events.js";
 import { queueNotificationEvent } from "../notifications/notification.service.js";
+import {
+  DELIVERY_FAILURE_REASONS,
+  buildBrandFailureMessage,
+  buildCustomerFailureMessage,
+  calculateNextAttemptDate,
+  describeFailureReason,
+  getDeliveryFailurePolicy,
+  normalizeDeliveryFailureReasonInput,
+} from "./deliveryFailure.service.js";
 import { trackUserActivity } from "../recommendations/recommendation.service.js";
 
 const router = Router();
@@ -41,21 +50,25 @@ const brandOrderStatusSchema = z.enum([
   "OUT_FOR_DELIVERY",
   "DELIVERY_FAILED",
   "DELIVERED",
+  "ADDRESS_CORRECTION_REQUIRED",
+  "READY_FOR_REDELIVERY",
   "RETURNED",
   "CANCELED",
   "CANCELLED",
 ]);
 const orderTransitionMap: Record<OrderStatus, OrderStatus[]> = {
-  PENDING: ["CONFIRMED", "CANCELED"],
-  CONFIRMED: ["PROCESSING", "CANCELED"],
-  PROCESSING: ["SHIPPED", "CANCELED"],
-  PACKED: ["SHIPPED", "CANCELED"],
-  PARTIALLY_SHIPPED: ["SHIPPED", "CANCELED"],
-  SHIPPED: ["OUT_FOR_DELIVERY", "DELIVERED", "CANCELED"],
-  OUT_FOR_DELIVERY: ["DELIVERED", "DELIVERY_FAILED", "CANCELED"],
-  DELIVERY_FAILED: ["OUT_FOR_DELIVERY", "RETURNED", "CANCELED"],
+  PENDING: ["CONFIRMED"],
+  CONFIRMED: ["PROCESSING"],
+  PROCESSING: ["SHIPPED"],
+  PACKED: ["SHIPPED"],
+  PARTIALLY_SHIPPED: ["SHIPPED"],
+  SHIPPED: ["OUT_FOR_DELIVERY"],
+  OUT_FOR_DELIVERY: ["DELIVERY_FAILED", "DELIVERED"],
+  DELIVERY_FAILED: ["OUT_FOR_DELIVERY", "RETURNED", "ADDRESS_CORRECTION_REQUIRED"],
+  ADDRESS_CORRECTION_REQUIRED: ["READY_FOR_REDELIVERY", "RETURNED"],
+  READY_FOR_REDELIVERY: ["OUT_FOR_DELIVERY", "RETURNED"],
+  RETURNED: ["CANCELED"],
   DELIVERED: [],
-  RETURNED: [],
   CANCELED: [],
 };
 const MAX_DELIVERY_ATTEMPTS = 3;
@@ -65,6 +78,9 @@ type OrderLifecycleEventName =
   | typeof notificationEventNames.orderConfirmed
   | typeof notificationEventNames.orderProcessing
   | typeof notificationEventNames.orderShipped
+  | typeof notificationEventNames.orderDeliveryFailed
+  | typeof notificationEventNames.orderAddressCorrectionRequired
+  | typeof notificationEventNames.orderReturned
   | typeof notificationEventNames.orderDelivered
   | typeof notificationEventNames.orderCancelled;
 
@@ -120,6 +136,7 @@ function buildStatusLogNote(params: { internalNote?: string; trackingId?: string
   return `${base} | CUSTOMER_NOTE: ${params.customerNote}`;
 }
 
+
 const ORDER_ACTION_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function isWithinOrderActionWindow(createdAt: Date) {
@@ -129,14 +146,14 @@ function isWithinOrderActionWindow(createdAt: Date) {
 function deriveParentOrderStatus(subOrderStatuses: OrderStatus[]): OrderStatus {
   if (subOrderStatuses.length === 0) return OrderStatus.PENDING;
   if (subOrderStatuses.every((status) => status === OrderStatus.CANCELED)) return OrderStatus.CANCELED;
-  if (subOrderStatuses.every((status) => status === OrderStatus.RETURNED || status === OrderStatus.CANCELED)) return OrderStatus.RETURNED;
   if (subOrderStatuses.every((status) => status === OrderStatus.DELIVERED)) return OrderStatus.DELIVERED;
+  if (subOrderStatuses.every((status) => status === OrderStatus.RETURNED || status === OrderStatus.CANCELED)) return OrderStatus.RETURNED;
+  if (subOrderStatuses.some((status) => status === OrderStatus.RETURNED)) return OrderStatus.PARTIALLY_SHIPPED;
+  if (subOrderStatuses.some((status) => status === OrderStatus.ADDRESS_CORRECTION_REQUIRED)) return OrderStatus.ADDRESS_CORRECTION_REQUIRED;
+  if (subOrderStatuses.some((status) => status === OrderStatus.READY_FOR_REDELIVERY)) return OrderStatus.READY_FOR_REDELIVERY;
   if (subOrderStatuses.some((status) => status === OrderStatus.DELIVERY_FAILED)) return OrderStatus.DELIVERY_FAILED;
   if (subOrderStatuses.some((status) => status === OrderStatus.OUT_FOR_DELIVERY)) return OrderStatus.OUT_FOR_DELIVERY;
-  if (subOrderStatuses.every((status) => status === OrderStatus.SHIPPED || status === OrderStatus.OUT_FOR_DELIVERY || status === OrderStatus.DELIVERED || status === OrderStatus.RETURNED)) return OrderStatus.SHIPPED;
-  if (subOrderStatuses.some((status) => status === OrderStatus.SHIPPED || status === OrderStatus.DELIVERED || status === OrderStatus.RETURNED)) {
-    return OrderStatus.SHIPPED;
-  }
+  if (subOrderStatuses.some((status) => status === OrderStatus.SHIPPED || status === OrderStatus.PACKED || status === OrderStatus.PARTIALLY_SHIPPED)) return OrderStatus.SHIPPED;
   if (subOrderStatuses.every((status) => status === OrderStatus.PROCESSING)) return OrderStatus.PROCESSING;
   if (subOrderStatuses.some((status) => status === OrderStatus.PROCESSING)) return OrderStatus.PROCESSING;
   if (subOrderStatuses.every((status) => status === OrderStatus.CONFIRMED)) return OrderStatus.CONFIRMED;
@@ -156,7 +173,11 @@ function buildSubOrderUpdateNote(status: OrderStatus, brandName: string, parentS
     case OrderStatus.OUT_FOR_DELIVERY:
       return `Your ${brandName} item is out for delivery.`;
     case OrderStatus.DELIVERY_FAILED:
-      return `Delivery failed for your ${brandName} item.`;
+      return `Delivery failed for your ${brandName} item. A retry may follow.`;
+    case OrderStatus.ADDRESS_CORRECTION_REQUIRED:
+      return `Your ${brandName} item requires an address correction before delivery can be reattempted.`;
+    case OrderStatus.READY_FOR_REDELIVERY:
+      return `Your ${brandName} item is ready for re-delivery.`;
     case OrderStatus.DELIVERED:
       return parentStatus === OrderStatus.DELIVERED
         ? "Your order has been fully delivered."
@@ -180,9 +201,14 @@ function resolveOrderEventName(status: OrderStatus): OrderLifecycleEventName {
       return notificationEventNames.orderProcessing;
     case OrderStatus.SHIPPED:
     case OrderStatus.OUT_FOR_DELIVERY:
-    case OrderStatus.DELIVERY_FAILED:
-    case OrderStatus.RETURNED:
       return notificationEventNames.orderShipped;
+    case OrderStatus.DELIVERY_FAILED:
+    case OrderStatus.READY_FOR_REDELIVERY:
+      return notificationEventNames.orderDeliveryFailed;
+    case OrderStatus.ADDRESS_CORRECTION_REQUIRED:
+      return notificationEventNames.orderAddressCorrectionRequired;
+    case OrderStatus.RETURNED:
+      return notificationEventNames.orderReturned;
     case OrderStatus.DELIVERED:
       return notificationEventNames.orderDelivered;
     case OrderStatus.CANCELED:
@@ -449,7 +475,11 @@ router.post("/", requireAuth, orderPlacementIpLimit, orderPlacementUserLimit, as
     return null;
   };
 
-  if (products.length !== parsed.data.items.length) {
+  const invalidProductIds = parsed.data.items
+    .map((item) => item.productId)
+    .filter((productId) => !productById(productId));
+
+  if (invalidProductIds.length) {
     return res.status(400).json({ message: "One or more products are invalid or inactive" });
   }
 
@@ -711,6 +741,7 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
       note: z.string().trim().max(240).optional(),
       customerNote: z.string().trim().max(240).optional(),
       failureReason: z.string().trim().max(240).optional(),
+      failureReasonMessage: z.string().trim().max(240).optional(),
       nextAttemptDate: z.coerce.date().optional(),
     })
     .safeParse(req.body);
@@ -750,6 +781,23 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
     return res.status(403).json({ message: "Forbidden" });
   }
 
+  const brandAllowedStatuses = new Set<OrderStatus>([
+    OrderStatus.PROCESSING,
+    OrderStatus.SHIPPED,
+    OrderStatus.OUT_FOR_DELIVERY,
+    OrderStatus.DELIVERY_FAILED,
+    OrderStatus.DELIVERED,
+  ]);
+  const adminOnlyStatuses = new Set<OrderStatus>([OrderStatus.RETURNED, OrderStatus.CANCELED]);
+
+  if (!actingAsPlatformAdmin && adminOnlyStatuses.has(status)) {
+    return res.status(403).json({ message: "Only admins or system automation can finalize returned or cancelled vendor groups." });
+  }
+
+  if (!actingAsPlatformAdmin && !brandAllowedStatuses.has(status)) {
+    return res.status(403).json({ message: "Brand users can only move vendor groups through processing, shipping, delivery, and delivery failure states." });
+  }
+
   const allowedBrands = new Set(await getAllowedBrandIdsForUser(req.auth!.userId, req.auth!.brandId));
   const candidateSubOrders = actingAsPlatformAdmin
     ? order.subOrders
@@ -771,16 +819,6 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
     return res.status(409).json({ message: "Orders are confirmed automatically after COD checkout or verified online payment." });
   }
 
-  const systemDeliveryStatuses: OrderStatus[] = [
-    OrderStatus.OUT_FOR_DELIVERY,
-    OrderStatus.DELIVERY_FAILED,
-    OrderStatus.RETURNED,
-    OrderStatus.DELIVERED,
-  ];
-  if (systemDeliveryStatuses.includes(status) && !actingAsPlatformAdmin) {
-    return res.status(403).json({ message: "Delivery status updates are handled by the system or platform admins." });
-  }
-
   const trackingId = parsed.data.trackingId ?? targetSubOrder.trackingId;
   const statusChanged = status !== targetSubOrder.status;
   const trackingChanged = trackingId !== targetSubOrder.trackingId;
@@ -795,60 +833,85 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
     return res.status(400).json({ message: "Tracking ID is required when setting status to SHIPPED." });
   }
 
-  if (status === OrderStatus.DELIVERY_FAILED && !parsed.data.failureReason?.trim()) {
-    return res.status(400).json({ message: "failureReason is required when delivery fails." });
+  const normalizedFailureReason = status === OrderStatus.DELIVERY_FAILED ? normalizeDeliveryFailureReasonInput(parsed.data.failureReason) : null;
+
+  if (status === OrderStatus.DELIVERY_FAILED && !normalizedFailureReason) {
+    return res.status(400).json({
+      message: "failureReason is required when delivery fails.",
+      availableReasons: DELIVERY_FAILURE_REASONS,
+    });
   }
 
-  const isFinalDeliveryFailure = status === OrderStatus.DELIVERY_FAILED && targetSubOrder.deliveryAttempts >= MAX_DELIVERY_ATTEMPTS;
-  if (status === OrderStatus.DELIVERY_FAILED && !isFinalDeliveryFailure && !parsed.data.nextAttemptDate) {
-    return res.status(400).json({ message: "nextAttemptDate is required before the final delivery attempt." });
+  if (status === OrderStatus.DELIVERY_FAILED && normalizedFailureReason === "OTHER" && !parsed.data.failureReasonMessage?.trim()) {
+    return res.status(400).json({ message: "failureReasonMessage is required when failureReason is OTHER." });
   }
 
-  const effectiveStatus =
-    isFinalDeliveryFailure
-      ? order.paymentMethod === "COD"
-        ? OrderStatus.CANCELED
-        : OrderStatus.RETURNED
-      : status;
+  const failureReasonKey = normalizedFailureReason || "OTHER";
 
-  if (!statusChanged && !trackingChanged && !parsed.data.note && !parsed.data.customerNote && !parsed.data.failureReason && !parsed.data.nextAttemptDate) {
+  if (status === OrderStatus.DELIVERY_FAILED && getDeliveryFailurePolicy(failureReasonKey).requiresAddressCorrection && !parsed.data.note?.trim()) {
+    return res.status(400).json({ message: "An internal note is required for incorrect address failures so the address can be corrected." });
+  }
+
+  const failurePolicy = status === OrderStatus.DELIVERY_FAILED ? getDeliveryFailurePolicy(failureReasonKey) : null;
+  const isFinalDeliveryFailure = status === OrderStatus.DELIVERY_FAILED && targetSubOrder.deliveryAttempts >= (failurePolicy?.maxAttempts ?? MAX_DELIVERY_ATTEMPTS);
+  
+  let effectiveStatus: OrderStatus = status;
+  if (status === OrderStatus.DELIVERY_FAILED) {
+    if (failureReasonKey === "INCORRECT_ADDRESS") {
+      effectiveStatus = OrderStatus.ADDRESS_CORRECTION_REQUIRED;
+    } else if (isFinalDeliveryFailure) {
+      effectiveStatus = OrderStatus.RETURNED;
+    }
+  }
+
+  if (!statusChanged && !trackingChanged && !parsed.data.note && !parsed.data.customerNote && !parsed.data.failureReason && !parsed.data.failureReasonMessage && !parsed.data.nextAttemptDate) {
     return res.json({ data: order });
   }
 
   const updated = await prisma.$transaction(async (tx) => {
+    const now = new Date();
+    const nextAttemptDate =
+      status === OrderStatus.DELIVERY_FAILED && failurePolicy?.retryable && !isFinalDeliveryFailure
+        ? calculateNextAttemptDate(failureReasonKey, now)
+        : null;
+
     await tx.subOrder.update({
       where: { id: targetSubOrder.id },
       data: {
         status: effectiveStatus,
         trackingId,
         deliveryAttempts: status === OrderStatus.OUT_FOR_DELIVERY ? { increment: 1 } : undefined,
-        failureReason: status === OrderStatus.DELIVERY_FAILED ? parsed.data.failureReason : status === OrderStatus.OUT_FOR_DELIVERY || status === OrderStatus.DELIVERED ? null : undefined,
-        nextAttemptDate: status === OrderStatus.DELIVERY_FAILED ? parsed.data.nextAttemptDate || null : status === OrderStatus.OUT_FOR_DELIVERY || status === OrderStatus.DELIVERED ? null : undefined,
-        finalDeliveryFailureAt: isFinalDeliveryFailure ? new Date() : undefined,
-        refundProcessedAt: isFinalDeliveryFailure && order.paymentMethod !== "COD" ? new Date() : undefined,
+        lastAttemptAt: status === OrderStatus.OUT_FOR_DELIVERY ? now : undefined,
+        failureReason:
+          status === OrderStatus.DELIVERY_FAILED
+            ? failureReasonKey
+            : status === OrderStatus.OUT_FOR_DELIVERY || status === OrderStatus.DELIVERED
+              ? null
+              : undefined,
+        failureReasonMessage:
+          status === OrderStatus.DELIVERY_FAILED
+            ? parsed.data.failureReasonMessage?.trim() || null
+            : status === OrderStatus.OUT_FOR_DELIVERY || status === OrderStatus.DELIVERED
+              ? null
+              : undefined,
+        deliveryFailedAt: status === OrderStatus.DELIVERY_FAILED ? now : undefined,
+        brandReminderSentAt: status === OrderStatus.DELIVERY_FAILED ? null : undefined,
+        nextAttemptDate:
+          status === OrderStatus.DELIVERY_FAILED
+            ? nextAttemptDate
+            : status === OrderStatus.OUT_FOR_DELIVERY || status === OrderStatus.DELIVERED || effectiveStatus === OrderStatus.RETURNED
+              ? null
+              : undefined,
+        finalDeliveryFailureAt: isFinalDeliveryFailure || status === OrderStatus.RETURNED ? now : undefined,
+        refundProcessedAt: effectiveStatus === OrderStatus.CANCELED && order.paymentMethod !== "COD" ? now : undefined,
       },
     });
 
-    if (effectiveStatus === OrderStatus.CANCELED && targetSubOrder.status !== OrderStatus.CANCELED && !isFinalDeliveryFailure) {
+    if (effectiveStatus === OrderStatus.CANCELED && targetSubOrder.status !== OrderStatus.CANCELED) {
       await restockOrderItems(
         tx,
         targetSubOrder.items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
       );
-    }
-
-    if (isFinalDeliveryFailure) {
-      await tx.subOrderStatusLog.create({
-        data: {
-          subOrderId: targetSubOrder.id,
-          status: OrderStatus.DELIVERY_FAILED,
-          updatedBy: actingAsPlatformAdmin ? "ADMIN" : "BRAND",
-          updatedById: req.auth!.userId,
-          note: buildStatusLogNote({
-            internalNote: `Final delivery attempt failed: ${parsed.data.failureReason}`,
-            customerNote: parsed.data.failureReason,
-          }),
-        },
-      });
     }
 
     await tx.subOrderStatusLog.create({
@@ -858,24 +921,24 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
         updatedBy: actingAsPlatformAdmin ? "ADMIN" : "BRAND",
         updatedById: req.auth!.userId,
         note: buildStatusLogNote({
-          internalNote:
-            isFinalDeliveryFailure
-              ? order.paymentMethod === "COD"
-                ? "COD delivery failed after final attempt; vendor group canceled"
-                : "Prepaid delivery failed after final attempt; vendor group returned and refund marked"
-              : parsed.data.failureReason
-                ? `Delivery failed: ${parsed.data.failureReason}`
-                : parsed.data.note,
+          internalNote: isFinalDeliveryFailure
+            ? `Auto-returned after final delivery failure for ${targetSubOrder.brand.name}`
+            : parsed.data.failureReason
+              ? `Delivery failed: ${describeFailureReason(failureReasonKey, parsed.data.failureReasonMessage)}`
+              : parsed.data.note,
           trackingId: trackingChanged ? trackingId : undefined,
           customerNote:
-            parsed.data.customerNote ||
-            (status === OrderStatus.DELIVERY_FAILED
-              ? isFinalDeliveryFailure
-                ? order.paymentMethod === "COD"
-                  ? "Delivery failed after the final attempt. This COD vendor group has been cancelled."
-                  : "Delivery failed after the final attempt. This prepaid vendor group has been returned and refunded."
-                : `Delivery failed. Next attempt: ${parsed.data.nextAttemptDate?.toISOString()}`
-              : undefined),
+            status === OrderStatus.DELIVERY_FAILED
+              ? buildCustomerFailureMessage({
+                  failureReason: failureReasonKey,
+                  failureReasonMessage: parsed.data.failureReasonMessage,
+                  paymentMethod: order.paymentMethod,
+                  deliveryAttempt: targetSubOrder.deliveryAttempts,
+                  maxAttempts: failurePolicy?.maxAttempts ?? 1,
+                  nextAttemptDate,
+                  isFinalFailure: isFinalDeliveryFailure,
+                })
+              : parsed.data.customerNote,
         }),
       },
     });
@@ -894,14 +957,12 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
           : null;
 
     const allTerminalAfterReturn = refreshedSubOrders.every(
-      (subOrder) =>
-        subOrder.status === OrderStatus.RETURNED ||
-        subOrder.status === OrderStatus.CANCELED,
+      (subOrder) => subOrder.status === OrderStatus.RETURNED || subOrder.status === OrderStatus.CANCELED,
     );
     const nextPaymentStatus =
       nextParentStatus === OrderStatus.DELIVERED && order.paymentMethod === "COD"
         ? PaymentStatus.COMPLETED
-        : order.paymentMethod !== "COD" && isFinalDeliveryFailure && allTerminalAfterReturn
+        : effectiveStatus === OrderStatus.CANCELED && order.paymentMethod !== "COD" && allTerminalAfterReturn
           ? PaymentStatus.REFUNDED
           : order.paymentStatus;
 
@@ -922,10 +983,10 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
         updatedById: req.auth!.userId,
         note: buildStatusLogNote({
           internalNote: isFinalDeliveryFailure
-            ? `Vendor group (${targetSubOrder.brand.name}) reached final delivery failure`
+            ? `Vendor group (${targetSubOrder.brand.name}) reached final delivery failure and was auto-returned`
             : parsed.data.note
-            ? `Vendor group (${targetSubOrder.brand.name}) update: ${parsed.data.note}`
-            : `Vendor group (${targetSubOrder.brand.name}) updated to ${effectiveStatus}`,
+              ? `Vendor group (${targetSubOrder.brand.name}) update: ${parsed.data.note}`
+              : `Vendor group (${targetSubOrder.brand.name}) updated to ${effectiveStatus}`,
           trackingId: trackingChanged ? trackingId : undefined,
           customerNote: parsed.data.customerNote,
         }),
@@ -960,6 +1021,38 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
   );
 
   if (statusChanged) {
+    const updatedSubOrder = updated.subOrders.find((so) => so.id === targetSubOrder.id);
+    const persistedNextAttemptDate = updatedSubOrder?.nextAttemptDate;
+
+    const isIncorrectAddressFailure = failureReasonKey === "INCORRECT_ADDRESS";
+    const failureEventNote = isIncorrectAddressFailure
+      ? `Delivery failed due to incorrect address. Please update your address.`
+      : status === OrderStatus.DELIVERY_FAILED
+        ? `${customerFacingNote}${parsed.data.failureReasonMessage ? ` Reason: ${parsed.data.failureReasonMessage}.` : parsed.data.failureReason ? ` Reason: ${parsed.data.failureReason}.` : ""}${persistedNextAttemptDate ? ` Next attempt: ${persistedNextAttemptDate.toISOString()}.` : ""}`
+        : customerFacingNote;
+
+    if (status === OrderStatus.DELIVERY_FAILED && persistedNextAttemptDate && !isIncorrectAddressFailure) {
+      queueNotificationEvent({
+        name: notificationEventNames.orderRetryScheduled,
+        orderId: order.id,
+        subOrderId: targetSubOrder.id,
+        userId: order.userId,
+        brandId: targetSubOrder.brandId,
+        brandName: targetSubOrder.brand.name,
+        changedByRole: actingAsPlatformAdmin ? "ADMIN" : "BRAND",
+        note: `Retry scheduled for ${persistedNextAttemptDate.toISOString()}. ${buildBrandFailureMessage({
+          failureReason: failureReasonKey,
+          failureReasonMessage: parsed.data.failureReasonMessage,
+          paymentMethod: order.paymentMethod,
+          deliveryAttempt: targetSubOrder.deliveryAttempts,
+          maxAttempts: failurePolicy?.maxAttempts ?? MAX_DELIVERY_ATTEMPTS,
+          nextAttemptDate: persistedNextAttemptDate,
+          isFinalFailure: false,
+        })}`,
+        notifyAdmin: true,
+      });
+    }
+
     queueNotificationEvent({
       name: resolveOrderEventName(effectiveStatus),
       orderId: order.id,
@@ -968,12 +1061,23 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
       brandId: targetSubOrder.brandId,
       brandName: targetSubOrder.brand.name,
       changedByRole: actingAsPlatformAdmin ? "ADMIN" : "BRAND",
-      note:
-        status === OrderStatus.DELIVERY_FAILED && !isFinalDeliveryFailure
-          ? `${customerFacingNote} Reason: ${parsed.data.failureReason}. Next attempt: ${parsed.data.nextAttemptDate?.toISOString()}.`
-          : customerFacingNote,
+      note: failureEventNote,
       notifyAdmin: true,
     });
+
+    if (isFinalDeliveryFailure) {
+      queueNotificationEvent({
+        name: notificationEventNames.orderReturned,
+        orderId: order.id,
+        subOrderId: targetSubOrder.id,
+        userId: order.userId,
+        brandId: targetSubOrder.brandId,
+        brandName: targetSubOrder.brand.name,
+        changedByRole: "SYSTEM",
+        note: `Final delivery failure reached for ${describeFailureReason(failureReasonKey, parsed.data.failureReasonMessage)}. Order will be cancelled after the return window.`,
+        notifyAdmin: true,
+      });
+    }
   }
 
   if (effectiveStatus === OrderStatus.DELIVERED && order.paymentMethod === "COD" && order.paymentStatus !== PaymentStatus.COMPLETED) {
@@ -985,13 +1089,13 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
     });
   }
 
-  if (isFinalDeliveryFailure && order.paymentMethod !== "COD") {
+  if (effectiveStatus === OrderStatus.CANCELED && order.paymentMethod !== "COD") {
     queueNotificationEvent({
       name: notificationEventNames.refundProcessed,
       orderId: order.id,
       userId: order.userId,
       paymentMethod: order.paymentMethod,
-      reason: parsed.data.failureReason,
+      reason: parsed.data.note || parsed.data.failureReason,
     });
   }
 
@@ -1406,6 +1510,95 @@ router.post("/me/:orderId/sub-orders/:subOrderId/reorder", requireAuth, async (r
   const cart = await getCart(scope);
 
   return res.json({ data: cart });
+});
+
+router.patch("/me/:orderId/address", requireAuth, async (req, res) => {
+  const schema = z.object({
+    deliveryAddress: z.string().trim().min(10).max(500),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: parsed.error.flatten() });
+  }
+
+  const orderId = String(req.params.orderId);
+  const userId = req.auth!.userId;
+
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, userId },
+    include: { subOrders: { include: { brand: true } } },
+  });
+
+  if (!order) return res.status(404).json({ message: "Order not found" });
+
+  const updatedOrder = await prisma.$transaction(async (tx) => {
+    // Update the order's delivery address
+    const updated = await tx.order.update({
+      where: { id: orderId },
+      data: { deliveryAddress: parsed.data.deliveryAddress },
+    });
+
+    // Find sub-orders that require address correction
+    const subOrdersToUpdate = order.subOrders.filter(
+      (so) => so.status === OrderStatus.ADDRESS_CORRECTION_REQUIRED
+    );
+
+    for (const subOrder of subOrdersToUpdate) {
+      await tx.subOrder.update({
+        where: { id: subOrder.id },
+        data: { status: OrderStatus.READY_FOR_REDELIVERY },
+      });
+
+      await tx.subOrderStatusLog.create({
+        data: {
+          subOrderId: subOrder.id,
+          status: OrderStatus.READY_FOR_REDELIVERY,
+          updatedBy: "SYSTEM",
+          note: "Address updated by customer. Ready for re-delivery.",
+        },
+      });
+
+      // Notify the brand
+      queueNotificationEvent({
+        name: notificationEventNames.orderAddressUpdated,
+        orderId: order.id,
+        subOrderId: subOrder.id,
+        userId: order.userId,
+        brandId: subOrder.brandId,
+        brandName: subOrder.brand.name,
+        changedByRole: "USER",
+        note: `Customer has updated the delivery address for Order ${order.id}. New address: ${parsed.data.deliveryAddress}`,
+        notifyAdmin: true,
+      });
+    }
+
+    if (subOrdersToUpdate.length > 0) {
+      // Update parent order status if needed
+      const refreshedSubOrders = await tx.subOrder.findMany({
+        where: { orderId: order.id },
+        select: { status: true },
+      });
+      const nextParentStatus = deriveParentOrderStatus(refreshedSubOrders.map((so) => so.status));
+      await tx.order.update({
+        where: { id: order.id },
+        data: { status: nextParentStatus },
+      });
+
+      await tx.orderStatusLog.create({
+        data: {
+          orderId: order.id,
+          status: nextParentStatus,
+          updatedBy: "SYSTEM",
+          note: "Delivery address updated by customer. Sub-orders moved to Ready for Re-delivery.",
+        },
+      });
+    }
+
+    return updated;
+  });
+
+  return res.json({ data: updatedOrder });
 });
 
 router.get("/me", requireAuth, async (req, res) => {

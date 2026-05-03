@@ -90,6 +90,57 @@ export const notificationRules: Record<NotificationEventName, NotificationEventR
     ],
     priority: "HIGH",
   },
+  suborder_delivery_failed: {
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+      {
+        audience: notificationAudience.brandMembers,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+      {
+        audience: notificationAudience.admin,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+    ],
+    priority: "HIGH",
+  },
+  suborder_retry_scheduled: {
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+      {
+        audience: notificationAudience.brandMembers,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+      {
+        audience: notificationAudience.admin,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+    ],
+    priority: "HIGH",
+  },
+  suborder_returned: {
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+      {
+        audience: notificationAudience.brandMembers,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+      {
+        audience: notificationAudience.admin,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+    ],
+    priority: "HIGH",
+  },
   suborder_delivered: {
     audienceRules: [
       {
@@ -265,6 +316,40 @@ export const notificationRules: Record<NotificationEventName, NotificationEventR
     audienceRules: [
       {
         audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+    ],
+    priority: "HIGH",
+  },
+  order_address_correction_required: {
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+      {
+        audience: notificationAudience.brandMembers,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+      {
+        audience: notificationAudience.admin,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+    ],
+    priority: "HIGH",
+  },
+  order_address_updated: {
+    audienceRules: [
+      {
+        audience: notificationAudience.brandMembers,
+        channels: [
+          notificationChannelPreference.dashboard,
+          notificationChannelPreference.email,
+          notificationChannelPreference.push,
+        ],
+      },
+      {
+        audience: notificationAudience.admin,
         channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
       },
     ],

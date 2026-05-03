@@ -30,7 +30,7 @@ export type ProductFormValues = {
   isActive?: boolean;
 };
 
-const productTopCategories = ["Men", "Women", "Kids"] as const;
+const productTopCategories = ["Men", "Women", "Toddler Boys", "Toddler Girls", "Junior Boys", "Junior Girls"] as const;
 
 export { productTopCategories };
 

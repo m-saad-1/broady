@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const productTopCategories = ["Men", "Women", "Kids"] as const;
+export const productTopCategories = ["Men", "Women", "Toddler Boys", "Toddler Girls", "Junior Boys", "Junior Girls"] as const;
 export const productApprovalStatuses = ["DRAFT", "PENDING", "APPROVED", "REJECTED"] as const;
 export const productTemplateTypes = ["SIZE_GUIDE", "DELIVERIES_RETURNS", "SHIPPING_DELIVERY", "FABRIC_CARE"] as const;
 

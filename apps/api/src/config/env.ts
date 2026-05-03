@@ -26,6 +26,24 @@ export const env = {
   firebasePrivateKey: process.env.FIREBASE_PRIVATE_KEY || "",
   firebaseServiceAccountJson: process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "",
   redisUrl: process.env.REDIS_URL || "redis://127.0.0.1:6379",
+  /**
+   * Meilisearch HTTP API base (no trailing path). For Meilisearch Cloud, use the HTTPS "Database URL" /
+   * project host from Project → Settings (e.g. `https://ms-xxxxx.pdx.meilisearch.io`), not `cloud.meilisearch.com`
+   * and not localhost unless you run a local binary with matching keys.
+   * @see https://www.meilisearch.com/docs/reference/features/authentication
+   */
+  meilisearchUrl:
+    (process.env.MEILISEARCH_URL || process.env.MEILISEARCH_DATABASE_URL || "").trim() || "http://127.0.0.1:7700",
+  /** Process env for the Meilisearch binary (`meilisearch.exe` / Docker); not sent as Bearer by default. */
+  meiliMasterKey: process.env.MEILI_MASTER_KEY || "",
+  /** Default admin API key from Meilisearch (indexes, settings, documents). */
+  meilisearchAdminApiKey: process.env.MEILISEARCH_ADMIN_API_KEY || "",
+  /** Search-only API key (safe for read/search from app code that must not mutate indexes). */
+  meilisearchSearchApiKey: process.env.MEILISEARCH_SEARCH_API_KEY || "",
+  /** Chat feature API key when using Meilisearch chat workspaces. */
+  meilisearchChatApiKey: process.env.MEILISEARCH_CHAT_API_KEY || "",
+  /** Legacy single key; treated like admin if `MEILISEARCH_ADMIN_API_KEY` is unset. */
+  meilisearchApiKey: process.env.MEILISEARCH_API_KEY || "",
   notificationRedisQueueName: process.env.NOTIFICATION_REDIS_QUEUE_NAME || "broady-notifications",
   notificationRedisPrefix: process.env.NOTIFICATION_REDIS_PREFIX || "broady",
   notificationQueueAdapter: (() => {
@@ -38,6 +56,7 @@ export const env = {
     return process.env.REDIS_URL ? "redis" : "postgres";
   })(),
   notificationWorkerPollMs: Number(process.env.NOTIFICATION_WORKER_POLL_MS || 250),
+  orderAutomationPollMs: Number(process.env.ORDER_AUTOMATION_POLL_MS || 60_000),
   notificationWorkerConcurrency: Number(process.env.NOTIFICATION_WORKER_CONCURRENCY || 4),
   notificationWorkerLockTimeoutMs: Number(process.env.NOTIFICATION_WORKER_LOCK_TIMEOUT_MS || 30000),
   notificationWorkerMaxAttempts: Number(process.env.NOTIFICATION_WORKER_MAX_ATTEMPTS || 3),

@@ -21,9 +21,9 @@ export function parseRedisConnectionOptions(redisUrl: string): RedisOptions {
     lazyConnect: true,
     enableOfflineQueue: false,
     enableReadyCheck: true,
-    maxRetriesPerRequest: 1,
-    connectTimeout: 3000,
-    retryStrategy: (attempt) => Math.min(attempt * 75, 1000),
+    maxRetriesPerRequest: 0,
+    connectTimeout: 500,
+    retryStrategy: null,
   };
 }
 

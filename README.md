@@ -65,7 +65,11 @@ At runtime, the system is split into three concerns:
 
 - Node.js 20+
 - npm 10+
-- Docker (for local PostgreSQL and Redis)
+- PostgreSQL (Installed locally, Docker is NOT available)
+- Redis (Installed locally or use PostgreSQL fallback)
+
+> [!IMPORTANT]
+> **Docker is NOT installed on this machine.** All infrastructure (PostgreSQL, Redis) must run as local services. Do NOT use `npm run db:up` or any Docker-related commands.
 
 ### 2. Install Dependencies
 

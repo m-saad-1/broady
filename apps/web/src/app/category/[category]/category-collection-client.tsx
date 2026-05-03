@@ -56,18 +56,17 @@ function slugToLabel(slug: string) {
   if (normalized === "men") return "Men";
   if (normalized === "women") return "Women";
   if (normalized === "juniors" || normalized === "kids") return "Juniors";
-  if (normalized === "junior-boys") return "Junior Boys";
-  if (normalized === "toddler-boys") return "Toddler Boys";
-  if (normalized === "junior-girls") return "Junior Girls";
-  if (normalized === "toddler-girls") return "Toddler Girls";
+  if (normalized === "junior-boys" || normalized === "junior boys") return "Junior Boys";
+  if (normalized === "toddler-boys" || normalized === "toddler boys") return "Toddler Boys";
+  if (normalized === "junior-girls" || normalized === "junior girls") return "Junior Girls";
+  if (normalized === "toddler-girls" || normalized === "toddler girls") return "Toddler Girls";
   return "Category";
 }
 
 function mapTopCategory(slug: string) {
   if (isMenSlug(slug)) return "Men";
   if (isWomenSlug(slug)) return "Women";
-  if (isJuniorsSlug(slug)) return "Kids";
-  return "Kids";
+  return slugToLabel(slug);
 }
 
 function splitKidsProducts(products: Product[]) {
@@ -78,29 +77,9 @@ function splitKidsProducts(products: Product[]) {
     "Toddler Girls": [],
   };
 
-  products.forEach((product, index) => {
-    const text = `${product.name} ${product.subCategory}`.toLowerCase();
-    const hasJuniorSize = product.sizes.some((size) => /^(8Y|10Y|12Y|14Y|16Y)$/.test(size.toUpperCase()));
-    const age: "Junior" | "Toddler" = hasJuniorSize ? "Junior" : "Toddler";
-
-    let gender: "Boys" | "Girls";
-    if (text.includes("girl")) {
-      gender = "Girls";
-    } else if (text.includes("boy")) {
-      gender = "Boys";
-    } else {
-      gender = index % 2 === 0 ? "Boys" : "Girls";
-    }
-
-    const group = `${age} ${gender}` as (typeof JUNIOR_GROUPS)[number];
-    groups[group].push(product);
-  });
-
-  // Guarantee all group sections have products for a stable page structure.
-  const fallbackCycle = [...products];
-  JUNIOR_GROUPS.forEach((group, index) => {
-    if (!groups[group].length && fallbackCycle.length) {
-      groups[group].push(fallbackCycle[index % fallbackCycle.length]);
+  products.forEach((product) => {
+    if (JUNIOR_GROUPS.includes(product.topCategory as any)) {
+      groups[product.topCategory as (typeof JUNIOR_GROUPS)[number]].push(product);
     }
   });
 
@@ -224,13 +203,6 @@ export function CategoryCollectionClient({ products, categorySlug }: Props) {
   const slug = normalizeCategorySlug(categorySlug);
 
   const categoryProducts = useMemo(() => {
-    if (slug === "junior-boys" || slug === "toddler-boys" || slug === "junior-girls" || slug === "toddler-girls") {
-      const kidsProducts = normalized.filter((item) => item.topCategory === "Kids");
-      const split = splitKidsProducts(kidsProducts);
-      const groupLabel = slugToLabel(slug) as (typeof JUNIOR_GROUPS)[number];
-      return split[groupLabel] || [];
-    }
-
     const topCategory = mapTopCategory(slug);
     return normalized.filter((item) => item.topCategory === topCategory);
   }, [normalized, slug]);
@@ -277,8 +249,7 @@ export function CategoryCollectionClient({ products, categorySlug }: Props) {
   }, [categoryProducts]);
 
   const juniorsGroups = useMemo(() => {
-    const kidsProducts = normalized.filter((item) => item.topCategory === "Kids");
-    return splitKidsProducts(kidsProducts);
+    return splitKidsProducts(normalized);
   }, [normalized]);
 
   const isJuniorsRoot = isJuniorsSlug(slug);

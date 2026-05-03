@@ -21,10 +21,18 @@ function orderTitle(name: NotificationEvent["name"]) {
       return "Order Processing";
     case "suborder_shipped":
       return "Order Shipped";
+    case "suborder_delivery_failed":
+      return "Delivery Failed";
+    case "suborder_retry_scheduled":
+      return "Retry Scheduled";
+    case "suborder_returned":
+      return "Order Returned";
     case "suborder_delivered":
       return "Order Delivered";
     case "suborder_cancelled":
       return "Order Cancelled";
+    case "order_address_updated":
+      return "Address Updated";
     default:
       return "Order Update";
   }
@@ -35,6 +43,7 @@ function resolveOrderUpdateTitle(event: NotificationEvent) {
   if (note.includes("out for delivery")) return "Out For Delivery";
   if (note.includes("delivery failed")) return "Delivery Failed";
   if (note.includes("returned")) return "Order Returned";
+  if (note.includes("address updated")) return "Address Updated";
   return orderTitle(event.name);
 }
 
@@ -60,8 +69,12 @@ export function buildNotificationTemplate(
     event.name === "suborder_confirmed" ||
     event.name === "suborder_processing" ||
     event.name === "suborder_shipped" ||
+    event.name === "suborder_delivery_failed" ||
+    event.name === "suborder_retry_scheduled" ||
+    event.name === "suborder_returned" ||
     event.name === "suborder_delivered" ||
-    event.name === "suborder_cancelled"
+    event.name === "suborder_cancelled" ||
+    event.name === "order_address_correction_required"
   ) {
     const normalizedOrderEventName =
       event.name === "suborder_shipped" && event.note?.toLowerCase().includes("delivered") ? "suborder_delivered" : event.name;
@@ -97,6 +110,36 @@ export function buildNotificationTemplate(
         return {
           title,
           message: noteSuffix.trim() || `Order ${event.orderId} has been shipped by ${shippedByBrandName}.`,
+        };
+      }
+
+      if (normalizedOrderEventName === "order_address_correction_required") {
+        return {
+          title: "Address Correction Required",
+          message: `Your delivery failed due to incorrect address. Please update your address to proceed with delivery.`,
+        };
+      }
+
+      if (normalizedOrderEventName === "suborder_delivery_failed") {
+        const failureNote = event.note ? `\n${event.note}` : "";
+        return {
+          title,
+          message: `Delivery unsuccessful for order ${event.orderId}.${failureNote}${failureNote ? "" : " We're working on your delivery."}`,
+        };
+      }
+
+      if (normalizedOrderEventName === "suborder_retry_scheduled") {
+        return {
+          title,
+          message: event.note ? `A delivery retry has been scheduled. ${event.note}` : `A delivery retry has been scheduled for order ${event.orderId}.`,
+        };
+      }
+
+      if (normalizedOrderEventName === "suborder_returned") {
+        const returnNote = event.note || "Your order has been processed for return.";
+        return {
+          title,
+          message: `Order ${event.orderId} status: Returned. ${returnNote}`,
         };
       }
 
@@ -154,6 +197,37 @@ export function buildNotificationTemplate(
         };
       }
 
+      if (normalizedOrderEventName === "order_address_correction_required") {
+        return {
+          title: "Address Correction Required",
+          message: `Order delivery failed due to incorrect address. Waiting for customer update.`,
+        };
+      }
+
+      if (normalizedOrderEventName === "suborder_delivery_failed") {
+        const failureNote = event.note ? `\n${event.note}` : "";
+        return {
+          title,
+          message: `Delivery attempt failed for order ${event.orderId}.${failureNote}`,
+        };
+      }
+
+      if (normalizedOrderEventName === "suborder_retry_scheduled") {
+        return {
+          title,
+          message: event.note || `Retry scheduled for order ${event.orderId}.`,
+        };
+      }
+
+      if (normalizedOrderEventName === "suborder_returned") {
+        const returnNote = event.note || "Order has been processed for return.";
+        return {
+          title,
+          message: `Order ${event.orderId} returned for ${recipientBrand}. ${returnNote}`,
+        };
+      }
+
+
       if (normalizedOrderEventName === "suborder_cancelled") {
         const cancelledRef = event.subOrderId ? `Sub-order ${event.subOrderId}` : `Order ${event.orderId}`;
         return {
@@ -199,6 +273,34 @@ export function buildNotificationTemplate(
       return {
         title,
         message: noteSuffix.trim() || `Order ${event.orderId} has been shipped by ${shippedByBrandName}.`,
+      };
+    }
+
+    if (normalizedOrderEventName === "order_address_correction_required") {
+      return {
+        title: "Address Correction Required",
+        message: `Delivery failed due to incorrect address. Please update your address to proceed with delivery.${noteSuffix}`,
+      };
+    }
+
+    if (normalizedOrderEventName === "suborder_delivery_failed") {
+      return {
+        title,
+        message: `Delivery failed for ${event.subOrderId ? `sub-order ${event.subOrderId}` : `order ${event.orderId}`}.${noteSuffix}`,
+      };
+    }
+
+    if (normalizedOrderEventName === "suborder_retry_scheduled") {
+      return {
+        title,
+        message: event.note || `Retry scheduled for order ${event.orderId}.`,
+      };
+    }
+
+    if (normalizedOrderEventName === "suborder_returned") {
+      return {
+        title,
+        message: `${event.subOrderId ? `Sub-order ${event.subOrderId}` : `Order ${event.orderId}`} has been returned.${noteSuffix}`,
       };
     }
 
@@ -354,6 +456,13 @@ export function buildNotificationTemplate(
     return {
       title: "Brand Reply on Review",
       message: `${brandPrefix} to your review on ${event.productName}.`,
+    };
+  }
+
+  if (event.name === "order_address_updated") {
+    return {
+      title: "Address Updated",
+      message: event.note || `Customer has updated the delivery address for order ${event.orderId}.`,
     };
   }
 

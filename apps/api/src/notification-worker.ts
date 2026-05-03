@@ -1,5 +1,6 @@
 import { createServer, type Server } from "node:http";
 import { env } from "./config/env.js";
+import { getOrderDeliveryFailureWorkerStats, startOrderDeliveryFailureWorker, stopOrderDeliveryFailureWorker } from "./modules/orders/deliveryFailure.worker.js";
 import { getNotificationWorkerStats } from "./modules/notifications/notification.worker.js";
 import { startNotificationWorker, stopNotificationWorker } from "./modules/notifications/notification.worker.js";
 
@@ -19,11 +20,13 @@ async function shutdown(signal: string) {
     healthServer = null;
   }
 
+  await stopOrderDeliveryFailureWorker();
   await stopNotificationWorker();
   process.exit(0);
 }
 
 startNotificationWorker();
+startOrderDeliveryFailureWorker();
 
 console.log("[notifications] standalone worker started", {
   adapter: env.notificationQueueAdapter,
@@ -42,9 +45,11 @@ if (env.notificationWorkerHealthPort > 0) {
     void (async () => {
       try {
         const stats = await getNotificationWorkerStats();
+        const orderAutomationStats = await getOrderDeliveryFailureWorkerStats();
         const body = JSON.stringify({
           ok: true,
           stats,
+          orderAutomationStats,
         });
 
         res.setHeader("content-type", "application/json");

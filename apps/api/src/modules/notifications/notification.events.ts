@@ -3,6 +3,9 @@ export const notificationEventNames = {
   orderConfirmed: "suborder_confirmed",
   orderProcessing: "suborder_processing",
   orderShipped: "suborder_shipped",
+  orderDeliveryFailed: "suborder_delivery_failed",
+  orderRetryScheduled: "suborder_retry_scheduled",
+  orderReturned: "suborder_returned",
   orderDelivered: "suborder_delivered",
   orderCancelled: "suborder_cancelled",
   paymentInitiated: "payment_initiated",
@@ -18,6 +21,8 @@ export const notificationEventNames = {
   reviewReported: "review_reported",
   reviewModerated: "review_moderated",
   reviewReplied: "review_replied",
+  orderAddressCorrectionRequired: "order_address_correction_required",
+  orderAddressUpdated: "order_address_updated",
 } as const;
 
 export type NotificationEventName = (typeof notificationEventNames)[keyof typeof notificationEventNames];
@@ -35,8 +40,13 @@ export type NotificationEvent =
         | typeof notificationEventNames.orderConfirmed
         | typeof notificationEventNames.orderProcessing
         | typeof notificationEventNames.orderShipped
+        | typeof notificationEventNames.orderDeliveryFailed
+        | typeof notificationEventNames.orderRetryScheduled
+        | typeof notificationEventNames.orderReturned
         | typeof notificationEventNames.orderDelivered
-        | typeof notificationEventNames.orderCancelled;
+        | typeof notificationEventNames.orderCancelled
+        | typeof notificationEventNames.orderAddressCorrectionRequired
+        | typeof notificationEventNames.orderAddressUpdated;
       orderId: string;
       subOrderId?: string;
       changedByRole?: "SYSTEM" | "ADMIN" | "BRAND" | "USER";

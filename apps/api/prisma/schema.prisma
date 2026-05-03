@@ -31,6 +31,8 @@ enum OrderStatus {
   SHIPPED
   OUT_FOR_DELIVERY
   DELIVERY_FAILED
+  ADDRESS_CORRECTION_REQUIRED
+  READY_FOR_REDELIVERY
   DELIVERED
   RETURNED
   CANCELED
@@ -62,6 +64,15 @@ enum OrderStatusUpdatedBy {
   SYSTEM
   BRAND
   ADMIN
+}
+
+enum DeliveryFailureReason {
+  CUSTOMER_NOT_AVAILABLE
+  INCORRECT_ADDRESS
+  PHONE_UNREACHABLE
+  REFUSED_DELIVERY
+  AREA_NOT_SERVICEABLE
+  OTHER
 }
 
 enum NotificationType {
@@ -433,6 +444,10 @@ model SubOrder {
   trackingId     String?
   deliveryAttempts Int       @default(0)
   failureReason  String?
+  failureReasonMessage String?
+  deliveryFailedAt DateTime?
+  brandReminderSentAt DateTime?
+  lastAttemptAt   DateTime?
   nextAttemptDate DateTime?
   finalDeliveryFailureAt DateTime?
   refundProcessedAt DateTime?
@@ -603,13 +618,13 @@ model Notification {
   title       String
   message     String
   readAt      DateTime?
-  channel     NotificationChannel
+  channel     NotificationChannel @default(DASHBOARD)
   deliveryStatus NotificationDeliveryStatus @default(QUEUED)
   deliveryAttempts Int    @default(0)
   failedReason   String?
   nextAttemptAt  DateTime?
   createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  updatedAt   DateTime  @default(now()) @updatedAt
   channelLogs NotificationChannelLog[]
 
   @@index([userId, createdAt])

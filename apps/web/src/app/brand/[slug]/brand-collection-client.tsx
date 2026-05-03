@@ -30,7 +30,7 @@ export function BrandCollectionClient({ products }: Props) {
         <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.12em]">
           <span className="text-zinc-500">Category</span>
           <select className="h-9 border border-zinc-300 px-2" value={topCategory} onChange={(event) => setTopCategory(event.target.value)}>
-            {["All", "Men", "Women", "Kids"].map((item) => (
+            {["All", "Men", "Women", "Toddler Boys", "Toddler Girls", "Junior Boys", "Junior Girls"].map((item) => (
               <option key={item} value={item}>
                 {item}
               </option>

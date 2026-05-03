@@ -69,7 +69,9 @@ const MEN_WOMEN_MENU_ITEMS: CatalogCard[] = [
   { label: "Jeans", filters: { q: "Jeans", productType: "Bottom", subCategory: "Jeans" } },
   { label: "Sneakers", filters: { q: "Sneakers", productType: "Footwear", subCategory: "Sneakers" } },
   { label: "Boots", filters: { q: "Boots", productType: "Footwear", subCategory: "Boots" } },
-  { label: "Accessories", filters: { q: "Accessories", productType: "Accessories", subCategory: "Accessories" } },
+  { label: "Bags", filters: { q: "Bags", productType: "Accessories", subCategory: "Bags" } },
+  { label: "Belts", filters: { q: "Belts", productType: "Accessories", subCategory: "Belts" } },
+  { label: "Jewelry", filters: { q: "Jewelry", productType: "Accessories", subCategory: "Jewelry" } },
 ];
 
 const primaryNavItems = [
@@ -105,6 +107,28 @@ function buildCatalogHref(filters: CatalogFilters) {
 
   const query = params.toString();
   return query ? `/catalog?${query}` : "/catalog";
+}
+
+function formatNotificationTimestamp(value?: string | null) {
+  if (!value) return "N/A";
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "N/A";
+
+  const diffMs = Date.now() - parsed.getTime();
+  const diffMinutes = Math.round(diffMs / 60_000);
+  const diffHours = Math.round(diffMs / 3_600_000);
+
+  if (Math.abs(diffMinutes) < 1) return "just now";
+  if (Math.abs(diffMinutes) < 60) return `${Math.abs(diffMinutes)} min${Math.abs(diffMinutes) === 1 ? "" : "s"} ago`;
+  if (Math.abs(diffHours) < 24) return `${Math.abs(diffHours)} hour${Math.abs(diffHours) === 1 ? "" : "s"} ago`;
+
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    day: "2-digit",
+    month: "short",
+  }).format(parsed);
 }
 
 function canAccessBrandArea(role?: string) {
@@ -199,7 +223,14 @@ export function SiteHeader() {
 
     const categorySlug = decodeURIComponent(pathname.split("/")[2] || "");
     const resolvedCategory = resolveTopCategoryFilter(categorySlug);
-    if (resolvedCategory === "Men" || resolvedCategory === "Women" || resolvedCategory === "Kids") {
+    if (
+      resolvedCategory === "Men" ||
+      resolvedCategory === "Women" ||
+      resolvedCategory === "Toddler Boys" ||
+      resolvedCategory === "Toddler Girls" ||
+      resolvedCategory === "Junior Boys" ||
+      resolvedCategory === "Junior Girls"
+    ) {
       return resolvedCategory;
     }
 
@@ -370,34 +401,20 @@ export function SiteHeader() {
       try {
         const items = await getLatestNotifications();
         if (!active) return;
+        const newIds = new Set<string>(items.filter((item: NotificationItem) => !item.readAt).map((item: NotificationItem) => item.id));
+        setSessionNewNotificationIds(newIds);
 
-        // Track which notifications are "new" (unread) on first open
-        const sessionKey = `notificationSession_${user.id}`;
-        const hasSeenThisSession = sessionStorage.getItem(sessionKey) === "true";
-
-        if (!hasSeenThisSession) {
-          // First open: store the IDs of currently unread notifications
-          const newIds = new Set<string>(items.filter((item: NotificationItem) => !item.readAt).map((item: NotificationItem) => item.id));
-          setSessionNewNotificationIds(newIds);
-          sessionStorage.setItem(sessionKey, "true");
-
-          // Mark all as read
-          try {
-            await markAllNotificationsAsRead();
-            // After marking, update notifications to show all as read
-            const updated = items.map((item: NotificationItem) => ({
-              ...item,
-              readAt: item.readAt || new Date().toISOString(),
-            }));
-            setNotifications(updated);
-          } catch (readError) {
-            console.error("Failed to mark all as read:", readError);
-            setNotifications(items);
-          }
-        } else {
-          // Subsequent opens: just fetch the latest, clear new badge set
-          setNotifications(items);
+        try {
+          await markAllNotificationsAsRead();
+          const readAt = new Date().toISOString();
+          setNotifications(items.map((item: NotificationItem) => ({
+            ...item,
+            readAt: item.readAt || readAt,
+          })));
           setSessionNewNotificationIds(new Set<string>());
+        } catch (readError) {
+          console.error("Failed to mark all as read:", readError);
+          setNotifications(items);
         }
       } catch (error) {
         if (!active) return;
@@ -631,7 +648,6 @@ export function SiteHeader() {
                 </div>
               );
             }
-
             if (item.label === "Juniors") {
               return (
                 <div
@@ -680,7 +696,7 @@ export function SiteHeader() {
                                   <li key={sub}>
                                     <button
                                       type="button"
-                                      onClick={() => navigateToCatalog({ topCategory: "Kids", subCategory: sub, q: group })}
+                                      onClick={() => navigateToCatalog({ topCategory: group, subCategory: sub })}
                                       className="text-sm uppercase tracking-[0.08em] text-zinc-700 hover:underline"
                                     >
                                       {sub}
@@ -907,7 +923,7 @@ export function SiteHeader() {
             ) : notificationError ? (
               <p className="text-sm text-amber-700">{notificationError}</p>
             ) : notifications.length ? (
-              notifications.slice(0, 5).map((item) => (
+              notifications.map((item) => (
                 <Link
                   key={item.id}
                   href={getNotificationHref(item, user?.role)}
@@ -925,6 +941,9 @@ export function SiteHeader() {
                       </span>
                     )}
                   </div>
+                  <p className="mt-2 text-[11px] uppercase tracking-[0.12em] text-zinc-500">
+                    {formatNotificationTimestamp(item.createdAt)}
+                  </p>
                 </Link>
               ))
             ) : (

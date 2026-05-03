@@ -12,6 +12,7 @@ import {
   getUserOrders,
   reorderUserOrder,
   reorderUserSubOrder,
+  updateUserOrderAddress,
   type CancelReasonCode,
 } from "@/lib/api";
 import { formatPkr } from "@/lib/utils";
@@ -70,6 +71,110 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
   const [reorderConfirmOrderId, setReorderConfirmOrderId] = useState<string | null>(null);
   const [reorderingSubOrderId, setReorderingSubOrderId] = useState<string | null>(null);
   const [visibleNotificationCount, setVisibleNotificationCount] = useState(5);
+  const [editingAddress, setEditingAddress] = useState(false);
+  const [newAddress, setNewAddress] = useState("");
+  const [updatingAddress, setUpdatingAddress] = useState(false);
+
+  const visibleOrders = useMemo(
+    () =>
+      orders.filter((order) => {
+        if (order.status !== "CANCELED") return true;
+        return Date.now() - new Date(order.updatedAt || order.createdAt).getTime() <= CANCEL_RETENTION_MS;
+      }),
+    [orders],
+  );
+
+  const activeOrders = useMemo(
+    () => visibleOrders.filter((order) => !["DELIVERED", "RETURNED", "CANCELED"].includes(order.status)),
+    [visibleOrders],
+  );
+
+  const deliveredOrdersList = useMemo(
+    () => visibleOrders.filter((order) => order.status === "DELIVERED"),
+    [visibleOrders],
+  );
+
+  const canceledOrdersList = useMemo(
+    () => visibleOrders.filter((order) => order.status === "CANCELED"),
+    [visibleOrders],
+  );
+
+  const orderedForSidebar = useMemo(
+    () => [...activeOrders, ...deliveredOrdersList, ...canceledOrdersList],
+    [activeOrders, deliveredOrdersList, canceledOrdersList],
+  );
+
+  const selectedOrder = useMemo(
+    () => visibleOrders.find((order) => order.id === selectedOrderId) || visibleOrders[0] || null,
+    [visibleOrders, selectedOrderId],
+  );
+
+  const selectedNotifications = useMemo(
+    () =>
+      selectedOrder
+        ? notifications.filter((notification) => notification.order?.id === selectedOrder.id)
+        : notifications,
+    [notifications, selectedOrder],
+  );
+
+  const isInActionWindow = !!selectedOrder && Date.now() - new Date(selectedOrder.createdAt).getTime() <= 24 * 60 * 60 * 1000;
+  const canCancelSelectedOrder = !!selectedOrder && isInActionWindow && ["PENDING", "CONFIRMED"].includes(selectedOrder.status);
+  const canReorderSelectedOrder = !!selectedOrder && canReorderBySubOrders(selectedOrder);
+
+  const visibleSubOrders = useMemo(() => visibleOrders.flatMap((order) => order.subOrders || []), [visibleOrders]);
+  const openItems = useMemo(
+    () => visibleSubOrders.filter((subOrder) => !["DELIVERED", "RETURNED", "CANCELED"].includes(subOrder.status)).length,
+    [visibleSubOrders],
+  );
+  const deliveredItems = useMemo(() => visibleSubOrders.filter((subOrder) => subOrder.status === "DELIVERED").length, [visibleSubOrders]);
+  const cancelledItems = useMemo(() => visibleSubOrders.filter((subOrder) => subOrder.status === "CANCELED").length, [visibleSubOrders]);
+  const unreadNotifications = useMemo(() => notifications.filter((notification) => !notification.readAt).length, [notifications]);
+  const totalSpent = useMemo(
+    () => visibleSubOrders.reduce((sum, subOrder) => sum + (subOrder.status === "DELIVERED" ? subOrder.subtotalPkr : 0), 0),
+    [visibleSubOrders],
+  );
+  const sortedNotifications = useMemo(() => {
+    return [...selectedNotifications]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, visibleNotificationCount);
+  }, [selectedNotifications, visibleNotificationCount]);
+
+  const selectedSubOrderEvents = useMemo(() => {
+    if (!selectedOrder) return [];
+    return selectedOrder.subOrders
+      .flatMap((subOrder) =>
+        subOrder.statusLogs.map((log) => ({
+          ...log,
+          brandName: subOrder.brand?.name || "Brand",
+        })),
+      )
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [selectedOrder]);
+
+  const deliveredItemIds = useMemo(() => {
+    if (!selectedOrder) return new Set<string>();
+    return new Set(
+      selectedOrder.subOrders
+          .filter((subOrder) => subOrder.status === "DELIVERED")
+          .flatMap((subOrder) => subOrder.items.map((item) => item.id)),
+    );
+  }, [selectedOrder]);
+
+  const subOrderByItemId = useMemo(() => {
+    if (!selectedOrder) return new Map<string, UserOrder["subOrders"][number]>();
+    const mapping = new Map<string, UserOrder["subOrders"][number]>();
+    for (const subOrder of selectedOrder.subOrders) {
+      for (const item of subOrder.items) {
+        mapping.set(item.id, subOrder);
+      }
+    }
+    return mapping;
+  }, [selectedOrder]);
+
+  const firstWriteReviewItem = useMemo(() => {
+    if (!selectedOrder) return null;
+    return selectedOrder.items.find((item) => deliveredItemIds.has(item.id) && !myReviewsByOrderItemId[item.id]) || null;
+  }, [deliveredItemIds, myReviewsByOrderItemId, selectedOrder]);
 
   const loadOrders = useCallback(async (mode: "initial" | "refresh" = "initial") => {
     if (mode === "initial") {
@@ -168,6 +273,22 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
     }
   }, [router]);
 
+  const handleUpdateAddress = useCallback(async () => {
+    if (!selectedOrder || !newAddress.trim()) return;
+    setUpdatingAddress(true);
+    setCancelFeedback("");
+    try {
+      await updateUserOrderAddress(selectedOrder.id, newAddress.trim());
+      setCancelFeedback("Address updated successfully. Sub-orders moved to Ready for Re-delivery.");
+      setEditingAddress(false);
+      await loadOrders("refresh");
+    } catch (error) {
+      setCancelFeedback(error instanceof Error ? error.message : "Unable to update address.");
+    } finally {
+      setUpdatingAddress(false);
+    }
+  }, [selectedOrder, newAddress, loadOrders]);
+
   useEffect(() => {
     void loadOrders("initial");
     const interval = window.setInterval(() => {
@@ -183,107 +304,6 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
     if (!orders.some((order) => order.id === selectedFromQuery)) return;
     setSelectedOrderId(selectedFromQuery);
   }, [orders, searchParams]);
-
-  const visibleOrders = useMemo(
-    () =>
-      orders.filter((order) => {
-        if (order.status !== "CANCELED") return true;
-        return Date.now() - new Date(order.updatedAt || order.createdAt).getTime() <= CANCEL_RETENTION_MS;
-      }),
-    [orders],
-  );
-
-  const activeOrders = useMemo(
-    () => visibleOrders.filter((order) => !["DELIVERED", "RETURNED", "CANCELED"].includes(order.status)),
-    [visibleOrders],
-  );
-
-  const deliveredOrdersList = useMemo(
-    () => visibleOrders.filter((order) => order.status === "DELIVERED"),
-    [visibleOrders],
-  );
-
-  const canceledOrdersList = useMemo(
-    () => visibleOrders.filter((order) => order.status === "CANCELED"),
-    [visibleOrders],
-  );
-
-  const orderedForSidebar = useMemo(
-    () => [...activeOrders, ...deliveredOrdersList, ...canceledOrdersList],
-    [activeOrders, deliveredOrdersList, canceledOrdersList],
-  );
-
-  const selectedOrder = useMemo(
-    () => visibleOrders.find((order) => order.id === selectedOrderId) || visibleOrders[0] || null,
-    [visibleOrders, selectedOrderId],
-  );
-
-  const selectedNotifications = useMemo(
-    () =>
-      selectedOrder
-        ? notifications.filter((notification) => notification.order?.id === selectedOrder.id)
-        : notifications,
-    [notifications, selectedOrder],
-  );
-
-  const isInActionWindow = !!selectedOrder && Date.now() - new Date(selectedOrder.createdAt).getTime() <= 24 * 60 * 60 * 1000;
-  const canCancelSelectedOrder = !!selectedOrder && isInActionWindow && ["PENDING", "CONFIRMED"].includes(selectedOrder.status);
-  const canReorderSelectedOrder = !!selectedOrder && canReorderBySubOrders(selectedOrder);
-
-  const visibleSubOrders = useMemo(() => visibleOrders.flatMap((order) => order.subOrders || []), [visibleOrders]);
-  const openItems = useMemo(
-    () => visibleSubOrders.filter((subOrder) => !["DELIVERED", "RETURNED", "CANCELED"].includes(subOrder.status)).length,
-    [visibleSubOrders],
-  );
-  const deliveredItems = useMemo(() => visibleSubOrders.filter((subOrder) => subOrder.status === "DELIVERED").length, [visibleSubOrders]);
-  const cancelledItems = useMemo(() => visibleSubOrders.filter((subOrder) => subOrder.status === "CANCELED").length, [visibleSubOrders]);
-  const unreadNotifications = useMemo(() => notifications.filter((notification) => !notification.readAt).length, [notifications]);
-  const totalSpent = useMemo(
-    () => visibleSubOrders.reduce((sum, subOrder) => sum + (subOrder.status === "DELIVERED" ? subOrder.subtotalPkr : 0), 0),
-    [visibleSubOrders],
-  );
-  const sortedNotifications = useMemo(() => {
-    return [...selectedNotifications]
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, visibleNotificationCount);
-  }, [selectedNotifications, visibleNotificationCount]);
-
-  const selectedSubOrderEvents = useMemo(() => {
-    if (!selectedOrder) return [];
-    return selectedOrder.subOrders
-      .flatMap((subOrder) =>
-        subOrder.statusLogs.map((log) => ({
-          ...log,
-          brandName: subOrder.brand?.name || "Brand",
-        })),
-      )
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [selectedOrder]);
-
-  const deliveredItemIds = useMemo(() => {
-    if (!selectedOrder) return new Set<string>();
-    return new Set(
-      selectedOrder.subOrders
-        .filter((subOrder) => subOrder.status === "DELIVERED")
-        .flatMap((subOrder) => subOrder.items.map((item) => item.id)),
-    );
-  }, [selectedOrder]);
-
-  const subOrderByItemId = useMemo(() => {
-    if (!selectedOrder) return new Map<string, UserOrder["subOrders"][number]>();
-    const mapping = new Map<string, UserOrder["subOrders"][number]>();
-    for (const subOrder of selectedOrder.subOrders) {
-      for (const item of subOrder.items) {
-        mapping.set(item.id, subOrder);
-      }
-    }
-    return mapping;
-  }, [selectedOrder]);
-
-  const firstWriteReviewItem = useMemo(() => {
-    if (!selectedOrder) return null;
-    return selectedOrder.items.find((item) => deliveredItemIds.has(item.id) && !myReviewsByOrderItemId[item.id]) || null;
-  }, [deliveredItemIds, myReviewsByOrderItemId, selectedOrder]);
 
   if (loading) {
     return <p className="text-sm text-zinc-600">Loading your order tracker...</p>;
@@ -477,13 +497,75 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
               </div>
               <div>
                 <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Delivery Address</p>
-                <p className="mt-2 text-sm text-zinc-700">{selectedOrder.deliveryAddress}</p>
+                {editingAddress ? (
+                  <div className="mt-2 space-y-2">
+                    <textarea
+                      className="min-h-[80px] w-full border border-zinc-300 p-2 text-sm text-zinc-900"
+                      value={newAddress}
+                      onChange={(e) => setNewAddress(e.target.value)}
+                      placeholder="Enter new delivery address"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleUpdateAddress}
+                        disabled={updatingAddress || !newAddress.trim() || newAddress === selectedOrder.deliveryAddress}
+                        className="inline-flex h-8 items-center bg-black px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-50"
+                      >
+                        {updatingAddress ? "Saving..." : "Save Address"}
+                      </button>
+                      <button
+                        onClick={() => setEditingAddress(false)}
+                        className="inline-flex h-8 items-center border border-zinc-300 px-3 text-[10px] font-semibold uppercase tracking-[0.12em]"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-2">
+                    <p className="text-sm text-zinc-700">{selectedOrder.deliveryAddress}</p>
+                    {selectedOrder.subOrders.some((so) => so.status === "ADDRESS_CORRECTION_REQUIRED") && (
+                      <button
+                        onClick={() => {
+                          setNewAddress(selectedOrder.deliveryAddress);
+                          setEditingAddress(true);
+                        }}
+                        className="mt-2 inline-flex h-8 items-center border border-black px-3 text-[10px] font-semibold uppercase tracking-[0.12em]"
+                      >
+                        Update Address
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
               <div>
                 <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Order Total</p>
                 <p className="mt-2 text-sm font-semibold">{formatPkr(selectedOrder.totalPkr)}</p>
               </div>
             </section>
+
+            {selectedOrder.subOrders.some((so) => so.status === "ADDRESS_CORRECTION_REQUIRED") && !editingAddress ? (
+              <section className="border-2 border-orange-400 bg-orange-50 p-5 space-y-3">
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 text-2xl" aria-hidden="true">⚠️</span>
+                  <div className="space-y-1">
+                    <h3 className="font-heading text-xl uppercase text-orange-900">Address Correction Required</h3>
+                    <p className="text-sm text-orange-800">
+                      Your delivery failed due to an incorrect address. Please update your delivery address below so we can reattempt delivery.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setNewAddress(selectedOrder.deliveryAddress);
+                    setEditingAddress(true);
+                  }}
+                  className="inline-flex h-10 items-center border-2 border-orange-600 bg-orange-600 px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white"
+                >
+                  Update Delivery Address
+                </button>
+              </section>
+            ) : null}
 
             {cancelFeedback ? (
               <p className={`border px-3 py-2 text-sm ${cancelFeedback.toLowerCase().includes("success") ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-amber-300 bg-amber-50 text-amber-800"}`}>

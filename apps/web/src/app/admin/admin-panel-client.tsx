@@ -459,7 +459,10 @@ export function AdminPanelClient() {
             >
               <option value="Men">Men</option>
               <option value="Women">Women</option>
-              <option value="Kids">Kids</option>
+              <option value="Toddler Boys">Toddler Boys</option>
+              <option value="Toddler Girls">Toddler Girls</option>
+              <option value="Junior Boys">Junior Boys</option>
+              <option value="Junior Girls">Junior Girls</option>
             </select>
             <input
               className="h-10 w-full border border-zinc-300 px-3"

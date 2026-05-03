@@ -21,6 +21,15 @@ type ReviewSectionProps = {
 
 const reportReasons: ReviewReportReason[] = ["SPAM", "INAPPROPRIATE", "OFFENSIVE_LANGUAGE", "FAKE_REVIEW", "OTHER"];
 
+// Avoid hydration mismatch by formatting dates only on client
+function formatReviewDate(dateString: string): string {
+  try {
+    return new Date(dateString).toLocaleDateString("en-PK");
+  } catch {
+    return "Invalid date";
+  }
+}
+
 function StarDisplay({ rating }: { rating: number }) {
   return (
     <div className="flex items-center gap-1" aria-label={`${rating} out of 5 stars`}>
@@ -55,6 +64,7 @@ export function ReviewSection({
 }: ReviewSectionProps) {
   const user = useAuthStore((state) => state.user);
   const pushToast = useToastStore((state) => state.pushToast);
+  const [hasHydrated, setHasHydrated] = useState(false);
   const [reviews, setReviews] = useState<ProductReview[]>(initialReviews);
   const [aggregate, setAggregate] = useState(initialAggregate);
   const [total, setTotal] = useState(initialTotal ?? initialAggregate.totalReviews ?? initialReviews.length);
@@ -70,6 +80,10 @@ export function ReviewSection({
   const reviewCountLabel = useMemo(() => `${aggregate.totalReviews} reviews`, [aggregate.totalReviews]);
   const canLoadMore = reviews.length < total;
   const canWriteReview = Boolean(user && isPurchasedByUser && writeOrderItemId);
+
+  useEffect(() => {
+    setHasHydrated(true);
+  }, []);
 
   useEffect(() => {
     setReviews(initialReviews);
@@ -292,7 +306,9 @@ export function ReviewSection({
                 </div>
                 <div className="text-right">
                   <StarDisplay rating={review.rating} />
-                  <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">{new Date(review.createdAt).toLocaleDateString("en-PK")}</p>
+                  <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">
+                    {hasHydrated ? formatReviewDate(review.createdAt) : "—"}
+                  </p>
                 </div>
               </div>
 

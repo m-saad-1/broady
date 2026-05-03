@@ -1,5 +1,6 @@
 "use client";
 
+                  <option value={order.status} disabled>Current: {getOrderStatusLabel(order.status)}</option>
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ProductImage } from "@/components/ui/product-image";

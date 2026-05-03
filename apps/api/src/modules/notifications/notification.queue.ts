@@ -1,5 +1,6 @@
 import { env } from "../../config/env.js";
 import { prisma } from "../../config/prisma.js";
+import crypto from "node:crypto";
 import type { Job } from "bullmq";
 import { Queue, Worker } from "bullmq";
 import type { NotificationEvent } from "./notification.events.js";
@@ -54,8 +55,29 @@ export interface NotificationQueueAdapter {
   shutdown?(): Promise<void>;
 }
 
-function createJobId() {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+function buildEventFingerprint(event: NotificationEvent) {
+  return JSON.stringify({
+    name: event.name,
+    orderId: event.orderId || null,
+    subOrderId: "subOrderId" in event ? event.subOrderId || null : null,
+    userId: event.userId || null,
+    brandId: event.brandId || null,
+    changedByRole: "changedByRole" in event ? event.changedByRole || null : null,
+    note: "note" in event ? event.note || null : null,
+    brandName: "brandName" in event ? event.brandName || null : null,
+    notifyAdmin: "notifyAdmin" in event ? event.notifyAdmin ?? null : null,
+    paymentMethod: "paymentMethod" in event ? event.paymentMethod || null : null,
+    reason: "reason" in event ? event.reason || null : null,
+    productId: "productId" in event ? event.productId || null : null,
+    productName: "productName" in event ? event.productName || null : null,
+    submittedByUserId: "submittedByUserId" in event ? event.submittedByUserId || null : null,
+    reviewId: "reviewId" in event ? event.reviewId || null : null,
+    moderationStatus: "moderationStatus" in event ? event.moderationStatus || null : null,
+  });
+}
+
+function buildEventJobId(event: NotificationEvent) {
+  return crypto.createHash("sha256").update(buildEventFingerprint(event)).digest("hex");
 }
 
 function parseRedisConnectionOptions(redisUrl: string) {
@@ -84,7 +106,7 @@ class InMemoryNotificationQueueAdapter implements NotificationQueueAdapter {
   async enqueue(event: NotificationEvent): Promise<void> {
     const now = Date.now();
     const job: NotificationQueueJob = {
-      id: createJobId(),
+      id: buildEventJobId(event),
       event,
       attempts: 0,
       nextRunAt: now,
@@ -206,33 +228,39 @@ class PostgresNotificationQueueAdapter implements NotificationQueueAdapter {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS notification_event_jobs (
-        id TEXT PRIMARY KEY,
-        event_json JSONB NOT NULL,
-        attempts INTEGER NOT NULL DEFAULT 0,
-        next_run_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        locked_at TIMESTAMPTZ,
-        last_error TEXT
-      );
-    `);
+    try {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS notification_event_jobs (
+          id TEXT PRIMARY KEY,
+          event_json JSONB NOT NULL,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          next_run_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          locked_at TIMESTAMPTZ,
+          last_error TEXT
+        );
+      `);
 
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS notification_event_dead_letters (
-        id TEXT PRIMARY KEY,
-        event_json JSONB NOT NULL,
-        attempts INTEGER NOT NULL,
-        error_message TEXT NOT NULL,
-        discarded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-    `);
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS notification_event_dead_letters (
+          id TEXT PRIMARY KEY,
+          event_json JSONB NOT NULL,
+          attempts INTEGER NOT NULL,
+          error_message TEXT NOT NULL,
+          discarded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `);
 
-    await prisma.$executeRawUnsafe(`
-      CREATE INDEX IF NOT EXISTS notification_event_jobs_ready_idx
-      ON notification_event_jobs (next_run_at)
-      WHERE locked_at IS NULL;
-    `);
+      await prisma.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS notification_event_jobs_ready_idx
+        ON notification_event_jobs (next_run_at)
+        WHERE locked_at IS NULL;
+      `);
+    } catch (error) {
+      // Ignore errors related to existing objects, as IF NOT EXISTS should handle it
+      // but Prisma/Postgres can sometimes throw unique constraint violations on system catalogs
+      console.warn("[notifications] postgres adapter initialization warning (tables may already exist):", error instanceof Error ? error.message : error);
+    }
 
     this.initialized = true;
   }
@@ -242,7 +270,8 @@ class PostgresNotificationQueueAdapter implements NotificationQueueAdapter {
 
     await prisma.$executeRaw`
       INSERT INTO notification_event_jobs (id, event_json, attempts, next_run_at, created_at)
-      VALUES (${createJobId()}, ${JSON.stringify(event)}::jsonb, 0, NOW(), NOW())
+      VALUES (${buildEventJobId(event)}, ${JSON.stringify(event)}::jsonb, 0, NOW(), NOW())
+      ON CONFLICT (id) DO NOTHING
     `;
   }
 
@@ -404,8 +433,9 @@ class PostgresNotificationQueueAdapter implements NotificationQueueAdapter {
         RETURNING event_json
       )
       INSERT INTO notification_event_jobs (id, event_json, attempts, next_run_at, created_at)
-      SELECT ${createJobId()}, moved.event_json, 0, NOW(), NOW()
+      SELECT ${jobId}, moved.event_json, 0, NOW(), NOW()
       FROM moved
+      ON CONFLICT (id) DO NOTHING
       RETURNING id
     `;
 
@@ -468,6 +498,7 @@ class RedisBullMqNotificationQueueAdapter implements NotificationQueueAdapter {
     await this.initialize();
 
     await this.queue!.add("notification-event", event, {
+      jobId: buildEventJobId(event),
       attempts: Math.max(env.notificationWorkerMaxAttempts, 1),
       backoff: {
         type: "exponential",

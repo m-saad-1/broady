@@ -26,7 +26,7 @@ type ProductFormState = {
   slug: string;
   description: string;
   pricePkr: string;
-  topCategory: "Men" | "Women" | "Kids";
+  topCategory: "Men" | "Women" | "Toddler Boys" | "Toddler Girls" | "Junior Boys" | "Junior Girls";
   subCategory: string;
   sizes: string;
   imageUrl: string;
@@ -327,10 +327,13 @@ export function BrandProductsClient() {
             <input className="h-10 w-full border border-zinc-300 px-3" type="number" min={0} placeholder="Stock" value={productForm.stock} onChange={(event) => setProductForm((current) => ({ ...current, stock: event.target.value }))} required />
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <select className="h-10 w-full border border-zinc-300 px-3" value={productForm.topCategory} onChange={(event) => setProductForm((current) => ({ ...current, topCategory: event.target.value as ProductFormState["topCategory"] }))}>
-              <option value="Men">Men</option>
-              <option value="Women">Women</option>
-              <option value="Kids">Kids</option>
+              <select className="h-10 w-full border border-zinc-300 px-3" value={productForm.topCategory} onChange={(event) => setProductForm((current) => ({ ...current, topCategory: event.target.value as ProductFormState["topCategory"] }))}>
+                <option value="Men">Men</option>
+                <option value="Women">Women</option>
+                <option value="Toddler Boys">Toddler Boys</option>
+                <option value="Toddler Girls">Toddler Girls</option>
+                <option value="Junior Boys">Junior Boys</option>
+                <option value="Junior Girls">Junior Girls</option>
             </select>
             <input className="h-10 w-full border border-zinc-300 px-3" placeholder="Sub category" value={productForm.subCategory} onChange={(event) => setProductForm((current) => ({ ...current, subCategory: event.target.value }))} required />
           </div>

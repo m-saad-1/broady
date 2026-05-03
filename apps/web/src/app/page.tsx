@@ -50,7 +50,7 @@ export default async function Home() {
   const trending = products.slice(0, 16);
   const menProducts = products.filter((product) => product.topCategory === "Men").slice(0, 16);
   const womenProducts = products.filter((product) => product.topCategory === "Women").slice(0, 16);
-  const juniorsProducts = products.filter((product) => product.topCategory === "Kids").slice(0, 16);
+  const juniorsProducts = products.filter((product) => ["Junior Boys", "Toddler Boys", "Junior Girls", "Toddler Girls"].includes(product.topCategory)).slice(0, 16);
   const categoryHighlights = [
     { name: "Men", image: "https://images.unsplash.com/photo-1516826957135-700dedea698c?w=1200", href: "/category/Men" },
     { name: "Women", image: "https://images.unsplash.com/photo-1485968579580-b6d095142e6e?w=1200", href: "/category/Women" },

@@ -15,7 +15,7 @@ import {
 import { buildBrandProductPayload } from "@/lib/product-form";
 import type { ProductFormValues } from "@/lib/product-form";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
-import { getOrderStatusOptions } from "@/lib/order-status";
+import { getOrderStatusLabel, getOrderStatusOptions } from "@/lib/order-status";
 import { useToastStore } from "@/stores/toast-store";
 import type { BrandDashboardOrder, BrandDashboardOverview, NotificationItem, Product } from "@/types/marketplace";
 
@@ -36,7 +36,7 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [creatingProduct, setCreatingProduct] = useState(false);
   const [showAddProductForm, setShowAddProductForm] = useState(false);
-  const [orderDrafts, setOrderDrafts] = useState<Record<string, { status: string; trackingId: string; note: string; customerNote: string }>>({});
+  const [orderDrafts, setOrderDrafts] = useState<Record<string, { status: string; trackingId: string; note: string; customerNote: string; failureReason: string; failureReasonMessage: string }>>({});
   const [pendingStatusOrderId, setPendingStatusOrderId] = useState<string | null>(null);
   const [productDrafts, setProductDrafts] = useState<Record<string, Omit<ProductFormValues, "brandId">>>({});
   const [newProduct, setNewProduct] = useState<Omit<ProductFormValues, "brandId">>({
@@ -106,6 +106,8 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
         trackingId: order.trackingId || "",
         note: "",
         customerNote: "",
+        failureReason: order.failureReason || "",
+        failureReasonMessage: "",
       };
     }
     setOrderDrafts(drafts);
@@ -157,6 +159,8 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
         trackingId: draft.trackingId.trim() || undefined,
         note: draft.note.trim() || undefined,
         customerNote: draft.customerNote.trim() || undefined,
+        failureReason: draft.failureReason.trim() || undefined,
+        failureReasonMessage: draft.failureReasonMessage.trim() || undefined,
       });
       pushToast("Order status updated", "success");
       await loadAll(true);
@@ -304,16 +308,17 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
                     setOrderDrafts((current) => ({
                       ...current,
                       [order.id]: {
+                        ...current[order.id],
                         status: value,
-                        trackingId: current[order.id]?.trackingId || order.trackingId || "",
-                        note: current[order.id]?.note || "",
-                        customerNote: current[order.id]?.customerNote || "",
                       },
                     }));
                   }}
                   disabled={savingOrderId === order.id}
                   className="h-9 border border-zinc-300 px-2 text-xs"
                 >
+                  <option value={order.status} disabled>
+                    Current: {getOrderStatusLabel(order.status)}
+                  </option>
                   {getOrderStatusOptions(order.status).map((status) => (
                     <option key={status} value={status}>{status}</option>
                   ))}
@@ -338,10 +343,8 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
                   setOrderDrafts((current) => ({
                     ...current,
                     [order.id]: {
-                      status: current[order.id]?.status || order.status,
+                      ...current[order.id],
                       trackingId: value,
-                      note: current[order.id]?.note || "",
-                      customerNote: current[order.id]?.customerNote || "",
                     },
                   }));
                 }}
@@ -355,10 +358,8 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
                   setOrderDrafts((current) => ({
                     ...current,
                     [order.id]: {
-                      status: current[order.id]?.status || order.status,
-                      trackingId: current[order.id]?.trackingId || order.trackingId || "",
+                      ...current[order.id],
                       note: value,
-                      customerNote: current[order.id]?.customerNote || "",
                     },
                   }));
                 }}
@@ -372,14 +373,53 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
                   setOrderDrafts((current) => ({
                     ...current,
                     [order.id]: {
-                      status: current[order.id]?.status || order.status,
-                      trackingId: current[order.id]?.trackingId || order.trackingId || "",
-                      note: current[order.id]?.note || "",
+                      ...current[order.id],
                       customerNote: value,
                     },
                   }));
                 }}
               />
+              {(orderDrafts[order.id]?.status === "DELIVERY_FAILED" || orderDrafts[order.id]?.status === "ADDRESS_CORRECTION_REQUIRED") && (
+                <>
+                  <select
+                    className="h-9 border border-zinc-300 px-3 text-xs"
+                    value={orderDrafts[order.id]?.failureReason || ""}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setOrderDrafts((current) => ({
+                        ...current,
+                        [order.id]: {
+                          ...current[order.id],
+                          failureReason: value,
+                        },
+                      }));
+                    }}
+                  >
+                    <option value="">Select failure reason...</option>
+                    <option value="INCORRECT_ADDRESS">Incorrect Address</option>
+                    <option value="CUSTOMER_NOT_AVAILABLE">Customer Unavailable</option>
+                    <option value="REFUSED_DELIVERY">Refused by Customer</option>
+                    <option value="PHONE_UNREACHABLE">Phone Unreachable</option>
+                    <option value="AREA_NOT_SERVICEABLE">Area Not Serviceable</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                  <input
+                    className="h-9 border border-zinc-300 px-3 text-xs"
+                    placeholder="Failure details (optional)"
+                    value={orderDrafts[order.id]?.failureReasonMessage || ""}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setOrderDrafts((current) => ({
+                        ...current,
+                        [order.id]: {
+                          ...current[order.id],
+                          failureReasonMessage: value,
+                        },
+                      }));
+                    }}
+                  />
+                </>
+              )}
             </div>
             <p className="text-xs text-zinc-600">
               Items: {order.items.map((item) => `${item.product.name} x${item.quantity}`).join(", ")}
@@ -428,10 +468,13 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
               <textarea className="min-h-24 border border-zinc-300 p-3 md:col-span-2" placeholder="Description" value={newProduct.description} onChange={(event) => setNewProduct((current) => ({ ...current, description: event.target.value }))} required />
               <input className="h-10 border border-zinc-300 px-3" type="number" min={1} placeholder="Price PKR" value={newProduct.pricePkr} onChange={(event) => setNewProduct((current) => ({ ...current, pricePkr: event.target.value }))} required />
               <input className="h-10 border border-zinc-300 px-3" type="number" min={0} placeholder="Stock" value={newProduct.stock} onChange={(event) => setNewProduct((current) => ({ ...current, stock: event.target.value }))} required />
-              <select className="h-10 border border-zinc-300 px-3" value={newProduct.topCategory} onChange={(event) => setNewProduct((current) => ({ ...current, topCategory: event.target.value as "Men" | "Women" | "Kids" }))}>
+              <select className="h-10 border border-zinc-300 px-3" value={newProduct.topCategory} onChange={(event) => setNewProduct((current) => ({ ...current, topCategory: event.target.value as Product["topCategory"] }))}>
                 <option value="Men">Men</option>
                 <option value="Women">Women</option>
-                <option value="Kids">Kids</option>
+                <option value="Toddler Boys">Toddler Boys</option>
+                <option value="Toddler Girls">Toddler Girls</option>
+                <option value="Junior Boys">Junior Boys</option>
+                <option value="Junior Girls">Junior Girls</option>
               </select>
               <input className="h-10 border border-zinc-300 px-3" placeholder="Sub category" value={newProduct.subCategory} onChange={(event) => setNewProduct((current) => ({ ...current, subCategory: event.target.value }))} required />
               <input className="h-10 border border-zinc-300 px-3 md:col-span-2" placeholder="Sizes (comma separated)" value={newProduct.sizes} onChange={(event) => setNewProduct((current) => ({ ...current, sizes: event.target.value }))} required />
@@ -522,13 +565,16 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
                         ...current,
                         [product.id]: {
                           ...(current[product.id] || { name: "", slug: "", description: "", pricePkr: "", topCategory: "Men", subCategory: "", sizes: "", stock: "0", imageUrl: "", isActive: true }),
-                          topCategory: event.target.value as "Men" | "Women" | "Kids",
+                          topCategory: event.target.value as Product["topCategory"],
                         },
                       }))}
                     >
-                      <option value="Men">Men</option>
-                      <option value="Women">Women</option>
-                      <option value="Kids">Kids</option>
+                          <option value="Men">Men</option>
+                          <option value="Women">Women</option>
+                          <option value="Toddler Boys">Toddler Boys</option>
+                          <option value="Toddler Girls">Toddler Girls</option>
+                          <option value="Junior Boys">Junior Boys</option>
+                          <option value="Junior Girls">Junior Girls</option>
                     </select>
                     <input
                       className="h-9 border border-zinc-300 px-3 text-xs"

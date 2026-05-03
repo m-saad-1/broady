@@ -62,7 +62,7 @@ export function inferProductType(subCategory: string) {
 }
 
 export function getTopCategoryLabel(category: string) {
-  return category.toLowerCase() === "kids" ? "Juniors" : category;
+  return category;
 }
 
 export function getProductDisplaySubCategory(product: Product) {
@@ -86,9 +86,13 @@ export function getProductDisplayCategory(product: Product) {
 export function resolveTopCategoryFilter(category: string) {
   const normalized = category.trim().toLowerCase();
 
-  if (normalized === "juniors" || normalized === "kids") return "Kids";
   if (normalized === "men") return "Men";
   if (normalized === "women") return "Women";
+  if (normalized === "juniors" || normalized === "kids") return "Juniors";
+  if (normalized === "toddler boys") return "Toddler Boys";
+  if (normalized === "toddler girls") return "Toddler Girls";
+  if (normalized === "junior boys") return "Junior Boys";
+  if (normalized === "junior girls") return "Junior Girls";
 
   return category;
 }

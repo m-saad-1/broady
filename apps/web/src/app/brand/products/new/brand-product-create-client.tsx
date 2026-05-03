@@ -114,7 +114,10 @@ export function BrandProductCreateClient() {
             <select className="h-10 border border-zinc-300 px-3" value={form.topCategory} onChange={(event) => setForm((current) => ({ ...current, topCategory: event.target.value as typeof form.topCategory }))}>
               <option value="Men">Men</option>
               <option value="Women">Women</option>
-              <option value="Kids">Kids</option>
+              <option value="Toddler Boys">Toddler Boys</option>
+              <option value="Toddler Girls">Toddler Girls</option>
+              <option value="Junior Boys">Junior Boys</option>
+              <option value="Junior Girls">Junior Girls</option>
             </select>
             <input className="h-10 border border-zinc-300 px-3" placeholder="Sub category" value={form.subCategory} onChange={(event) => setForm((current) => ({ ...current, subCategory: event.target.value }))} required />
             <input className="h-10 border border-zinc-300 px-3 md:col-span-2" placeholder="Image URL" value={form.imageUrl} onChange={(event) => setForm((current) => ({ ...current, imageUrl: event.target.value }))} required />

@@ -229,7 +229,7 @@ export type SearchSuggestion = {
   id: string;
   label: string;
   query: string;
-  topCategory?: "Men" | "Women" | "Kids";
+  topCategory?: "Men" | "Women" | "Toddler Boys" | "Toddler Girls" | "Junior Boys" | "Junior Girls";
   kind: "query" | "product";
 };
 

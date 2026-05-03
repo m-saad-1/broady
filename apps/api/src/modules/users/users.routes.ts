@@ -294,7 +294,7 @@ router.get("/notifications", requireAuth, async (req, res) => {
   const notifications = await prisma.notification.findMany({
     where: { userId: req.auth!.userId },
     include: {
-      channels: true,
+      channelLogs: true,
       order: { select: { id: true, status: true, trackingId: true } },
     },
     orderBy: { createdAt: "desc" },
