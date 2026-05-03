@@ -17,6 +17,10 @@ import {
   productTemplateTypes,
 } from "./product.validation.js";
 import {
+  isMeilisearchProductSearchEnabled,
+  runMeilisearchProductSearch,
+} from "./products.meilisearch-search.js";
+import {
   expandCatalogTopCategory,
   buildPrefixTsQuery,
   colorWords,

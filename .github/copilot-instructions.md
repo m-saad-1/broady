@@ -195,6 +195,7 @@ The application has automatic database connectivity validation built-in:
 
 - Use meaningful names and keep functions small/single-purpose.
 - Prefer `async/await` and centralized error handling.
+- Use git commit email `msaad23305@gmail.com` for this repository when creating commits for push requests.
 - Use small, meaningful commits following conventional style, for example:
   - `feat(order): implement sub-order splitting`
   - `fix(auth): handle token expiration`
