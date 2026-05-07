@@ -20,7 +20,7 @@ type Props = {
 export function ProductDetailClient({ product }: Props) {
   const [hasHydrated, setHasHydrated] = useState(false);
   const [selectedSize, setSelectedSize] = useState(product.sizes[0] || "");
-  const [selectedColor, setSelectedColor] = useState(product.colors?.[0] || "Black");
+  const [selectedColor, setSelectedColor] = useState(product.color || "Black");
   const [openPanel, setOpenPanel] = useState<"sizeGuide" | "deliveriesReturns" | "shippingDelivery" | "fabricCare" | null>(null);
   const [zoomOpen, setZoomOpen] = useState(false);
 
@@ -151,7 +151,7 @@ export function ProductDetailClient({ product }: Props) {
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">Color</p>
           <div className="flex flex-wrap gap-2">
-            {(product.colors || ["Black", "White"]).map((color) => (
+            {(product.color ? [product.color] : ["Black", "White"]).map((color) => (
               <button
                 key={color}
                 type="button"

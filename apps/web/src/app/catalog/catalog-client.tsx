@@ -2,41 +2,34 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ProductCard } from "@/components/ui/product-card";
-import { trackUserBehaviorEvent } from "@/lib/api";
 import { getProductPricing } from "@/lib/pricing";
 import { useStableNow } from "@/hooks/use-stable-now";
-import { useMockFallback } from "@/lib/runtime-flags";
 import {
   filterProductsBySubCategoryContains,
   isEligibleSearchQuery,
   normalizeSearchQuery,
 } from "@/lib/search-fallback";
 import { fallbackProducts } from "../../lib/mock-data";
-import { getTopCategoryLabel, normalizeProduct } from "@/lib/taxonomy";
-import { useAuthStore } from "@/stores/auth-store";
+import { getTopCategoryLabel, inferProductType, normalizeProduct } from "@/lib/taxonomy";
 import type { Product } from "@/types/marketplace";
 import {
   CATALOG_TOP_CATEGORY_OPTIONS,
-  JUNIOR_TOP_CATEGORIES,
   expandCatalogTopCategory,
   isJuniorTopCategory,
+  JUNIOR_TOP_CATEGORIES,
+  PRODUCT_TYPE_OPTIONS,
 } from "@broady/shared";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
 type CatalogClientProps = {
   initialProducts: Product[];
+  allProducts: Product[];
   params: Record<string, string>;
 };
 
-type ProductTypeFilter = "Top" | "Bottom" | "Footwear" | "Accessories";
-type CatalogTopCategory = (typeof CATALOG_TOP_CATEGORY_OPTIONS)[number];
-type JuniorTopCategory = (typeof JUNIOR_TOP_CATEGORIES)[number];
-
-const TOP_CATEGORY_OPTIONS = CATALOG_TOP_CATEGORY_OPTIONS;
-const PRODUCT_TYPE_OPTIONS: ProductTypeFilter[] = ["Top", "Bottom", "Footwear", "Accessories"];
 const SORT_OPTIONS = [
   { value: "latest", label: "Latest" },
   { value: "price-asc", label: "Price Low" },
@@ -47,7 +40,12 @@ const SORT_OPTIONS = [
 ] as const;
 
 function isFeaturedProduct(product: Product) {
-  return product.badge === "New" || product.badge === "Limited" || Boolean(product.offer?.isActive);
+  return (
+    product.badge === "New" ||
+    product.badge === "Limited" ||
+    Boolean(product.salePrice != null) ||
+    Boolean(product.discountPercentage != null && product.discountPercentage > 0)
+  );
 }
 
 function scoreProductMatch(product: Product, query: string) {
@@ -74,47 +72,21 @@ function scoreProductMatch(product: Product, query: string) {
 
 async function fetchProducts(params: Record<string, string>) {
   const query = new URLSearchParams(params).toString();
-  const hasActiveFilters = Boolean(
-    params.q ||
-      params.brand ||
-      params.topCategory ||
-      params.juniorCategory ||
-      params.productType ||
-      params.subCategory ||
-      params.size ||
-      params.minPrice ||
-      params.maxPrice,
-  );
 
   try {
     const response = await fetch(`${API_BASE}/products${query ? `?${query}` : ""}`);
     if (!response.ok) throw new Error("Failed request");
 
     const json = (await response.json()) as { data: Product[] };
-    const normalizedApi = json.data.map(normalizeProduct);
-    let normalized = normalizedApi;
-    if (useMockFallback && !hasActiveFilters) {
-      const fallback = fallbackProducts.map(normalizeProduct);
-      const seen = new Set(normalizedApi.map((item) => item.slug));
-      normalized = [...normalizedApi];
-      for (const item of fallback) {
-        if (!seen.has(item.slug)) {
-          normalized.push(item);
-        }
-      }
-    } else if (!normalized.length && !hasActiveFilters) {
-      normalized = fallbackProducts.map(normalizeProduct);
-    }
-    return normalized;
-  } catch {
-    if (hasActiveFilters) {
-      return [];
-    }
-
+    return json.data.map(normalizeProduct);
+  } catch (e) {
+    console.error("Catalog API fetch failed, using mock fallback:", e);
+    // Basic fallback filtering for offline/demo mode
     let normalized = fallbackProducts.map(normalizeProduct);
     const topCategoryValues = expandCatalogTopCategory(params.topCategory, params.juniorCategory);
     if (topCategoryValues.length) {
-      normalized = normalized.filter((product) => topCategoryValues.includes(product.topCategory));
+      const normalizedTopValues = topCategoryValues.map((value) => value.toLowerCase());
+      normalized = normalized.filter((product) => normalizedTopValues.includes(product.topCategory.toLowerCase()));
     }
     if (params.q) {
       normalized = normalized
@@ -123,502 +95,381 @@ async function fetchProducts(params: Record<string, string>) {
         .sort((a, b) => b.score - a.score)
         .map((item) => item.product);
     }
-    if (params.productType) normalized = normalized.filter((product) => product.productType === params.productType);
-    if (params.subCategory) normalized = normalized.filter((product) => product.subCategory === params.subCategory);
-    if (params.size) normalized = normalized.filter((product) => product.sizes.includes(params.size || ""));
+    if (params.productType)
+      normalized = normalized.filter(
+        (product) => (product.productType || "").toLowerCase() === params.productType.toLowerCase(),
+      );
+    if (params.subCategory)
+      normalized = normalized.filter(
+        (product) => product.subCategory.toLowerCase() === params.subCategory?.toLowerCase(),
+      );
+    if (params.size)
+      normalized = normalized.filter((product) =>
+        product.sizes.some((entry) => entry.toLowerCase() === (params.size || "").toLowerCase()),
+      );
+    if (params.color)
+      normalized = normalized.filter((p) => p.color?.toLowerCase().includes(params.color?.toLowerCase() ?? ""));
     return normalized;
   }
 }
 
-function getMenuValueLabel(options: Array<{ value: string; label: string }>, value: string) {
-  return options.find((opt) => opt.value === value)?.label || "Select";
+function buildUrl(params: Record<string, string>): string {
+  const search = new URLSearchParams(params).toString();
+  return `/catalog${search ? `?${search}` : ""}`;
 }
 
-export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
+export function CatalogClient({ initialProducts, allProducts, params }: CatalogClientProps) {
   const router = useRouter();
-  const user = useAuthStore((state) => state.user);
-  const lastSearchTrackedRef = useRef<string>("");
-  const lastCategoryTrackedRef = useRef<string>("");
+  const now = useStableNow();
+
+  const [query, setQuery] = useState(params.q || "");
   const [topCategory, setTopCategory] = useState(params.topCategory || "");
   const [juniorCategory, setJuniorCategory] = useState(params.juniorCategory || "");
   const [productType, setProductType] = useState(params.productType || "");
   const [subCategory, setSubCategory] = useState(params.subCategory || "");
   const [size, setSize] = useState(params.size || "");
-  const [sortBy, setSortBy] = useState(params.sortBy || "latest");
-  const [openMenu, setOpenMenu] = useState<string | null>(null);
-  const renderNow = useStableNow();
+  const [sort, setSort] = useState((params.sort as (typeof SORT_OPTIONS)[number]["value"]) || "latest");
 
-  const queryFromRoute = useMemo(() => params.q?.trim() || "", [params.q]);
-  const normalizedQueryFromRoute = useMemo(() => normalizeSearchQuery(queryFromRoute), [queryFromRoute]);
-  const normalizedInitialProducts = useMemo(() => initialProducts.map(normalizeProduct), [initialProducts]);
-  const effectiveTopCategory = topCategory && TOP_CATEGORY_OPTIONS.includes(topCategory as CatalogTopCategory)
-    ? topCategory
-    : isJuniorTopCategory(topCategory)
-      ? "Juniors"
-      : "";
-  const effectiveJuniorCategory =
-    effectiveTopCategory === "Juniors"
-      ? isJuniorTopCategory(juniorCategory)
-        ? juniorCategory
-        : isJuniorTopCategory(topCategory)
-          ? topCategory
-          : ""
-      : "";
-  const effectiveProductType = productType && PRODUCT_TYPE_OPTIONS.includes(productType as ProductTypeFilter) ? productType : "";
-  const hasActiveSearch = Boolean(normalizedQueryFromRoute);
+  const getEffectiveType = (product: Product) => {
+    return inferProductType(product.subCategory || "T-Shirts").toLowerCase();
+  };
 
-  const facetParams = useMemo(() => {
-    const next: Record<string, string> = {};
-    if (queryFromRoute) next.q = queryFromRoute;
-    if (effectiveTopCategory) next.topCategory = effectiveTopCategory;
-    if (effectiveTopCategory === "Juniors" && effectiveJuniorCategory) next.juniorCategory = effectiveJuniorCategory;
-    if (effectiveProductType) next.productType = effectiveProductType;
-    return next;
-  }, [effectiveJuniorCategory, effectiveProductType, effectiveTopCategory, queryFromRoute]);
+  const selectedTopCategoryValues = useMemo(() => {
+    return expandCatalogTopCategory(topCategory, juniorCategory).map((value) => value.toLowerCase());
+  }, [topCategory, juniorCategory]);
 
-  const { data: products = initialProducts } = useQuery({
-    queryKey: ["products", queryFromRoute, effectiveTopCategory, effectiveJuniorCategory, effectiveProductType, subCategory, size, sortBy],
-    queryFn: () => fetchProducts({
-      q: queryFromRoute,
-      topCategory: effectiveTopCategory,
-      juniorCategory: effectiveTopCategory === "Juniors" ? effectiveJuniorCategory : "",
-      productType: effectiveProductType,
-      subCategory,
-      size,
-      sortBy,
-    }),
+  const activeParams = useMemo(() => {
+    const p: Record<string, string> = {};
+    if (query) p.q = query;
+    if (topCategory) p.topCategory = topCategory;
+    if (juniorCategory) p.juniorCategory = juniorCategory;
+    if (productType) p.productType = productType;
+    if (subCategory) p.subCategory = subCategory;
+    if (size) p.size = size;
+    if (sort) p.sort = sort;
+    return p;
+  }, [query, topCategory, juniorCategory, productType, subCategory, size, sort]);
+
+  // Create a stable string key for React Query to properly detect filter changes
+  const queryKeyString = useMemo(() => {
+    const parts: string[] = [];
+    if (query) parts.push(`q=${encodeURIComponent(query)}`);
+    if (topCategory) parts.push(`topCategory=${encodeURIComponent(topCategory)}`);
+    if (juniorCategory) parts.push(`juniorCategory=${encodeURIComponent(juniorCategory)}`);
+    if (productType) parts.push(`productType=${encodeURIComponent(productType)}`);
+    if (subCategory) parts.push(`subCategory=${encodeURIComponent(subCategory)}`);
+    if (size) parts.push(`size=${encodeURIComponent(size)}`);
+    if (sort) parts.push(`sort=${encodeURIComponent(sort)}`);
+    return parts.length > 0 ? parts.join("&") : "all";
+  }, [query, topCategory, juniorCategory, productType, subCategory, size, sort]);
+
+  const { data: products = initialProducts, isLoading } = useQuery({
+    queryKey: ["products", queryKeyString],
+    queryFn: () => fetchProducts(activeParams),
     initialData: initialProducts,
+    refetchOnWindowFocus: false,
   });
 
-  const { data: facetProducts = initialProducts } = useQuery({
-    queryKey: ["products-facets", facetParams],
-    queryFn: () => fetchProducts(facetParams),
-    initialData: initialProducts,
+  const { data: catalogOptions = initialProducts } = useQuery({
+    queryKey: ["catalog-options"],
+    queryFn: () => fetchProducts({ sort: "latest" }),
+    initialData: allProducts,
+    refetchOnWindowFocus: false,
   });
 
-  const normalizedFacetProducts = useMemo(() => {
-    const source = facetProducts.length ? facetProducts : initialProducts;
-    return source.map(normalizeProduct);
-  }, [facetProducts, initialProducts]);
-
-  const facetTypeProducts = useMemo(() => {
-    if (!effectiveProductType) return normalizedFacetProducts;
-    return normalizedFacetProducts.filter((item) => item.productType === effectiveProductType);
-  }, [effectiveProductType, normalizedFacetProducts]);
-
-  const subCategoryOptions = useMemo(
-    () => Array.from(new Set(facetTypeProducts.map((item) => item.subCategory))).sort(),
-    [facetTypeProducts],
-  );
-  const effectiveSubCategory = subCategory && subCategoryOptions.includes(subCategory) ? subCategory : "";
-
-  const sizeSource = useMemo(() => {
-    let next = normalizedFacetProducts;
-
-    if (effectiveProductType) {
-      next = next.filter((item) => item.productType === effectiveProductType);
+  const optionSource = useMemo(() => {
+    if (catalogOptions.length) {
+      return catalogOptions;
     }
 
-    if (effectiveSubCategory) {
-      next = next.filter((item) => item.subCategory === effectiveSubCategory);
+    return fallbackProducts.map(normalizeProduct);
+  }, [catalogOptions]);
+
+  useEffect(() => {
+    // Update the browser URL without triggering a server navigation so
+    // the client component state is preserved and queries can refetch
+    // in-place when filters change.
+    try {
+      const url = buildUrl(activeParams);
+      if (typeof window !== "undefined" && window.history && window.history.replaceState) {
+        window.history.replaceState({}, "", url);
+      } else {
+        // Fallback to router navigation for environments where history isn't available
+        router.push(url);
+      }
+    } catch (e) {
+      router.push(buildUrl(activeParams));
     }
-
-    return next;
-  }, [effectiveProductType, effectiveSubCategory, normalizedFacetProducts]);
-
-  const sizeOptions = useMemo(() => Array.from(new Set(sizeSource.flatMap((item) => item.sizes))).sort(), [sizeSource]);
-  const effectiveSize = size && sizeOptions.includes(size) ? size : "";
-
-  const runtimeParams = useMemo(() => {
-    const next: Record<string, string> = {};
-    if (queryFromRoute) next.q = queryFromRoute;
-    if (effectiveTopCategory) next.topCategory = effectiveTopCategory;
-    if (effectiveTopCategory === "Juniors" && effectiveJuniorCategory) next.juniorCategory = effectiveJuniorCategory;
-    if (effectiveProductType) next.productType = effectiveProductType;
-    if (effectiveSubCategory) next.subCategory = effectiveSubCategory;
-    if (effectiveSize) next.size = effectiveSize;
-    if (sortBy !== "latest") next.sortBy = sortBy;
-    return next;
-  }, [effectiveJuniorCategory, effectiveProductType, effectiveSize, effectiveSubCategory, effectiveTopCategory, queryFromRoute, sortBy]);
-
-  const fallbackCatalogProducts = useMemo(() => {
-    if (products.length > 0 || !isEligibleSearchQuery(normalizedQueryFromRoute)) {
-      return [];
-    }
-
-    return filterProductsBySubCategoryContains(
-      normalizedInitialProducts,
-      normalizedQueryFromRoute,
-    );
-  }, [normalizedInitialProducts, normalizedQueryFromRoute, products.length]);
-
-  const productsForRendering = products.length
-    ? products
-    : fallbackCatalogProducts;
-
-  const normalizedRenderableProducts = useMemo(
-    () => productsForRendering.map(normalizeProduct),
-    [productsForRendering],
-  );
+  }, [activeParams, router]);
 
   const filteredProducts = useMemo(() => {
-    let next = [...normalizedRenderableProducts];
+    let items = products.filter((product) => {
+      if (selectedTopCategoryValues.length && !selectedTopCategoryValues.includes(product.topCategory.toLowerCase())) {
+        return false;
+      }
 
-    if (sortBy === "featured") {
-      next = next.filter(isFeaturedProduct);
-    }
+      if (productType && getEffectiveType(product) !== productType.toLowerCase()) {
+        return false;
+      }
 
-    if (sortBy === "in-stock") {
-      next = next.filter((product) => product.stock > 0);
-    }
+      if (subCategory && product.subCategory.toLowerCase() !== subCategory.toLowerCase()) {
+        return false;
+      }
 
-    return next;
-  }, [normalizedRenderableProducts, sortBy]);
+      if (size && !product.sizes.some((entry) => entry.toLowerCase() === size.toLowerCase())) {
+        return false;
+      }
 
-  const orderedProducts = useMemo(() => {
-    const copy = [...filteredProducts];
-    // Use renderNow (stable timestamp) for price sorting to avoid hydration mismatches
-    // Only sort by price if renderNow is set (client-side after hydration)
-    if (sortBy === "price-asc" && renderNow > 0) {
-      return copy.sort((a, b) => getProductPricing(a, renderNow).finalPrice - getProductPricing(b, renderNow).finalPrice);
-    }
-    if (sortBy === "price-desc" && renderNow > 0) {
-      return copy.sort((a, b) => getProductPricing(b, renderNow).finalPrice - getProductPricing(a, renderNow).finalPrice);
-    }
-    if (sortBy === "name") return copy.sort((a, b) => a.name.localeCompare(b.name));
-    return copy;
-  }, [filteredProducts, renderNow, sortBy]);
-
-  useEffect(() => {
-    const next = new URLSearchParams(runtimeParams);
-    const href = next.toString() ? `/catalog?${next.toString()}` : "/catalog";
-    router.replace(href, { scroll: false });
-  }, [router, runtimeParams]);
-
-  useEffect(() => {
-    if (!user) return;
-    const query = queryFromRoute.trim();
-    if (!query) return;
-
-    const fingerprint = query.toLowerCase();
-    if (lastSearchTrackedRef.current === fingerprint) return;
-    lastSearchTrackedRef.current = fingerprint;
-
-    const trackedTopCategory = effectiveTopCategory === "Juniors" ? effectiveJuniorCategory || "Juniors" : effectiveTopCategory;
-
-    void trackUserBehaviorEvent({
-      eventType: "SEARCH_QUERY",
-      searchQuery: query,
-      topCategory: trackedTopCategory || undefined,
-      subCategory: effectiveSubCategory || undefined,
-      metadata: {
-        source: "catalog",
-        productType: effectiveProductType || undefined,
-        juniorCategory: effectiveTopCategory === "Juniors" ? effectiveJuniorCategory || undefined : undefined,
-      },
-    }).catch(() => {
-      // Ignore telemetry failures.
+      return true;
     });
-  }, [effectiveJuniorCategory, effectiveProductType, effectiveSubCategory, effectiveTopCategory, queryFromRoute, user]);
+    const normalizedQuery = normalizeSearchQuery(query);
 
-  useEffect(() => {
-    if (!user) return;
-    if (!effectiveTopCategory && !effectiveSubCategory) return;
+    if (isEligibleSearchQuery(normalizedQuery)) {
+      items = filterProductsBySubCategoryContains(items, normalizedQuery).sort(
+        (a, b) => scoreProductMatch(b, normalizedQuery) - scoreProductMatch(a, normalizedQuery),
+      );
+    }
 
-    const trackedTopCategory = effectiveTopCategory === "Juniors" ? effectiveJuniorCategory || "Juniors" : effectiveTopCategory;
-    const fingerprint = [trackedTopCategory || "", effectiveSubCategory || "", effectiveProductType || ""].join("|").toLowerCase();
-    if (lastCategoryTrackedRef.current === fingerprint) return;
-    lastCategoryTrackedRef.current = fingerprint;
+    if (sort === "price-asc") {
+      items.sort((a, b) => getProductPricing(a, now).finalPrice - getProductPricing(b, now).finalPrice);
+    } else if (sort === "price-desc") {
+      items.sort((a, b) => getProductPricing(b, now).finalPrice - getProductPricing(a, now).finalPrice);
+    } else if (sort === "name") {
+      items.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (sort === "featured") {
+      items.sort((a, b) => (isFeaturedProduct(b) ? 1 : 0) - (isFeaturedProduct(a) ? 1 : 0));
+    } else if (sort === "in-stock") {
+      items.sort((a, b) => (b.stock > 0 ? 1 : 0) - (a.stock > 0 ? 1 : 0));
+    }
 
-    void trackUserBehaviorEvent({
-      eventType: "CATEGORY_BROWSE",
-      topCategory: trackedTopCategory || undefined,
-      subCategory: effectiveSubCategory || undefined,
-      metadata: {
-        source: "catalog",
-        productType: effectiveProductType || undefined,
-        juniorCategory: effectiveTopCategory === "Juniors" ? effectiveJuniorCategory || undefined : undefined,
-      },
-    }).catch(() => {
-      // Ignore telemetry failures.
+    return items;
+  }, [products, query, sort, now, selectedTopCategoryValues, productType, subCategory, size]);
+
+  const handleTopCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
+    setTopCategory(value);
+    setJuniorCategory("");
+    setProductType("");
+    setSubCategory("");
+    setSize("");
+  };
+
+  const handleJuniorCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
+    setJuniorCategory(value);
+    setProductType("");
+    setSubCategory("");
+    setSize("");
+    if (value) {
+      setTopCategory("Juniors");
+    }
+  };
+
+  const handleProductTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setProductType(e.target.value);
+    setSubCategory("");
+    setSize("");
+  };
+
+  // Get available subcategories based on selected type and gender
+  const availableSubCategories = useMemo(() => {
+    const matching = optionSource.filter((p) => {
+      if (selectedTopCategoryValues.length && !selectedTopCategoryValues.includes(p.topCategory.toLowerCase())) {
+        return false;
+      }
+      if (productType && getEffectiveType(p) !== productType.toLowerCase()) return false;
+      return true;
     });
-  }, [effectiveJuniorCategory, effectiveProductType, effectiveSubCategory, effectiveTopCategory, user]);
+
+    const subCats = [...new Set(matching.map((p) => p.subCategory))];
+    return subCats.sort();
+  }, [optionSource, selectedTopCategoryValues, productType]);
+
+  // Get available sizes based on current filters
+  const availableSizes = useMemo(() => {
+    const matching = optionSource.filter((p) => {
+      if (selectedTopCategoryValues.length && !selectedTopCategoryValues.includes(p.topCategory.toLowerCase())) {
+        return false;
+      }
+      if (productType && getEffectiveType(p) !== productType.toLowerCase()) return false;
+      if (subCategory && p.subCategory.toLowerCase() !== subCategory.toLowerCase()) return false;
+      return true;
+    });
+
+    const sizes: string[] = [];
+    matching.forEach((p) => {
+      if (p.sizes) sizes.push(...p.sizes);
+    });
+
+    return [...new Set(sizes)].sort();
+  }, [optionSource, selectedTopCategoryValues, productType, subCategory]);
+
+  const clearFilters = () => {
+    setQuery("");
+    setTopCategory("");
+    setJuniorCategory("");
+    setProductType("");
+    setSubCategory("");
+    setSize("");
+    setSort("latest");
+  };
 
   return (
-    <div className="space-y-5">
-      <section className="space-y-3 border border-zinc-300 p-4">
-        {hasActiveSearch ? (
-          <div className="flex flex-wrap items-center gap-2 border border-zinc-300 bg-zinc-50 px-3 py-2 text-xs uppercase tracking-[0.12em]">
-            <span className="font-semibold">Search: {queryFromRoute}</span>
-            <button
-              type="button"
-              className="ml-auto border border-zinc-300 bg-white px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] hover:border-black"
-              onClick={() => {
-                setTopCategory("");
-                setJuniorCategory("");
-                setProductType("");
-                setSubCategory("");
-                setSize("");
-                setSortBy("latest");
-                router.replace("/catalog", { scroll: false });
-              }}
-              aria-label="Clear active search"
-              title="Clear search"
+    <div className="space-y-8">
+      {/* Filters Bar - Matches brand collection style */}
+      <div className="border border-zinc-300 p-4">
+        <div className="flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.12em]">
+          {/* Gender Filter */}
+          <div className="flex items-center gap-2">
+            <select
+              value={topCategory}
+              onChange={handleTopCategoryChange}
+              className="h-9 border border-zinc-300 bg-white px-2 font-medium"
             >
-              ×
-            </button>
-          </div>
-        ) : null}
-
-        <div className="flex flex-wrap gap-2">
-          <DropdownMenu
-            title="Gender"
-            value={effectiveTopCategory ? getTopCategoryLabel(effectiveTopCategory) : "All"}
-            open={openMenu === "gender"}
-            onToggle={() => setOpenMenu(openMenu === "gender" ? null : "gender")}
-          >
-            <MenuOption
-              active={!effectiveTopCategory}
-              onClick={() => {
-                setTopCategory("");
-                setJuniorCategory("");
-                setOpenMenu(null);
-              }}
-            >
-              All
-            </MenuOption>
-            {TOP_CATEGORY_OPTIONS.map((item) => (
-              <MenuOption
-                key={item}
-                active={effectiveTopCategory === item}
-                onClick={() => {
-                  setTopCategory(item);
-                  if (item !== "Juniors") {
-                    setJuniorCategory("");
-                  }
-                  setOpenMenu(null);
-                }}
-              >
-                {item}
-              </MenuOption>
-            ))}
-          </DropdownMenu>
-
-          {effectiveTopCategory === "Juniors" ? (
-            <DropdownMenu
-              title="Junior Group"
-              value={effectiveJuniorCategory || "All"}
-              open={openMenu === "junior-group"}
-              onToggle={() => setOpenMenu(openMenu === "junior-group" ? null : "junior-group")}
-            >
-              <MenuOption
-                active={!effectiveJuniorCategory}
-                onClick={() => {
-                  setJuniorCategory("");
-                  setOpenMenu(null);
-                }}
-              >
-                All
-              </MenuOption>
-              {JUNIOR_TOP_CATEGORIES.map((item) => (
-                <MenuOption
-                  key={item}
-                  active={effectiveJuniorCategory === item}
-                  onClick={() => {
-                    setJuniorCategory(item as JuniorTopCategory);
-                    setOpenMenu(null);
-                  }}
-                >
-                  {item}
-                </MenuOption>
+              <option value="">Gender</option>
+              {CATALOG_TOP_CATEGORY_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>
+                  {getTopCategoryLabel(opt)}
+                </option>
               ))}
-            </DropdownMenu>
-          ) : null}
+            </select>
+          </div>
 
-          <DropdownMenu
-            title="Type"
-            value={effectiveProductType || "All"}
-            open={openMenu === "type"}
-            onToggle={() => setOpenMenu(openMenu === "type" ? null : "type")}
-          >
-            <MenuOption
-              active={!effectiveProductType}
-              onClick={() => {
-                setProductType("");
-                setOpenMenu(null);
-              }}
-            >
-              All
-            </MenuOption>
-            {PRODUCT_TYPE_OPTIONS.map((item) => (
-              <MenuOption
-                key={item}
-                active={effectiveProductType === item}
-                onClick={() => {
-                  setProductType(item);
-                  setOpenMenu(null);
-                }}
+          {/* Junior Category Filter - Show only when Juniors is selected */}
+          {topCategory === "Juniors" && (
+            <>
+              <span className="text-zinc-400">/</span>
+              <div className="flex items-center gap-2">
+                <select
+                  value={juniorCategory}
+                  onChange={handleJuniorCategoryChange}
+                  className="h-9 border border-zinc-300 bg-white px-2 font-medium"
+                >
+                  <option value="">Junior Type</option>
+                  {JUNIOR_TOP_CATEGORIES.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {getTopCategoryLabel(opt)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
+
+          {/* Type Filter */}
+          <>
+            <span className="text-zinc-400">/</span>
+            <div className="flex items-center gap-2">
+              <select
+                value={productType}
+                onChange={handleProductTypeChange}
+                className="h-9 border border-zinc-300 bg-white px-2 font-medium"
               >
-                {item}
-              </MenuOption>
-            ))}
-          </DropdownMenu>
+                <option value="">Type</option>
+                {PRODUCT_TYPE_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </>
 
-          <DropdownMenu
-            title="Subcategory"
-            value={effectiveSubCategory || "All"}
-            open={openMenu === "category"}
-            onToggle={() => setOpenMenu(openMenu === "category" ? null : "category")}
-          >
-            <MenuOption
-              active={!effectiveSubCategory}
-              onClick={() => {
-                setSubCategory("");
-                setOpenMenu(null);
-              }}
-            >
-              All
-            </MenuOption>
-            {subCategoryOptions.map((item) => (
-              <MenuOption
-                key={item}
-                active={effectiveSubCategory === item}
-                onClick={() => {
-                  setSubCategory(item);
-                  setOpenMenu(null);
-                }}
+          {/* Subcategory Filter - Dynamic based on selected Type */}
+          <>
+            <span className="text-zinc-400">/</span>
+            <div className="flex items-center gap-2">
+              <select
+                value={subCategory}
+                onChange={(e) => setSubCategory(e.target.value)}
+                className="h-9 border border-zinc-300 bg-white px-2 font-medium"
               >
-                {item}
-              </MenuOption>
-            ))}
-          </DropdownMenu>
+                <option value="">Sub</option>
+                {availableSubCategories.map((subCat) => (
+                  <option key={subCat} value={subCat}>
+                    {subCat}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </>
 
-          <DropdownMenu
-            title="Size"
-            value={effectiveSize || "All"}
-            open={openMenu === "size"}
-            onToggle={() => setOpenMenu(openMenu === "size" ? null : "size")}
-          >
-            <MenuOption
-              active={!effectiveSize}
-              onClick={() => {
-                setSize("");
-                setOpenMenu(null);
-              }}
-            >
-              All
-            </MenuOption>
-            {sizeOptions.map((item) => (
-              <MenuOption
-                key={item}
-                active={effectiveSize === item}
-                onClick={() => {
-                  setSize(item);
-                  setOpenMenu(null);
-                }}
+          {/* Size Filter - Dynamic based on current filters */}
+          {availableSizes.length > 0 && (
+            <>
+              <span className="text-zinc-400">/</span>
+              <div className="flex items-center gap-2">
+                <select
+                  value={size}
+                  onChange={(e) => setSize(e.target.value)}
+                  className="h-9 border border-zinc-300 bg-white px-2 font-medium"
+                >
+                  <option value="">Size</option>
+                  {availableSizes.map((sz) => (
+                    <option key={sz} value={sz}>
+                      {sz}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
+
+          {/* Sort Filter */}
+          <>
+            <span className="text-zinc-400">/</span>
+            <div className="flex items-center gap-2">
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as any)}
+                className="h-9 border border-zinc-300 bg-white px-2 font-medium"
               >
-                {item}
-              </MenuOption>
-            ))}
-          </DropdownMenu>
+                {SORT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </>
 
-
-
-          <DropdownMenu
-            title="Sort"
-            value={getMenuValueLabel(
-              SORT_OPTIONS.map((item) => ({ value: item.value, label: item.label })),
-              sortBy,
-            )}
-            open={openMenu === "sort"}
-            onToggle={() => setOpenMenu(openMenu === "sort" ? null : "sort")}
+          {/* Clear Button */}
+          <span className="text-zinc-400">|</span>
+          <button
+            onClick={clearFilters}
+            className="text-zinc-600 hover:text-zinc-900 hover:underline"
           >
-            {SORT_OPTIONS.map((item) => (
-              <MenuOption
-                key={item.value}
-                active={sortBy === item.value}
-                onClick={() => {
-                  setSortBy(item.value);
-                  setOpenMenu(null);
-                }}
-              >
-                {item.label}
-              </MenuOption>
-            ))}
-          </DropdownMenu>
+            Clear All
+          </button>
         </div>
-      </section>
+      </div>
 
-      <section className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        {orderedProducts.map((product) => (
-          <ProductCard key={product.id} product={normalizeProduct(product)} />
-        ))}
-      </section>
-
-      {!orderedProducts.length ? (
-        <section className="border border-zinc-300 p-8 text-center">
-          <p className="font-heading text-3xl uppercase">This product is not available</p>
-          <p className="mt-2 text-sm text-zinc-600">Try changing your filters or search query.</p>
-        </section>
-      ) : null}
-    </div>
-  );
-}
-
-function DropdownMenu({
-  title,
-  value,
-  open,
-  onToggle,
-  children,
-}: {
-  title: string;
-  value: string;
-  open: boolean;
-  onToggle: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={onToggle}
-        className={`flex items-center gap-2 border px-3 py-2 text-sm font-medium transition-colors ${
-          open ? "border-black bg-black text-white" : "border-zinc-300 bg-white text-zinc-900 hover:border-black"
-        }`}
-      >
-        <span>{title}</span>
-        <span className="text-xs text-zinc-500">{value}</span>
-      </button>
-      {open ? (
-        <div className="absolute left-0 top-full z-20 mt-1 w-48 border border-zinc-300 bg-white shadow-lg">
-          <div className="max-h-64 overflow-y-auto">{children}</div>
+      {/* Products Section */}
+      <section>
+        <div className="flex items-center justify-between border-b border-zinc-300 pb-4">
+          <p className="text-sm text-zinc-600">
+            Showing {filteredProducts.length} of {products.length} products
+          </p>
         </div>
-      ) : null}
-    </div>
-  );
-}
 
-function MenuOption({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`w-full px-3 py-2 text-left text-sm transition-colors ${
-        active ? "bg-black text-white font-medium" : "bg-white text-zinc-900 hover:bg-zinc-100"
-      }`}
-    >
-      {children}
-    </button>
+        {isLoading ? (
+          <div className="grid grid-cols-1 gap-6 pt-8 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+            {Array.from({ length: 12 }).map((_, i) => (
+              <div key={i} className="animate-pulse space-y-3 rounded-lg bg-zinc-200 p-4">
+                <div className="h-48 rounded bg-zinc-300"></div>
+                <div className="h-6 w-3/4 rounded bg-zinc-300"></div>
+                <div className="h-4 w-1/2 rounded bg-zinc-300"></div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-6 pt-8 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+            {filteredProducts.map((product) => (
+              <ProductCard key={product.id} product={product} />
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
   );
 }

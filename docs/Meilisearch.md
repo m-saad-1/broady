@@ -116,7 +116,3 @@ Defined in `apps/api/src/modules/search/meilisearch.product-document.ts`:
 ## TypeScript type
 
 `ProductSearchDocument` is declared in `apps/api/src/modules/search/meilisearch.types.ts` and should stay in sync with this table and the mapper `mapProductToMeiliDocument`.
-
-## Docker (optional)
-
-`docker-compose.yml` can run Meilisearch; set `MEILI_MASTER_KEY` in a root `.env` used by Compose so it matches your API keys’ instance.

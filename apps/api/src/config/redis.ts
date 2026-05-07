@@ -23,7 +23,7 @@ export function parseRedisConnectionOptions(redisUrl: string): RedisOptions {
     enableReadyCheck: true,
     maxRetriesPerRequest: 0,
     connectTimeout: 500,
-    retryStrategy: null,
+    retryStrategy: () => null,
   };
 }
 

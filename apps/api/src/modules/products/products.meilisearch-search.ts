@@ -6,10 +6,10 @@ import { expandCatalogTopCategory } from "./products.search-utils.js";
 
 /** Mirrors `productTypeMap` in `products.routes.ts` for filter parity. */
 const productTypeSubcategories: Record<string, string[]> = {
-  Top: ["T-Shirts", "Polo Shirts", "V-Neck", "Formal Shirts", "Hoodies", "Sweatshirts", "Clothing", "Outerwear", "Dresses"],
-  Bottom: ["Jeans", "Trousers", "Joggers", "Cargo Pants", "Skirts"],
-  Footwear: ["Slip Ons", "Sneakers", "Boots", "Sandals", "Loafers", "Footwear"],
-  Accessories: ["Bags", "Belts", "Caps", "Jewelry", "Accessories"],
+  Top: ["T-Shirts", "Polo Shirts", "Shirts", "V-Neck", "Formal Shirts", "Hoodies", "Sweatshirts", "Jackets", "Outerwear", "Dresses", "Skirts", "Shorts"],
+  Bottom: ["Jeans", "Trousers", "Joggers", "Cargo Pants", "Skirts", "Shorts"],
+  Footwear: ["Sneakers", "Boots", "Sandals", "Slip Ons", "Loafers", "Derby", "Oxfords", "Ankle Boots"],
+  Accessories: ["Bags", "Belts", "Caps", "Jewelry", "Socks", "Scarves"],
 };
 
 export type MeilisearchProductSearchFilters = {

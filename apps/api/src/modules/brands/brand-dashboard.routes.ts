@@ -85,7 +85,21 @@ type OrderLifecycleEventName =
   | typeof notificationEventNames.orderDelivered
   | typeof notificationEventNames.orderCancelled;
 
-function normalizeStatus(status: "PENDING" | "CONFIRMED" | "PROCESSING" | "SHIPPED" | "DELIVERED" | "CANCELED" | "CANCELLED"): OrderStatus {
+function normalizeStatus(
+  status:
+    | "PENDING"
+    | "CONFIRMED"
+    | "PROCESSING"
+    | "SHIPPED"
+    | "OUT_FOR_DELIVERY"
+    | "DELIVERY_FAILED"
+    | "ADDRESS_CORRECTION_REQUIRED"
+    | "READY_FOR_REDELIVERY"
+    | "DELIVERED"
+    | "RETURNED"
+    | "CANCELED"
+    | "CANCELLED",
+): OrderStatus {
   return status === "CANCELLED" ? "CANCELED" : status;
 }
 

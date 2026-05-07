@@ -19,28 +19,35 @@ function toTimestamp(value?: string) {
   return Number.isNaN(time) ? null : time;
 }
 
-export function hasActiveOffer(product: Product, at = Date.now()) {
-  const offer = product.offer;
-  if (!offer) return false;
-
-  const percentage = clampDiscount(offer.percentage);
-  if (percentage <= 0) return false;
-  if (offer.isActive === false) return false;
-
-  const startsAt = toTimestamp(offer.startsAt);
-  const endsAt = toTimestamp(offer.endsAt);
-  if (startsAt !== null && at < startsAt) return false;
-  if (endsAt !== null && at > endsAt) return false;
-
-  return true;
+export function hasActiveOffer(product: Product) {
+  if (typeof product.discountPercentage === "number" && product.discountPercentage > 0) return true;
+  if (typeof product.salePrice === "number") return true;
+  return false;
 }
 
 export function getProductPricing(product: Product, at = Date.now()): ProductPricing {
   const basePrice = Math.max(0, Math.round(product.pricePkr));
-  const hasDiscount = hasActiveOffer(product, at);
-  const discountPercentage = hasDiscount ? clampDiscount(product.offer?.percentage || 0) : 0;
+
+  const hasDiscount = hasActiveOffer(product);
+
+  // Determine discount percentage: prefer explicit field, otherwise derive from salePrice
+  let discountPercentage = 0;
+  if (typeof product.discountPercentage === "number") {
+    discountPercentage = clampDiscount(product.discountPercentage);
+  } else if (typeof product.salePrice === "number" && basePrice > 0) {
+    const sale = Math.max(0, Math.round(product.salePrice));
+    discountPercentage = clampDiscount(Math.round(((basePrice - sale) / basePrice) * 100));
+  }
+
   const discountAmount = hasDiscount ? Math.round((basePrice * discountPercentage) / 100) : 0;
-  const finalPrice = Math.max(0, basePrice - discountAmount);
+
+  // finalPrice prefers explicit salePrice when provided
+  let finalPrice = basePrice - discountAmount;
+  if (typeof product.salePrice === "number") {
+    finalPrice = Math.max(0, Math.round(product.salePrice));
+  }
+
+  finalPrice = Math.max(0, finalPrice);
 
   return {
     basePrice,

@@ -9,15 +9,20 @@ export type ProductSearchDocument = {
   name: string;
   slug: string;
   description: string;
-  /** Denormalized search blob from DB (`Product.searchDocument`). */
-  searchDocument: string;
   brandId: string;
   brandName: string;
   brandSlug: string;
   pricePkr: number;
+  actualPrice: number | null;
+  salePrice: number | null;
+  discountPercentage: number | null;
+  gender: string;
+  color: string;
+  productType: string;
   topCategory: string;
   subCategory: string;
   sizes: string[];
+  tags: string[];
   imageUrl: string;
   stock: number;
   isActive: boolean;
@@ -29,4 +34,6 @@ export type ProductSearchDocument = {
   updatedAt: number;
   averageRating: number;
   totalReviews: number;
+  /** When true: category/subcategory was inferred and should be reviewed manually. */
+  needsReview?: boolean;
 };

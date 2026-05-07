@@ -5,18 +5,21 @@ import { SiteHeader } from "@/components/layout/site-header";
 import { PushNotificationRegistration } from "@/components/notifications/push-notification-registration";
 import { ToastViewport } from "@/components/ui/toast-viewport";
 import { QueryProvider } from "@/providers/query-provider";
+import { GoogleAuthProvider } from "@/providers/google-auth-provider";
 import "./globals.css";
 
 const headingFont = Bebas_Neue({
   variable: "--font-heading",
   subsets: ["latin"],
   weight: ["400"],
+  display: "swap",
 });
 
 const bodyFont = Space_Grotesk({
   variable: "--font-body",
   subsets: ["latin"],
   weight: ["400", "500", "700"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -42,22 +45,26 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const googleClientId = (process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "").trim();
+
   return (
     <html
       lang="en"
       className={`${headingFont.variable} ${bodyFont.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full bg-white text-black" suppressHydrationWarning>
-        <QueryProvider>
-          <div className="min-h-screen bg-[linear-gradient(to_bottom,rgba(244,244,245,0.7),transparent_35%)]">
-            <SiteHeader />
-            <div className="flex-1">{children}</div>
-            <SiteFooter />
-            <ToastViewport />
-            <PushNotificationRegistration />
-          </div>
-        </QueryProvider>
+      <body className={`${bodyFont.className} min-h-full bg-white text-black`} suppressHydrationWarning>
+        <GoogleAuthProvider clientId={googleClientId}>
+          <QueryProvider>
+            <div className="min-h-screen bg-[linear-gradient(to_bottom,rgba(244,244,245,0.7),transparent_35%)]">
+              <SiteHeader />
+              <div className="flex-1">{children}</div>
+              <SiteFooter />
+              <ToastViewport />
+              <PushNotificationRegistration />
+            </div>
+          </QueryProvider>
+        </GoogleAuthProvider>
       </body>
     </html>
   );

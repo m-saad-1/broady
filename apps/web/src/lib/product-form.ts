@@ -7,10 +7,17 @@ export type ProductFormValues = {
   name: string;
   slug: string;
   description: string;
+  actualPrice: string;
+  salePrice?: string;
+  discountPercentage?: string;
   pricePkr: string;
+  gender: string;
+  color: string;
+  type: string;
   topCategory: Product["topCategory"];
   subCategory: string;
   sizes: string;
+  tags?: string;
   imageUrl: string;
   sizeGuideTemplateId?: string;
   sizeGuideImageUrl?: string;
@@ -73,10 +80,17 @@ const productFormSchema = z.object({
   name: z.string().trim().min(2, "Product name must be at least 2 characters"),
   slug: z.string().trim().min(2, "Slug must be at least 2 characters"),
   description: z.string().trim().min(10, "Description must be at least 10 characters"),
+  actualPrice: z.coerce.number().positive("Actual price must be greater than 0"),
+  salePrice: z.coerce.number().positive("Sale price must be greater than 0").optional(),
+  discountPercentage: z.coerce.number().min(0).max(100).optional(),
   pricePkr: z.coerce.number().int().positive("Price must be greater than 0"),
+  gender: z.string().trim().min(2, "Gender is required"),
+  color: z.string().trim().min(2, "Color is required"),
+  type: z.string().trim().min(2, "Type is required"),
   topCategory: z.enum(productTopCategories),
   subCategory: z.string().trim().min(2, "Sub-category must be at least 2 characters"),
   sizes: z.string().trim().min(1, "Add at least one size"),
+  tags: z.string().trim().optional(),
   imageUrl: z
     .string()
     .trim()
@@ -100,18 +114,18 @@ const productFormSchema = z.object({
         inches: z.string().trim().min(1, "Inches measurement is required"),
       }),
     )
-    .min(1, "Add at least one size guide row"),
+    .optional(),
   deliveriesReturnsTemplateId: optionalTemplateIdSchema,
-  deliveryTime: z.string().trim().min(2, "Delivery time is required"),
-  returnPolicy: z.string().trim().min(2, "Return policy is required"),
-  refundConditions: z.string().trim().min(2, "Refund conditions are required"),
+  deliveryTime: z.string().trim().optional(),
+  returnPolicy: z.string().trim().optional(),
+  refundConditions: z.string().trim().optional(),
   shippingDeliveryTemplateId: optionalTemplateIdSchema,
-  shippingRegions: z.string().trim().min(2, "Shipping regions are required"),
-  shippingEstimatedDeliveryTime: z.string().trim().min(2, "Estimated delivery time is required"),
+  shippingRegions: z.string().trim().optional(),
+  shippingEstimatedDeliveryTime: z.string().trim().optional(),
   shippingCharges: z.string().trim().optional(),
   fabricCareTemplateId: optionalTemplateIdSchema,
-  fabricType: z.string().trim().min(2, "Fabric type is required"),
-  careInstructions: z.string().trim().min(2, "Care instructions are required"),
+  fabricType: z.string().trim().optional(),
+  careInstructions: z.string().trim().optional(),
   stock: z.coerce.number().int().min(0, "Stock cannot be negative"),
   isActive: z.boolean().optional(),
 });
@@ -123,142 +137,70 @@ const adminProductFormSchema = productFormSchema.extend({
 export { productFormSchema, adminProductFormSchema };
 
 export function buildAdminProductPayload(form: ProductFormValues): ProductMutationPayload {
-  const parsed = adminProductFormSchema.safeParse({
-    brandId: form.brandId,
-    name: form.name,
-    slug: form.slug,
-    description: form.description,
-    pricePkr: form.pricePkr,
-    topCategory: form.topCategory,
-    subCategory: form.subCategory,
-    sizes: form.sizes,
-    imageUrl: form.imageUrl,
-    sizeGuideTemplateId: form.sizeGuideTemplateId,
-    sizeGuideImageUrl: form.sizeGuideImageUrl,
-    sizeGuideRows: form.sizeGuideRows,
-    deliveriesReturnsTemplateId: form.deliveriesReturnsTemplateId,
-    deliveryTime: form.deliveryTime,
-    returnPolicy: form.returnPolicy,
-    refundConditions: form.refundConditions,
-    shippingDeliveryTemplateId: form.shippingDeliveryTemplateId,
-    shippingRegions: form.shippingRegions,
-    shippingEstimatedDeliveryTime: form.shippingEstimatedDeliveryTime,
-    shippingCharges: form.shippingCharges,
-    fabricCareTemplateId: form.fabricCareTemplateId,
-    fabricType: form.fabricType,
-    careInstructions: form.careInstructions,
-    stock: form.stock,
-    isActive: form.isActive,
-  });
+  const parsed = adminProductFormSchema.safeParse(form);
 
   if (!parsed.success) {
     throw new Error(formatValidationIssues(parsed.error));
   }
 
+    const { sizes, shippingRegions, careInstructions, ...rest } = parsed.data;
+
   return {
-    brandId: parsed.data.brandId,
-    name: parsed.data.name,
-    slug: parsed.data.slug,
-    description: parsed.data.description,
-    pricePkr: parsed.data.pricePkr,
-    topCategory: parsed.data.topCategory,
-    subCategory: parsed.data.subCategory,
-    sizes: parseSizesCsv(parsed.data.sizes),
-    imageUrl: parsed.data.imageUrl,
-    sizeGuideTemplateId: parsed.data.sizeGuideTemplateId,
+    ...rest,
+    sizes: parseSizesCsv(sizes),
     sizeGuide: {
       imageUrl: parsed.data.sizeGuideImageUrl,
-      entries: parsed.data.sizeGuideRows,
+      entries: parsed.data.sizeGuideRows || [],
     },
-    deliveriesReturnsTemplateId: parsed.data.deliveriesReturnsTemplateId,
     deliveriesReturns: {
-      deliveryTime: parsed.data.deliveryTime,
-      returnPolicy: parsed.data.returnPolicy,
-      refundConditions: parsed.data.refundConditions,
+      deliveryTime: parsed.data.deliveryTime || "",
+      returnPolicy: parsed.data.returnPolicy || "",
+      refundConditions: parsed.data.refundConditions || "",
     },
-    shippingDeliveryTemplateId: parsed.data.shippingDeliveryTemplateId,
     shippingDelivery: {
-      regions: parseLinesCsv(parsed.data.shippingRegions),
-      estimatedDeliveryTime: parsed.data.shippingEstimatedDeliveryTime,
+      regions: shippingRegions ? parseLinesCsv(shippingRegions) : [],
+      estimatedDeliveryTime: parsed.data.shippingEstimatedDeliveryTime || "",
       charges: parsed.data.shippingCharges,
     },
-    fabricCareTemplateId: parsed.data.fabricCareTemplateId,
     fabricCare: {
-      fabricType: parsed.data.fabricType,
-      careInstructions: parseLinesCsv(parsed.data.careInstructions),
+      fabricType: parsed.data.fabricType || "",
+      careInstructions: careInstructions ? parseLinesCsv(careInstructions) : [],
     },
-    stock: parsed.data.stock,
-    isActive: parsed.data.isActive,
   };
 }
 
 export function buildBrandProductPayload(
   form: Omit<ProductFormValues, "brandId">,
 ): Omit<ProductMutationPayload, "brandId"> {
-  const parsed = productFormSchema.omit({ brandId: true }).safeParse({
-    name: form.name,
-    slug: form.slug,
-    description: form.description,
-    pricePkr: form.pricePkr,
-    topCategory: form.topCategory,
-    subCategory: form.subCategory,
-    sizes: form.sizes,
-    imageUrl: form.imageUrl,
-    sizeGuideTemplateId: form.sizeGuideTemplateId,
-    sizeGuideImageUrl: form.sizeGuideImageUrl,
-    sizeGuideRows: form.sizeGuideRows,
-    deliveriesReturnsTemplateId: form.deliveriesReturnsTemplateId,
-    deliveryTime: form.deliveryTime,
-    returnPolicy: form.returnPolicy,
-    refundConditions: form.refundConditions,
-    shippingDeliveryTemplateId: form.shippingDeliveryTemplateId,
-    shippingRegions: form.shippingRegions,
-    shippingEstimatedDeliveryTime: form.shippingEstimatedDeliveryTime,
-    shippingCharges: form.shippingCharges,
-    fabricCareTemplateId: form.fabricCareTemplateId,
-    fabricType: form.fabricType,
-    careInstructions: form.careInstructions,
-    stock: form.stock,
-    isActive: form.isActive,
-  });
+  const parsed = productFormSchema.omit({ brandId: true }).safeParse(form);
 
   if (!parsed.success) {
     throw new Error(formatValidationIssues(parsed.error));
   }
 
+  const { sizes, shippingRegions, careInstructions, ...rest } = parsed.data;
+
   return {
-    name: parsed.data.name,
-    slug: parsed.data.slug,
-    description: parsed.data.description,
-    pricePkr: parsed.data.pricePkr,
-    topCategory: parsed.data.topCategory,
-    subCategory: parsed.data.subCategory,
-    sizes: parseSizesCsv(parsed.data.sizes),
-    imageUrl: parsed.data.imageUrl,
-    sizeGuideTemplateId: parsed.data.sizeGuideTemplateId,
+    ...rest,
+    sizes: parseSizesCsv(sizes),
     sizeGuide: {
       imageUrl: parsed.data.sizeGuideImageUrl,
-      entries: parsed.data.sizeGuideRows,
+      entries: parsed.data.sizeGuideRows || [],
     },
-    deliveriesReturnsTemplateId: parsed.data.deliveriesReturnsTemplateId,
     deliveriesReturns: {
-      deliveryTime: parsed.data.deliveryTime,
-      returnPolicy: parsed.data.returnPolicy,
-      refundConditions: parsed.data.refundConditions,
+      deliveryTime: parsed.data.deliveryTime || "",
+      returnPolicy: parsed.data.returnPolicy || "",
+      refundConditions: parsed.data.refundConditions || "",
     },
-    shippingDeliveryTemplateId: parsed.data.shippingDeliveryTemplateId,
     shippingDelivery: {
-      regions: parseLinesCsv(parsed.data.shippingRegions),
-      estimatedDeliveryTime: parsed.data.shippingEstimatedDeliveryTime,
+      regions: shippingRegions ? parseLinesCsv(shippingRegions) : [],
+      estimatedDeliveryTime: parsed.data.shippingEstimatedDeliveryTime || "",
       charges: parsed.data.shippingCharges,
     },
-    fabricCareTemplateId: parsed.data.fabricCareTemplateId,
     fabricCare: {
-      fabricType: parsed.data.fabricType,
-      careInstructions: parseLinesCsv(parsed.data.careInstructions),
+      fabricType: parsed.data.fabricType || "",
+      careInstructions: careInstructions ? parseLinesCsv(careInstructions) : [],
     },
-    stock: parsed.data.stock,
-    isActive: parsed.data.isActive,
   };
 }
 
@@ -268,10 +210,17 @@ export function createDefaultProductFormValues(scope: "admin" | "brand", brandId
     name: "",
     slug: "",
     description: "",
+    actualPrice: "",
+    salePrice: "",
+    discountPercentage: "",
     pricePkr: "",
+    gender: "WOMEN",
+    color: "",
+    type: "Top",
     topCategory: "Men",
     subCategory: "",
     sizes: "",
+    tags: "",
     imageUrl: "",
     sizeGuideImageUrl: undefined,
     sizeGuideRows: [{ size: "", cm: "", inches: "" }],
@@ -293,10 +242,17 @@ export function productToFormValues(product: Partial<Product>): Partial<ProductF
     name: product.name || "",
     slug: product.slug || "",
     description: product.description || "",
+    actualPrice: product.actualPrice ? String(product.actualPrice) : "",
+    salePrice: product.salePrice ? String(product.salePrice) : "",
+    discountPercentage: product.discountPercentage ? String(product.discountPercentage) : "",
     pricePkr: product.pricePkr ? String(product.pricePkr) : "",
+    gender: product.gender || "WOMEN",
+    color: product.color || "",
+    type: product.productType || "Top",
     topCategory: product.topCategory || "Men",
     subCategory: product.subCategory || "",
     sizes: product.sizes ? product.sizes.join(", ") : "",
+    tags: product.tags ? product.tags.join(", ") : "",
     imageUrl: product.imageUrl || "",
     sizeGuideTemplateId: product.sizeGuideTemplateId,
     sizeGuideImageUrl: product.sizeGuide?.imageUrl,

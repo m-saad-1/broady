@@ -34,6 +34,7 @@ import { getNotificationHref } from "@/lib/notification-routing";
 import { useAuthStore } from "@/stores/auth-store";
 import { useCartStore } from "@/stores/cart-store";
 import { useWishlistStore } from "@/stores/wishlist-store";
+import { maskOrderId } from "@/lib/notification-utils";
 import type { NotificationItem, Product, SearchSuggestion } from "@/types/marketplace";
 
 function getCartKey(item: { product: Product; selectedColor?: string; selectedSize?: string }) {
@@ -237,31 +238,74 @@ export function SiteHeader() {
     return undefined;
   }, [pathname]);
 
-  const runCatalogSearch = (query: string, topCategory?: string) => {
-    const q = query.trim();
-    if (!q) {
-      return;
+  const handleSearchSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (activeSuggestionIndex >= 0 && suggestions[activeSuggestionIndex]) {
+      applySuggestion(suggestions[activeSuggestionIndex] as SearchSuggestion);
+    } else {
+      void runCatalogSearch(searchTerm, topCategoryContext);
     }
+  };
 
-    const params = new URLSearchParams({ q });
-    if (topCategory) {
-      params.set("topCategory", topCategory);
+  const handleSearchKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveSuggestionIndex((prev) => Math.min(prev + 1, suggestions.length - 1));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveSuggestionIndex((prev) => Math.max(prev - 1, 0));
+    } else if (event.key === "Enter") {
+      handleSearchSubmit(event as any);
+    } else if (event.key === "Escape") {
+      setSearchOpen(false);
     }
-
-      startTransition(() => {
-        router.push(`/catalog?${params.toString()}`);
-      });
-    setSearchOpen(false);
-    setSearchTerm("");
-    setSuggestions([]);
-    setSuggestionsCorrection(null);
-    setLiveResults([]);
-    setActiveSuggestionIndex(-1);
   };
 
   const applySuggestion = (item: SearchSuggestion) => {
     const scopedTopCategory = item.topCategory || topCategoryContext;
-    runCatalogSearch(item.query, scopedTopCategory);
+    void runCatalogSearch(item.query, scopedTopCategory);
+  };
+
+  const runCatalogSearch = async (query: string, topCategory?: string) => {
+    if (!query) {
+      return;
+    }
+
+    const effectiveTopCategory = topCategory || topCategoryContext;
+    const productParams: Record<string, string> = { q: query };
+    if (effectiveTopCategory) {
+      productParams.topCategory = effectiveTopCategory;
+    }
+
+    try {
+      const [suggestionResult, productResult] = await Promise.all([
+        getProductSearchSuggestions(query, { topCategory: effectiveTopCategory }),
+        getProducts(productParams),
+      ]);
+
+      setSuggestions(suggestionResult.suggestions.slice(0, 8));
+      setSuggestionsCorrection(suggestionResult.correctedQuery || null);
+      const apiLiveResults = productResult.slice(0, 6);
+      if (apiLiveResults.length) {
+        setLiveResults(apiLiveResults);
+      } else if (isEligibleSearchQuery(query)) {
+        const fallbackLive = filterProductsBySubCategoryContains(
+          fallbackProducts.map(normalizeProduct),
+          query,
+        ).slice(0, 6);
+        setLiveResults(fallbackLive);
+      } else {
+        setLiveResults([]);
+      }
+      setActiveSuggestionIndex(-1);
+    } catch {
+      setSuggestions([]);
+      setSuggestionsCorrection(null);
+      setLiveResults([]);
+      setActiveSuggestionIndex(-1);
+    } finally {
+      setSuggestionsLoading(false);
+    }
   };
 
   const getLatestNotifications = useCallback(async () => {
@@ -401,17 +445,28 @@ export function SiteHeader() {
       try {
         const items = await getLatestNotifications();
         if (!active) return;
-        const newIds = new Set<string>(items.filter((item: NotificationItem) => !item.readAt).map((item: NotificationItem) => item.id));
-        setSessionNewNotificationIds(newIds);
+
+        // Track which items are newly unread before marking as read
+        const newUnreadIds = new Set<string>(
+          items
+            .filter((item: NotificationItem) => !item.readAt)
+            .map((item: NotificationItem) => item.id)
+        );
+
+        // Set NEW badge only for items that were unread before opening
+        setSessionNewNotificationIds(newUnreadIds);
 
         try {
           await markAllNotificationsAsRead();
           const readAt = new Date().toISOString();
-          setNotifications(items.map((item: NotificationItem) => ({
+          // Update notifications with readAt timestamp for display
+          const updatedNotifications = items.map((item: NotificationItem) => ({
             ...item,
             readAt: item.readAt || readAt,
-          })));
-          setSessionNewNotificationIds(new Set<string>());
+          }));
+          setNotifications(updatedNotifications);
+          // Clear NEW badges after marking as read (they'll be gone after a short delay)
+          // Keep them visible for a moment for UX feedback
         } catch (readError) {
           console.error("Failed to mark all as read:", readError);
           setNotifications(items);
@@ -785,60 +840,33 @@ export function SiteHeader() {
         >
           <div className="mx-auto max-w-5xl space-y-3">
             <div className="flex items-center gap-2">
-              <input
-                autoFocus={searchOpen}
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                onKeyDown={(event) => {
-                  if (!hasQuery) {
-                    return;
-                  }
-
-                  if (event.key === "ArrowDown") {
-                    event.preventDefault();
-                    setActiveSuggestionIndex((previous) => {
-                      if (!suggestions.length) return -1;
-                      const next = previous + 1;
-                      return next >= suggestions.length ? 0 : next;
-                    });
-                  }
-
-                  if (event.key === "ArrowUp") {
-                    event.preventDefault();
-                    setActiveSuggestionIndex((previous) => {
-                      if (!suggestions.length) return -1;
-                      const next = previous - 1;
-                      return next < 0 ? suggestions.length - 1 : next;
-                    });
-                  }
-
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    const activeSuggestion = activeSuggestionIndex >= 0 ? suggestions[activeSuggestionIndex] : undefined;
-                    if (activeSuggestion) {
-                      applySuggestion(activeSuggestion);
-                      return;
-                    }
-
-                    runCatalogSearch(searchTerm, topCategoryContext);
-                  }
-                }}
-                placeholder="Search products, subcategories, brands"
-                className="h-12 flex-1 border border-zinc-300 px-4 text-sm uppercase tracking-[0.08em]"
-              />
-              <button
-                type="button"
-                className="h-12 border border-black bg-black px-5 text-xs font-semibold uppercase tracking-[0.12em] text-white"
-                onClick={() => {
-                  if (!hasQuery) return;
-                  runCatalogSearch(searchTerm, topCategoryContext);
-                }}
-              >
-                Search
-              </button>
-              <button type="button" className="h-12 border border-zinc-300 px-4 text-xs uppercase tracking-[0.12em]" onClick={closeSearch}>
-                Close
-              </button>
+              <form onSubmit={handleSearchSubmit} className="relative">
+                <input
+                  type="search"
+                  placeholder="Search products..."
+                  className="w-full rounded-md border border-zinc-300 bg-zinc-100 px-4 py-2 pr-10 text-sm"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onKeyDown={handleSearchKeyDown}
+                />
+                <button type="submit" className="absolute inset-y-0 right-0 flex items-center pr-3">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="text-zinc-500"
+                  >
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                </button>
+              </form>
             </div>
 
             {hasQuery ? (
@@ -933,7 +961,15 @@ export function SiteHeader() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1">
                       <p className="font-semibold uppercase tracking-[0.08em]">{item.title}</p>
-                      <p className="mt-1 text-zinc-600">{item.message}</p>
+                      <p className="mt-1 text-zinc-600">
+                        {/* Replace order ID with masked version in message */}
+                        {item.order?.id
+                          ? item.message.replace(
+                              new RegExp(`\\b${item.order.id}\\b`, 'g'),
+                              maskOrderId(item.order.id)
+                            )
+                          : item.message}
+                      </p>
                     </div>
                     {sessionNewNotificationIds.has(item.id) && (
                       <span className="whitespace-nowrap rounded bg-black px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-white">

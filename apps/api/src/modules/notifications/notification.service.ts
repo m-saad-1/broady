@@ -95,34 +95,11 @@ async function sendEmailNotification(input: {
   text: string;
   html?: string;
 }) {
-  if (env.smtpHost) {
-    await sendSmtpEmail(input);
-    return;
+  if (!env.sesSmtpHost || !env.sesSmtpUser || !env.sesSmtpPass || env.emailProvider !== "ses") {
+    throw new Error("SES email transport is not configured");
   }
 
-  if (!env.resendApiKey) {
-    throw new Error("Email provider is not configured");
-  }
-
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${env.resendApiKey}`,
-    },
-    body: JSON.stringify({
-      from: env.emailFromAddress,
-      to: [input.to],
-      subject: input.subject,
-      text: input.text,
-      html: input.html,
-    }),
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Email provider rejected request (${response.status}): ${body.slice(0, 240)}`);
-  }
+  await sendSmtpEmail(input);
 }
 
 async function withRetries(task: () => Promise<void>, attempts = 3) {
@@ -399,12 +376,17 @@ async function sendWhatsappNotification(input: {
 }
 
 export async function createNotificationWithChannels(input: DispatchInput) {
+  const userId = input.userId;
+  if (!userId) {
+    throw new Error("Notification userId is required");
+  }
+
   const isDuplicate = await isDuplicateNotification({
     prismaClient: input.prismaClient,
     type: input.type,
     title: input.title,
     message: input.message,
-    userId: input.userId,
+    userId,
     brandId: input.brandId,
     orderId: input.orderId,
   });
@@ -413,16 +395,27 @@ export async function createNotificationWithChannels(input: DispatchInput) {
     return null;
   }
 
-  const notification = await input.prismaClient.notification.create({
-    data: {
-      type: input.type,
-      title: input.title,
-      message: input.message,
-      userId: input.userId ?? null,
-      brandId: input.brandId ?? null,
-      orderId: input.orderId ?? null,
-    },
-  });
+  const notification = input.userId
+    ? await input.prismaClient.notification.create({
+        data: {
+          type: input.type,
+          title: input.title,
+          message: input.message,
+          userId,
+          brandId: input.brandId ?? null,
+          orderId: input.orderId ?? null,
+        },
+      })
+    : await input.prismaClient.notification.create({
+        data: {
+          type: input.type,
+          title: input.title,
+          message: input.message,
+          userId,
+          brandId: input.brandId ?? null,
+          orderId: input.orderId ?? null,
+        },
+      });
 
   await input.prismaClient.notificationChannelLog.create({
     data: {

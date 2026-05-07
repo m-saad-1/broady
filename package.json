@@ -18,6 +18,8 @@
     "meilisearch:install": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-meilisearch.ps1",
     "meilisearch:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-meilisearch.ps1",
     "search:meili:sync": "npm run search:meili:sync -w @broady/api",
+    "extract:products": "node extract-products-api.js",
+    "verify:meilisearch": "node verify-meilisearch.js",
     "build": "npm run build -w @broady/web && npm run build -w @broady/api",
     "start:worker": "npm run start:worker -w @broady/api",
     "lint": "npm run lint -w @broady/web && npm run lint -w @broady/api",
@@ -28,6 +30,7 @@
     "pm2": "^6.0.14"
   },
   "dependencies": {
+    "@react-oauth/google": "^0.13.5",
     "docx": "^9.6.1",
     "meilisearch": "^0.58.0"
   }

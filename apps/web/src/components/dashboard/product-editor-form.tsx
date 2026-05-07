@@ -423,14 +423,33 @@ export function ProductEditorForm({
               disabled={isSubmitting}
             />
             <TextField<ProductFormValues>
-              name="pricePkr"
-              label="Price (PKR)"
+              name="actualPrice"
+              label="Actual Price (PKR)"
               required
               type="number"
               min={1}
               register={register}
               errors={errors}
               disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              name="discountPercentage"
+              label="Discount Percentage"
+              type="number"
+              min={0}
+              max={100}
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              name="salePrice"
+              label="Sale Price (PKR)"
+              type="number"
+              min={1}
+              register={register}
+              errors={errors}
+              disabled={isSubmitting || !!useWatch({ control, name: "discountPercentage" })}
             />
             <TextField<ProductFormValues>
               name="stock"
@@ -441,6 +460,41 @@ export function ProductEditorForm({
               register={register}
               errors={errors}
               disabled={isSubmitting}
+            />
+            <SelectField<ProductFormValues>
+              name="gender"
+              label="Gender"
+              required
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+              options={[
+                { label: "Women", value: "WOMEN" },
+                { label: "Men", value: "MEN" },
+              ]}
+            />
+            <TextField<ProductFormValues>
+              name="color"
+              label="Color"
+              required
+              placeholder="Black"
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <SelectField<ProductFormValues>
+              name="type"
+              label="Type"
+              required
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+              options={[
+                { label: "Top", value: "Top" },
+                { label: "Bottom", value: "Bottom" },
+                { label: "Footwear", value: "Footwear" },
+                { label: "Accessories", value: "Accessories" },
+              ]}
             />
             <SelectField<ProductFormValues>
               name="topCategory"

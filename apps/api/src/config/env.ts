@@ -12,13 +12,37 @@ export const env = {
   cloudinaryUrl: process.env.CLOUDINARY_URL || "",
   awsS3Bucket: process.env.AWS_S3_BUCKET || "",
   cloudflareCdnUrl: process.env.CLOUDFLARE_CDN_URL || "",
-  resendApiKey: process.env.RESEND_API_KEY || "",
-  emailFromAddress: process.env.EMAIL_FROM_ADDRESS || "notifications@broady.pk",
-  smtpHost: process.env.SMTP_HOST || "",
-  smtpPort: Number(process.env.SMTP_PORT || 465),
-  smtpSecure: process.env.SMTP_SECURE === "false" ? false : true,
-  smtpUser: process.env.SMTP_USER || "",
-  smtpPass: process.env.SMTP_PASS || "",
+  emailFromName: process.env.EMAIL_FROM_NAME || "Broady",
+  emailFromAddress: process.env.EMAIL_FROM_ADDRESS || "msaad23305@gmail.com",
+  emailProvider: process.env.EMAIL_PROVIDER || "ses",
+  awsRegion: process.env.AWS_REGION || process.env.SES_REGION || "ap-south-1",
+  sesRegion: process.env.SES_REGION || process.env.AWS_REGION || "ap-south-1",
+  sesSmtpHost:
+    process.env.SES_SMTP_HOST ||
+    process.env.SMTP_HOST ||
+    `email-smtp.${process.env.SES_REGION || process.env.AWS_REGION || "ap-south-1"}.amazonaws.com`,
+  sesSmtpPort: Number(process.env.SES_SMTP_PORT || process.env.SMTP_PORT || 587),
+  sesSmtpSecure:
+    process.env.SES_SMTP_SECURE !== undefined
+      ? process.env.SES_SMTP_SECURE !== "false"
+      : process.env.SMTP_SECURE !== undefined
+        ? process.env.SMTP_SECURE !== "false"
+        : false,
+  sesSmtpUser: process.env.SES_SMTP_USER || process.env.SMTP_USER || "",
+  sesSmtpPass: process.env.SES_SMTP_PASS || process.env.SMTP_PASS || "",
+  smtpHost:
+    process.env.SMTP_HOST ||
+    process.env.SES_SMTP_HOST ||
+    `email-smtp.${process.env.SES_REGION || process.env.AWS_REGION || "ap-south-1"}.amazonaws.com`,
+  smtpPort: Number(process.env.SMTP_PORT || process.env.SES_SMTP_PORT || 587),
+  smtpSecure:
+    process.env.SMTP_SECURE !== undefined
+      ? process.env.SMTP_SECURE !== "false"
+      : process.env.SES_SMTP_SECURE !== undefined
+        ? process.env.SES_SMTP_SECURE !== "false"
+        : false,
+  smtpUser: process.env.SMTP_USER || process.env.SES_SMTP_USER || "",
+  smtpPass: process.env.SMTP_PASS || process.env.SES_SMTP_PASS || "",
   whatsappWebhookUrl: process.env.WHATSAPP_WEBHOOK_URL || "",
   paymentWebhookSecret: process.env.PAYMENT_WEBHOOK_SECRET || "",
   firebaseProjectId: process.env.FIREBASE_PROJECT_ID || "broady-1",

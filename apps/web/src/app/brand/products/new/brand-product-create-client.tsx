@@ -3,38 +3,16 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { submitBrandProduct, uploadBrandProductImages } from "@/lib/api";
-import { buildBrandProductPayload } from "@/lib/product-form";
+import { buildBrandProductPayload, createDefaultProductFormValues } from "@/lib/product-form";
 import { useToastStore } from "@/stores/toast-store";
 import type { ProductFormValues } from "@/lib/product-form";
 
 type ProductCreateForm = Omit<ProductFormValues, "brandId">;
 
-const defaultForm: ProductCreateForm = {
-  name: "",
-  slug: "",
-  description: "",
-  pricePkr: "",
-  topCategory: "Men" as const,
-  subCategory: "",
-  sizes: "S, M, L",
-  imageUrl: "",
-  sizeGuideTemplateId: "",
-  sizeGuideImageUrl: "",
-  sizeGuideRows: [{ size: "S", cm: "", inches: "" }],
-  deliveriesReturnsTemplateId: "",
-  deliveryTime: "3-5 business days",
-  returnPolicy: "Returns accepted within 7 days for unused items.",
-  refundConditions: "Refund to original payment method after inspection.",
-  shippingDeliveryTemplateId: "",
-  shippingRegions: "Pakistan",
-  shippingEstimatedDeliveryTime: "3-5 business days",
-  shippingCharges: "Calculated at checkout",
-  fabricCareTemplateId: "",
-  fabricType: "Cotton",
-  careInstructions: "Machine wash cold, do not bleach",
-  stock: "0",
-  isActive: true,
-};
+const defaultForm: ProductCreateForm = (() => {
+  const { brandId: _brandId, ...form } = createDefaultProductFormValues("brand");
+  return form;
+})();
 
 export function BrandProductCreateClient() {
   const pushToast = useToastStore((state) => state.pushToast);

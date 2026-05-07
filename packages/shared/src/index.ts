@@ -32,6 +32,10 @@ export function expandCatalogTopCategory(topCategory?: string, juniorCategory?: 
 
 export type ProductType = "Top" | "Bottom" | "Footwear" | "Accessories";
 
+export const PRODUCT_TYPE_OPTIONS = ["Top", "Bottom", "Footwear", "Accessories"] as const;
+
+export const GENDER_OPTIONS = ["Male", "Female", "Unisex"] as const;
+
 export type ProductApprovalStatus = "DRAFT" | "PENDING" | "APPROVED" | "REJECTED";
 
 export type ProductBadge = "Sale" | "New" | "Limited" | "Out of Stock";
@@ -106,11 +110,17 @@ export type Product = {
   slug: string;
   description: string;
   descriptionLong?: string;
+  actualPrice: number;
+  salePrice?: number;
+  discountPercentage?: number;
   pricePkr: number;
-  topCategory: ProductTopCategory;
+  gender: string;
+  color: string;
   productType?: ProductType;
+  topCategory: ProductTopCategory;
   subCategory: string;
   sizes: string[];
+  tags?: string[];
   sizeGuideTemplateId?: string;
   sizeGuide?: ProductSizeGuide;
   deliveriesReturnsTemplateId?: string;
@@ -119,17 +129,10 @@ export type Product = {
   shippingDelivery?: ProductShippingDelivery;
   fabricCareTemplateId?: string;
   fabricCare?: ProductFabricCare;
-  colors?: string[];
   badge?: ProductBadge;
   imageUrl: string;
   stock: number;
   isActive: boolean;
-  offer?: {
-    percentage: number;
-    isActive?: boolean;
-    startsAt?: string;
-    endsAt?: string;
-  };
   brand?: Brand;
   soldCount?: number;
 };

@@ -30,6 +30,7 @@ export default async function ShopByCategoryPage({ params, searchParams }: ShopB
   }
 
   const products = await getProducts(safeParams);
+  const allProducts = await getProducts();
 
   return (
     <main className="mx-auto w-full max-w-7xl space-y-8 px-4 py-10 lg:px-10">
@@ -38,7 +39,7 @@ export default async function ShopByCategoryPage({ params, searchParams }: ShopB
         <h1 className="font-heading text-5xl uppercase">{decodedCategory}</h1>
       </header>
 
-      <CatalogClient initialProducts={products} params={safeParams} />
+      <CatalogClient initialProducts={products} allProducts={allProducts} params={safeParams} />
     </main>
   );
 }

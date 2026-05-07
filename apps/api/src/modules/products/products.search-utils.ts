@@ -1,4 +1,6 @@
-const topCategoryTokenMap: Record<string, "Men" | "Women" | "Juniors" | "Toddler Boys" | "Toddler Girls" | "Junior Boys" | "Junior Girls"> = {
+type CatalogTopCategory = "Men" | "Women" | "Toddler Boys" | "Toddler Girls" | "Junior Boys" | "Junior Girls";
+
+const adultCategoryTokenMap: Record<string, CatalogTopCategory> = {
   men: "Men",
   mens: "Men",
   male: "Men",
@@ -7,14 +9,6 @@ const topCategoryTokenMap: Record<string, "Men" | "Women" | "Juniors" | "Toddler
   womens: "Women",
   female: "Women",
   woman: "Women",
-  kids: "Juniors",
-  kid: "Juniors",
-  child: "Juniors",
-  children: "Juniors",
-  boy: "Juniors",
-  boys: "Juniors",
-  girl: "Juniors",
-  girls: "Juniors",
 };
 
 const searchStopWords = new Set(["for", "and", "the", "a", "an", "of", "to", "in", "on", "with", "by"]);
@@ -35,8 +29,17 @@ export function expandCatalogTopCategory(
     return [];
   }
 
-  // If a specific junior category is requested and topCategory is "Juniors", return the specific variant
-  if (juniorCategory && topCategory.toLowerCase() === "juniors") {
+  const normalizedTop = topCategory.toLowerCase();
+
+  // Support legacy plural/group labels and expand to a full junior/toddler set when no specific category is provided.
+  if (normalizedTop === "juniors" || normalizedTop === "kids") {
+    if (juniorCategory) {
+      return [juniorCategory];
+    }
+    return ["Toddler Boys", "Toddler Girls", "Junior Boys", "Junior Girls"];
+  }
+
+  if (juniorCategory && normalizedTop === "juniors") {
     return [juniorCategory];
   }
 
@@ -137,34 +140,13 @@ export function inferSubCategoryHints(query: string) {
 export function inferQueryCategory(query: string) {
   const tokens = tokenizeSearchQuery(query);
   if (!tokens.length) {
-    return { normalizedQuery: query } as { normalizedQuery: string; inferredTopCategory?: "Men" | "Women" | "Juniors" | "Toddler Boys" | "Toddler Girls" | "Junior Boys" | "Junior Girls" };
+    return { normalizedQuery: query } as { normalizedQuery: string; inferredTopCategory?: CatalogTopCategory };
   }
 
-  const categoryTokenCount = new Map<"Men" | "Women" | "Juniors" | "Toddler Boys" | "Toddler Girls" | "Junior Boys" | "Junior Girls", number>();
-  for (const token of tokens) {
-    const mapped = topCategoryTokenMap[token];
-    if (!mapped) continue;
-
-    categoryTokenCount.set(mapped, (categoryTokenCount.get(mapped) ?? 0) + 1);
-  }
-
-  let inferredTopCategory: "Men" | "Women" | "Juniors" | "Toddler Boys" | "Toddler Girls" | "Junior Boys" | "Junior Girls" | undefined;
-  const maxCoverage = Math.max(...Array.from(categoryTokenCount.values()), 0);
-  const requiredCoverage = Math.ceil(tokens.length * 0.5);
-
-  if (maxCoverage >= requiredCoverage) {
-    let bestCategory: "Men" | "Women" | "Juniors" | "Toddler Boys" | "Toddler Girls" | "Junior Boys" | "Junior Girls" | undefined;
-    let bestCount = 0;
-    for (const [category, count] of categoryTokenCount) {
-      if (count <= bestCount) continue;
-      bestCount = count;
-      bestCategory = category;
-    }
-    inferredTopCategory = bestCategory;
-  }
+  const inferredTopCategory = detectTopCategoryToken(tokens);
 
   const normalizedTokens = inferredTopCategory
-    ? tokens.filter((token) => topCategoryTokenMap[token] !== inferredTopCategory)
+    ? tokens.filter((token) => !matchesTopCategoryToken(token, inferredTopCategory))
     : tokens;
 
   return {
@@ -183,5 +165,39 @@ export function buildPrefixTsQuery(query: string) {
 }
 
 export function detectTopCategoryToken(tokens: string[]) {
-  return tokens.map((token) => topCategoryTokenMap[token]).find((category) => category !== undefined);
+  const hasBoy = tokens.includes("boy");
+  const hasGirl = tokens.includes("girl");
+  const hasToddler = tokens.includes("toddler") || tokens.includes("baby");
+
+  if (hasToddler && hasGirl) return "Toddler Girls";
+  if (hasToddler && hasBoy) return "Toddler Boys";
+  if (hasGirl) return "Junior Girls";
+  if (hasBoy) return "Junior Boys";
+  if (hasToddler) return "Toddler Boys";
+
+  for (const token of tokens) {
+    const mapped = adultCategoryTokenMap[token];
+    if (mapped) return mapped;
+  }
+
+  return undefined;
+}
+
+function matchesTopCategoryToken(token: string, category: CatalogTopCategory) {
+  switch (category) {
+    case "Men":
+      return ["men", "mens", "male", "man"].includes(token);
+    case "Women":
+      return ["women", "womens", "female", "woman"].includes(token);
+    case "Toddler Boys":
+      return ["toddler", "baby", "boy"].includes(token);
+    case "Toddler Girls":
+      return ["toddler", "baby", "girl"].includes(token);
+    case "Junior Boys":
+      return ["boy"].includes(token);
+    case "Junior Girls":
+      return ["girl"].includes(token);
+    default:
+      return false;
+  }
 }

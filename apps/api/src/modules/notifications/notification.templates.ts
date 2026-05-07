@@ -11,6 +11,19 @@ type NotificationTemplateContext = {
   orderBrandNames?: string[];
 };
 
+/**
+ * Masks an order ID for display (first 4 chars + ... + last 4 chars)
+ * Example: cmosz2xwz001rh2787jfwsw5o -> cmosz...wswso
+ */
+function maskOrderId(orderId: string): string {
+  if (!orderId || orderId.length <= 8) {
+    return orderId;
+  }
+  const firstFour = orderId.substring(0, 4);
+  const lastFour = orderId.substring(orderId.length - 4);
+  return `${firstFour}...${lastFour}`;
+}
+
 function orderTitle(name: NotificationEvent["name"]) {
   switch (name) {
     case "order_placed":
@@ -87,21 +100,21 @@ export function buildNotificationTemplate(
       if (normalizedOrderEventName === "order_placed") {
         return {
           title,
-          message: `Your order ${event.orderId} has been placed successfully on Broady.`,
+          message: `Your order ${maskOrderId(event.orderId)} has been placed successfully on Broady.`,
         };
       }
 
       if (normalizedOrderEventName === "suborder_confirmed") {
         return {
           title,
-          message: `Order ${event.orderId} has been confirmed.`,
+          message: `Order ${maskOrderId(event.orderId)} has been confirmed.`,
         };
       }
 
       if (normalizedOrderEventName === "suborder_processing") {
         return {
           title,
-          message: `Order ${event.orderId} is being processed.`,
+          message: `Order ${maskOrderId(event.orderId)} is being processed.`,
         };
       }
 
@@ -109,7 +122,7 @@ export function buildNotificationTemplate(
         const shippedByBrandName = context?.recipientBrandName || event.brandName || orderBrandLabel || "the brand";
         return {
           title,
-          message: noteSuffix.trim() || `Order ${event.orderId} has been shipped by ${shippedByBrandName}.`,
+          message: noteSuffix.trim() || `Order ${maskOrderId(event.orderId)} has been shipped by ${shippedByBrandName}.`,
         };
       }
 
@@ -124,14 +137,14 @@ export function buildNotificationTemplate(
         const failureNote = event.note ? `\n${event.note}` : "";
         return {
           title,
-          message: `Delivery unsuccessful for order ${event.orderId}.${failureNote}${failureNote ? "" : " We're working on your delivery."}`,
+          message: `Delivery unsuccessful for order ${maskOrderId(event.orderId)}.${failureNote}${failureNote ? "" : " We're working on your delivery."}`,
         };
       }
 
       if (normalizedOrderEventName === "suborder_retry_scheduled") {
         return {
           title,
-          message: event.note ? `A delivery retry has been scheduled. ${event.note}` : `A delivery retry has been scheduled for order ${event.orderId}.`,
+          message: event.note ? `A delivery retry has been scheduled. ${event.note}` : `A delivery retry has been scheduled for order ${maskOrderId(event.orderId)}.`,
         };
       }
 
@@ -139,12 +152,12 @@ export function buildNotificationTemplate(
         const returnNote = event.note || "Your order has been processed for return.";
         return {
           title,
-          message: `Order ${event.orderId} status: Returned. ${returnNote}`,
+          message: `Order ${maskOrderId(event.orderId)} status: Returned. ${returnNote}`,
         };
       }
 
       if (normalizedOrderEventName === "suborder_cancelled") {
-        const cancelledRef = event.subOrderId ? `Sub-order ${event.subOrderId}` : `Your order ${event.orderId}`;
+        const cancelledRef = event.subOrderId ? `Sub-order ${maskOrderId(event.subOrderId)}` : `Your order ${maskOrderId(event.orderId)}`;
         return {
           title,
           message: `${cancelledRef} has been cancelled.${noteSuffix}`,
@@ -154,13 +167,13 @@ export function buildNotificationTemplate(
       if (normalizedOrderEventName === "suborder_delivered" && event.note?.toLowerCase().includes("fully delivered")) {
         return {
           title,
-          message: `Your order ${event.orderId} has been fully delivered.`,
+          message: `Your order ${maskOrderId(event.orderId)} has been fully delivered.`,
         };
       }
 
       if (normalizedOrderEventName === "suborder_delivered") {
         const deliveredBrandName = context?.recipientBrandName || event.brandName || orderBrandLabel || "brand";
-        const deliveredRef = event.subOrderId ? `Sub-order ${event.subOrderId}` : `Order ${event.orderId}`;
+        const deliveredRef = event.subOrderId ? `Sub-order ${maskOrderId(event.subOrderId)}` : `Order ${maskOrderId(event.orderId)}`;
         return {
           title,
           message: `${deliveredRef} has been delivered. Your ${deliveredBrandName} item has been delivered.`,
@@ -172,28 +185,28 @@ export function buildNotificationTemplate(
       if (normalizedOrderEventName === "order_placed") {
         return {
           title,
-          message: `New order ${event.orderId} received for ${recipientBrand}. Confirmation is handled by Broady automatically.`,
+          message: `New order ${maskOrderId(event.orderId)} received for ${recipientBrand}. Confirmation is handled by Broady automatically.`,
         };
       }
 
       if (normalizedOrderEventName === "suborder_confirmed") {
         return {
           title,
-          message: `Order ${event.orderId} has been confirmed.`,
+          message: `Order ${maskOrderId(event.orderId)} has been confirmed.`,
         };
       }
 
       if (normalizedOrderEventName === "suborder_processing") {
         return {
           title,
-          message: `Order ${event.orderId} is being processed.`,
+          message: `Order ${maskOrderId(event.orderId)} is being processed.`,
         };
       }
 
       if (normalizedOrderEventName === "suborder_shipped") {
         return {
           title,
-          message: noteSuffix.trim() || `Order ${event.orderId} has been shipped.`,
+          message: noteSuffix.trim() || `Order ${maskOrderId(event.orderId)} has been shipped.`,
         };
       }
 
@@ -208,14 +221,14 @@ export function buildNotificationTemplate(
         const failureNote = event.note ? `\n${event.note}` : "";
         return {
           title,
-          message: `Delivery attempt failed for order ${event.orderId}.${failureNote}`,
+          message: `You updated the status for order ${maskOrderId(event.orderId)} to Delivery Failed.${failureNote}`,
         };
       }
 
       if (normalizedOrderEventName === "suborder_retry_scheduled") {
         return {
           title,
-          message: event.note || `Retry scheduled for order ${event.orderId}.`,
+          message: event.note || `Retry scheduled for order ${maskOrderId(event.orderId)}.`,
         };
       }
 
@@ -223,13 +236,12 @@ export function buildNotificationTemplate(
         const returnNote = event.note || "Order has been processed for return.";
         return {
           title,
-          message: `Order ${event.orderId} returned for ${recipientBrand}. ${returnNote}`,
+          message: `Order ${maskOrderId(event.orderId)} returned for ${recipientBrand}. ${returnNote}`,
         };
       }
 
-
       if (normalizedOrderEventName === "suborder_cancelled") {
-        const cancelledRef = event.subOrderId ? `Sub-order ${event.subOrderId}` : `Order ${event.orderId}`;
+        const cancelledRef = event.subOrderId ? `Sub-order ${maskOrderId(event.subOrderId)}` : `Order ${maskOrderId(event.orderId)}`;
         return {
           title,
           message: `${cancelledRef} for ${recipientBrand} has been cancelled.${noteSuffix}`,
@@ -237,7 +249,7 @@ export function buildNotificationTemplate(
       }
 
       if (normalizedOrderEventName === "suborder_delivered") {
-        const deliveredRef = event.subOrderId ? `Sub-order ${event.subOrderId}` : `Order ${event.orderId}`;
+        const deliveredRef = event.subOrderId ? `Sub-order ${maskOrderId(event.subOrderId)}` : `Order ${maskOrderId(event.orderId)}`;
         return {
           title,
           message: `${deliveredRef} has been delivered.`,
@@ -249,22 +261,22 @@ export function buildNotificationTemplate(
       return {
         title,
         message: orderBrandLabel
-          ? `New order ${event.orderId} placed for ${orderBrandLabel}.`
-          : `New order ${event.orderId} has been placed in the marketplace.`,
+          ? `New order ${maskOrderId(event.orderId)} placed for ${orderBrandLabel}.`
+          : `New order ${maskOrderId(event.orderId)} has been placed in the marketplace.`,
       };
     }
 
     if (normalizedOrderEventName === "suborder_confirmed") {
       return {
         title,
-        message: `Order ${event.orderId} has been confirmed.`,
+        message: `Order ${maskOrderId(event.orderId)} has been confirmed.`,
       };
     }
 
     if (normalizedOrderEventName === "suborder_processing") {
       return {
         title,
-        message: `Order ${event.orderId} is being processed.`,
+        message: `Order ${maskOrderId(event.orderId)} is being processed.`,
       };
     }
 
@@ -272,7 +284,7 @@ export function buildNotificationTemplate(
       const shippedByBrandName = event.brandName || orderBrandLabel || "the brand";
       return {
         title,
-        message: noteSuffix.trim() || `Order ${event.orderId} has been shipped by ${shippedByBrandName}.`,
+        message: noteSuffix.trim() || `Order ${maskOrderId(event.orderId)} has been shipped by ${shippedByBrandName}.`,
       };
     }
 
@@ -286,26 +298,26 @@ export function buildNotificationTemplate(
     if (normalizedOrderEventName === "suborder_delivery_failed") {
       return {
         title,
-        message: `Delivery failed for ${event.subOrderId ? `sub-order ${event.subOrderId}` : `order ${event.orderId}`}.${noteSuffix}`,
+        message: `Delivery failed for ${event.subOrderId ? `sub-order ${maskOrderId(event.subOrderId)}` : `order ${maskOrderId(event.orderId)}`}.${noteSuffix}`,
       };
     }
 
     if (normalizedOrderEventName === "suborder_retry_scheduled") {
       return {
         title,
-        message: event.note || `Retry scheduled for order ${event.orderId}.`,
+        message: event.note || `Retry scheduled for order ${maskOrderId(event.orderId)}.`,
       };
     }
 
     if (normalizedOrderEventName === "suborder_returned") {
       return {
         title,
-        message: `${event.subOrderId ? `Sub-order ${event.subOrderId}` : `Order ${event.orderId}`} has been returned.${noteSuffix}`,
+        message: `${event.subOrderId ? `Sub-order ${maskOrderId(event.subOrderId)}` : `Order ${maskOrderId(event.orderId)}`} has been returned.${noteSuffix}`,
       };
     }
 
     if (normalizedOrderEventName === "suborder_cancelled") {
-      const cancelledRef = event.subOrderId ? `Sub-order ${event.subOrderId}` : `Order ${event.orderId}`;
+      const cancelledRef = event.subOrderId ? `Sub-order ${maskOrderId(event.subOrderId)}` : `Order ${maskOrderId(event.orderId)}`;
       return {
         title,
         message: orderBrandLabel
@@ -316,7 +328,7 @@ export function buildNotificationTemplate(
 
     if (normalizedOrderEventName === "suborder_delivered") {
       const deliveredByBrandName = event.brandName || orderBrandLabel || "the brand";
-      const deliveredRef = event.subOrderId ? `Sub-order ${event.subOrderId}` : `Order ${event.orderId}`;
+      const deliveredRef = event.subOrderId ? `Sub-order ${maskOrderId(event.subOrderId)}` : `Order ${maskOrderId(event.orderId)}`;
       return {
         title,
         message: `${deliveredRef} has been delivered by ${deliveredByBrandName}.`,
@@ -328,13 +340,13 @@ export function buildNotificationTemplate(
     if (audience === "ADMIN") {
       return {
         title: "Payment Started",
-        message: `Payment initiated for order ${event.orderId}${event.paymentMethod ? ` via ${event.paymentMethod}` : ""}.`,
+        message: `Payment initiated for order ${maskOrderId(event.orderId)}${event.paymentMethod ? ` via ${event.paymentMethod}` : ""}.`,
       };
     }
 
     return {
       title: "Payment Started",
-      message: `Your payment for order ${event.orderId} has started${event.paymentMethod ? ` via ${event.paymentMethod}` : ""}.`,
+      message: `Your payment for order ${maskOrderId(event.orderId)} has started${event.paymentMethod ? ` via ${event.paymentMethod}` : ""}.`,
     };
   }
 
@@ -342,13 +354,13 @@ export function buildNotificationTemplate(
     if (audience === "ADMIN") {
       return {
         title: "Payment Successful",
-        message: `Payment completed for order ${event.orderId}.`,
+        message: `Payment completed for order ${maskOrderId(event.orderId)}.`,
       };
     }
 
     return {
       title: "Payment Successful",
-      message: `Your payment for order ${event.orderId} has been completed.`,
+      message: `Your payment for order ${maskOrderId(event.orderId)} has been completed.`,
     };
   }
 
@@ -356,13 +368,13 @@ export function buildNotificationTemplate(
     if (audience === "ADMIN") {
       return {
         title: "Payment Failed",
-        message: `Payment failed for order ${event.orderId}${event.reason ? `. Reason: ${event.reason}` : ""}.`,
+        message: `Payment failed for order ${maskOrderId(event.orderId)}${event.reason ? `. Reason: ${event.reason}` : ""}.`,
       };
     }
 
     return {
       title: "Payment Failed",
-      message: `Your payment for order ${event.orderId} failed${event.reason ? `. Reason: ${event.reason}` : ""}.`,
+      message: `Your payment for order ${maskOrderId(event.orderId)} failed${event.reason ? `. Reason: ${event.reason}` : ""}.`,
     };
   }
 
@@ -370,13 +382,13 @@ export function buildNotificationTemplate(
     if (audience === "ADMIN") {
       return {
         title: "Refund Processed",
-        message: `Refund processed for order ${event.orderId}.`,
+        message: `Refund processed for order ${maskOrderId(event.orderId)}.`,
       };
     }
 
     return {
       title: "Refund Processed",
-      message: `Your refund for order ${event.orderId} has been processed.`,
+      message: `Your refund for order ${maskOrderId(event.orderId)} has been processed.`,
     };
   }
 

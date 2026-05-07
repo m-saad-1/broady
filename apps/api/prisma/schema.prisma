@@ -321,10 +321,17 @@ model Product {
   name        String
   slug        String    @unique
   description String
+  gender      String    @default("WOMEN")
+  color       String    @default("default")
+  type        String    @default("Top")
+  actualPrice Float
+  salePrice   Float?
+  discountPercentage Float?
   pricePkr    Int
   topCategory String
   subCategory String
   sizes       String[]
+  tags        String[]  @default([])
   imageUrl    String
   sizeGuideTemplateId String?
   sizeGuide   Json?

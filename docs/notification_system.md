@@ -61,3 +61,14 @@ Use environment variables to choose mode:
 - Do not send external notifications directly inside domain route handlers.
 - Emit structured events and let notification services decide delivery.
 - Add templates and routing rules for any new event type.
+
+
+
+## Some Critical Fixes
+* In the header notification icon counter, Disaply the new notification counts. If once open the notification dropdown, then the counter should be reset to 0 until new notification arrives. 
+* Show NEW badge for the newly arrived notifications in the dropdown, and remove the NEW badge when user clicks on the notification to read it. or remove the badge when user opens the dropdown for second time, and show the badge again when new notification arrives.
+* In the notification card, Disaply the order id as XXXX...XXXX instead of the full order id. 
+* Disaply the failed delivery notification change for brands from user. currently the brand recieve notification (Delivery Failed
+
+Delivery attempt failed for order cmosz2xwz001rh2787jfwsw5o. Delivery failed (Incorrect address). Please update the address before the order can be reattempted. Delivery failed (Incorrect address). Hold reattempts until the customer updates their address.) This should for user, Change it for the brand which have updated the order status. 
+* Some notifications like shipped, confirmed, Out for delviery etc show notification (Your Outfitters item is out for delivery.) Also dispaly order id with it. 

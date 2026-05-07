@@ -4,6 +4,7 @@ import { getProduct, getProductReviews, getProducts } from "@/lib/api";
 import { ReviewSection } from "@/components/ui/review-section";
 import type { ProductReview } from "@/types/marketplace";
 import { ProductDetailClient } from "./product-detail-client";
+import { findRelatedProducts } from "@/lib/related-products";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -28,9 +29,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
 
   if (!product) return notFound();
 
-  const sameTopCategory = products.filter((item) => item.topCategory === product.topCategory && item.id !== product.id);
-  const sameSubcategory = sameTopCategory.filter((item) => item.subCategory === product.subCategory);
-  const related = (sameSubcategory.length ? sameSubcategory : sameTopCategory).slice(0, 4);
+  const related = findRelatedProducts(product, products);
 
   let reviewSummary: {
     aggregate: {

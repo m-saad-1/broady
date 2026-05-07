@@ -22,9 +22,10 @@ function dotStuff(value: string) {
 function buildMessage(input: MailInput) {
   const contentType = input.html ? "text/html" : "text/plain";
   const body = input.html || input.text;
+  const fromHeader = `${env.emailFromName} <${env.emailFromAddress}>`;
 
   return [
-    `From: ${env.emailFromAddress}`,
+    `From: ${fromHeader}`,
     `To: ${input.to}`,
     `Subject: ${encodeHeader(input.subject)}`,
     "MIME-Version: 1.0",
@@ -79,11 +80,11 @@ async function sendCommand(socket: SmtpSocket, command: string, expectedCodes: n
 function connectSmtpSocket() {
   return new Promise<SmtpSocket>((resolve, reject) => {
     const options = {
-      host: env.smtpHost,
-      port: env.smtpPort,
-      servername: env.smtpHost,
+      host: env.sesSmtpHost,
+      port: env.sesSmtpPort,
+      servername: env.sesSmtpHost,
     };
-    const socket = env.smtpSecure ? tls.connect(options) : net.connect(options);
+    const socket = env.sesSmtpSecure ? tls.connect(options) : net.connect(options);
 
     const onConnect = () => {
       cleanup();
@@ -99,14 +100,14 @@ function connectSmtpSocket() {
       socket.off("error", onError);
     };
 
-    socket.once(env.smtpSecure ? "secureConnect" : "connect", onConnect);
+    socket.once(env.sesSmtpSecure ? "secureConnect" : "connect", onConnect);
     socket.once("error", onError);
   });
 }
 
 export async function sendSmtpEmail(input: MailInput) {
-  if (!env.smtpHost) {
-    throw new Error("SMTP provider is not configured");
+  if (!env.sesSmtpHost || !env.sesSmtpUser || !env.sesSmtpPass) {
+    throw new Error("SES SMTP provider is not configured");
   }
 
   const socket = await connectSmtpSocket();
@@ -117,12 +118,12 @@ export async function sendSmtpEmail(input: MailInput) {
       throw new Error(`SMTP greeting failed (${greeting.code}): ${greeting.message.slice(0, 240)}`);
     }
 
-    await sendCommand(socket, `EHLO ${env.smtpHost}`, [250]);
+    await sendCommand(socket, `EHLO ${env.sesSmtpHost}`, [250]);
 
-    if (env.smtpUser && env.smtpPass) {
+    if (env.sesSmtpUser && env.sesSmtpPass) {
       await sendCommand(socket, "AUTH LOGIN", [334]);
-      await sendCommand(socket, Buffer.from(env.smtpUser).toString("base64"), [334]);
-      await sendCommand(socket, Buffer.from(env.smtpPass).toString("base64"), [235]);
+      await sendCommand(socket, Buffer.from(env.sesSmtpUser).toString("base64"), [334]);
+      await sendCommand(socket, Buffer.from(env.sesSmtpPass).toString("base64"), [235]);
     }
 
     await sendCommand(socket, `MAIL FROM:<${env.emailFromAddress}>`, [250]);

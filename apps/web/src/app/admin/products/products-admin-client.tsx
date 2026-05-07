@@ -14,7 +14,7 @@ import {
   rejectProduct,
   updateProduct,
 } from "@/lib/api";
-import { buildAdminProductPayload } from "@/lib/product-form";
+import { buildAdminProductPayload, createDefaultProductFormValues, productToFormValues } from "@/lib/product-form";
 import { useToastStore } from "@/stores/toast-store";
 import type {
   Brand,
@@ -26,34 +26,9 @@ import type {
   ProductSizeGuide,
   ProductTemplateType,
 } from "@/types/marketplace";
+import type { ProductFormValues } from "@/lib/product-form";
 
-type ProductFormState = {
-  brandId: string;
-  name: string;
-  slug: string;
-  description: string;
-  pricePkr: string;
-  topCategory: "Men" | "Women" | "Toddler Boys" | "Toddler Girls" | "Junior Boys" | "Junior Girls";
-  subCategory: string;
-  sizes: string;
-  imageUrl: string;
-  sizeGuideTemplateId?: string;
-  sizeGuideImageUrl?: string;
-  sizeGuideRows: Array<{ size: string; cm: string; inches: string }>;
-  deliveriesReturnsTemplateId?: string;
-  deliveryTime: string;
-  returnPolicy: string;
-  refundConditions: string;
-  shippingDeliveryTemplateId?: string;
-  shippingRegions: string;
-  shippingEstimatedDeliveryTime: string;
-  shippingCharges?: string;
-  fabricCareTemplateId?: string;
-  fabricType: string;
-  careInstructions: string;
-  stock: string;
-  isActive: boolean;
-};
+type ProductFormState = ProductFormValues & { brandId: string };
 
 type TemplateLibraryState = {
   SIZE_GUIDE: ProductContentTemplate[];
@@ -63,31 +38,8 @@ type TemplateLibraryState = {
 };
 
 const defaultProductForm: ProductFormState = {
+  ...createDefaultProductFormValues("admin"),
   brandId: "",
-  name: "",
-  slug: "",
-  description: "",
-  pricePkr: "",
-  topCategory: "Men",
-  subCategory: "",
-  sizes: "",
-  imageUrl: "",
-  sizeGuideTemplateId: "",
-  sizeGuideImageUrl: "",
-  sizeGuideRows: [{ size: "S", cm: "", inches: "" }],
-  deliveriesReturnsTemplateId: "",
-  deliveryTime: "",
-  returnPolicy: "",
-  refundConditions: "",
-  shippingDeliveryTemplateId: "",
-  shippingRegions: "",
-  shippingEstimatedDeliveryTime: "",
-  shippingCharges: "",
-  fabricCareTemplateId: "",
-  fabricType: "",
-  careInstructions: "",
-  stock: "0",
-  isActive: true,
 };
 
 const emptyTemplateLibrary: TemplateLibraryState = {
@@ -98,37 +50,12 @@ const emptyTemplateLibrary: TemplateLibraryState = {
 };
 
 function toProductFormState(product: Product): ProductFormState {
-  const sizeGuide = product.sizeGuide;
-  const deliveriesReturns = product.deliveriesReturns;
-  const shippingDelivery = product.shippingDelivery;
-  const fabricCare = product.fabricCare;
+  const baseForm = createDefaultProductFormValues("admin", product.brandId || "");
 
   return {
-    brandId: product.brandId,
-    name: product.name,
-    slug: product.slug,
-    description: product.description,
-    pricePkr: String(product.pricePkr),
-    topCategory: product.topCategory,
-    subCategory: product.subCategory,
-    sizes: product.sizes.join(", "),
-    imageUrl: product.imageUrl,
-    sizeGuideTemplateId: product.sizeGuideTemplateId || "",
-    sizeGuideImageUrl: sizeGuide?.imageUrl || "",
-    sizeGuideRows: sizeGuide?.entries?.length ? sizeGuide.entries : [{ size: "S", cm: "", inches: "" }],
-    deliveriesReturnsTemplateId: product.deliveriesReturnsTemplateId || "",
-    deliveryTime: deliveriesReturns?.deliveryTime || "",
-    returnPolicy: deliveriesReturns?.returnPolicy || "",
-    refundConditions: deliveriesReturns?.refundConditions || "",
-    shippingDeliveryTemplateId: product.shippingDeliveryTemplateId || "",
-    shippingRegions: shippingDelivery?.regions?.join("\n") || "",
-    shippingEstimatedDeliveryTime: shippingDelivery?.estimatedDeliveryTime || "",
-    shippingCharges: shippingDelivery?.charges || "",
-    fabricCareTemplateId: product.fabricCareTemplateId || "",
-    fabricType: fabricCare?.fabricType || "",
-    careInstructions: fabricCare?.careInstructions?.join("\n") || "",
-    stock: String(product.stock),
-    isActive: product.isActive,
+    ...baseForm,
+    ...productToFormValues(product),
+    brandId: product.brandId || "",
   };
 }
 
@@ -562,7 +489,7 @@ export function ProductsAdminClient() {
                     <span className="font-semibold text-zinc-900">Stock:</span> {product.stock}
                   </p>
                   <p>
-                    <span className="font-semibold text-zinc-900">Color:</span> {product.colors?.join(", ") || "-"}
+                    <span className="font-semibold text-zinc-900">Color:</span> {product.color || "-"}
                   </p>
                   <p>
                     <span className="font-semibold text-zinc-900">Size:</span> {product.sizes.join(", ")}

@@ -116,7 +116,7 @@ export default function CartPage() {
                       <p className="text-sm text-zinc-600">{formatPkr(pricing.basePrice)}</p>
                     )}
                     <p className="text-[11px] uppercase tracking-[0.12em] text-zinc-500">
-                      Color: {item.selectedColor || item.product.colors?.[0] || "Black"} | Size: {item.selectedSize || item.product.sizes[0] || "One Size"}
+                      Color: {item.selectedColor || item.product.color || "Black"} | Size: {item.selectedSize || item.product.sizes[0] || "One Size"}
                     </p>
                   </div>
 

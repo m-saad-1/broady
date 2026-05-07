@@ -3,14 +3,16 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { loginUser } from "@/lib/auth-client";
+import { GoogleLogin } from "@react-oauth/google";
+import { loginUser, loginWithGoogleIdToken } from "@/lib/auth-client";
+import { useGoogleAuthConfig } from "@/providers/google-auth-provider";
 import { useAuthStore } from "@/stores/auth-store";
 
 export default function LoginPage() {
   const router = useRouter();
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [googlePlaceholderMessage, setGooglePlaceholderMessage] = useState("");
+  const { isConfigured } = useGoogleAuthConfig();
   const setUser = useAuthStore((state) => state.setUser);
 
   const resolveNextRoute = (role?: string) => {
@@ -54,21 +56,38 @@ export default function LoginPage() {
         </button>
         <div className="border-t border-zinc-300 pt-4">
           <p className="mb-3 text-[11px] uppercase tracking-[0.12em] text-zinc-500">Or continue with</p>
-          <button
-            type="button"
-            onClick={() => setGooglePlaceholderMessage("Google sign-in will be available soon.")}
-            className="inline-flex h-11 w-full items-center justify-center gap-2 border border-zinc-300 bg-white px-3 text-xs font-semibold uppercase tracking-[0.12em]"
-            aria-label="Continue with Google"
-          >
-            <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true" focusable="false">
-              <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.2 1.2-.9 2.3-1.9 3l3.1 2.4c1.8-1.7 2.8-4.1 2.8-7 0-.7-.1-1.5-.2-2.2H12z" />
-              <path fill="#34A853" d="M12 22c2.5 0 4.6-.8 6.1-2.3L15 17.3c-.9.6-1.9.9-3 .9-2.3 0-4.2-1.5-4.9-3.6H3.9v2.3C5.4 19.9 8.4 22 12 22z" />
-              <path fill="#4A90E2" d="M7.1 14.6c-.2-.6-.3-1.3-.3-2s.1-1.4.3-2V8.3H3.9A9.9 9.9 0 0 0 3 12c0 1.6.4 3.1 1 4.5l3.1-1.9z" />
-              <path fill="#FBBC05" d="M12 6.7c1.3 0 2.5.5 3.4 1.3l2.6-2.6C16.6 3.9 14.5 3 12 3 8.4 3 5.4 5.1 3.9 8.3l3.2 2.4c.7-2.1 2.6-3.7 4.9-3.7z" />
-            </svg>
-            Continue with Google
-          </button>
-          {googlePlaceholderMessage ? <p className="mt-2 text-xs text-zinc-600">{googlePlaceholderMessage}</p> : null}
+          <div className="flex justify-center">
+            {isConfigured ? (
+              <GoogleLogin
+                onSuccess={async (credentialResponse) => {
+                  try {
+                    setIsLoading(true);
+                    setMessage("");
+                    if (!credentialResponse.credential) {
+                      setMessage("Failed to get Google credentials");
+                      return;
+                    }
+                    const user = await loginWithGoogleIdToken(credentialResponse.credential);
+                    setUser(user);
+                    const nextUrl = resolveNextRoute(user.role);
+                    router.push(nextUrl);
+                    router.refresh();
+                  } catch (error) {
+                    setMessage(error instanceof Error ? error.message : "Google sign-in failed");
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+                onError={() => {
+                  setMessage("Google sign-in failed. Please try again.");
+                }}
+                width="300"
+                text="signin_with"
+              />
+            ) : (
+              <p className="text-sm text-zinc-600">Google sign-in is not configured</p>
+            )}
+          </div>
         </div>
       </form>
       {message && <p className="text-sm text-zinc-600">{message}</p>}

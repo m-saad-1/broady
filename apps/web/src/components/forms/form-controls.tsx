@@ -17,6 +17,7 @@ type InputFieldProps<TValues extends FieldValues> = BaseFieldProps & {
   placeholder?: string;
   type?: React.HTMLInputTypeAttribute;
   min?: number;
+  max?: number;
   disabled?: boolean;
   autoComplete?: string;
 };
@@ -96,6 +97,7 @@ export function TextField<TValues extends FieldValues>({
   className,
   type = "text",
   min,
+  max,
   disabled,
   autoComplete,
 }: InputFieldProps<TValues>) {
@@ -118,6 +120,7 @@ export function TextField<TValues extends FieldValues>({
         placeholder={placeholder}
         type={type}
         min={min}
+        max={max}
         autoComplete={autoComplete}
         disabled={disabled}
         {...register(name)}

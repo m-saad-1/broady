@@ -34,11 +34,3 @@ export const prisma = globalThis.__broadyPrisma ?? createPrismaClient();
 if (process.env.NODE_ENV !== "production") {
 	globalThis.__broadyPrisma = prisma;
 }
-
-prisma.$on("error", (event) => {
-	console.error("[db] prisma error", event);
-});
-
-prisma.$on("warn", (event) => {
-	console.warn("[db] prisma warning", event);
-});
