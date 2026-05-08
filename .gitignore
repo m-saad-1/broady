@@ -25,3 +25,7 @@ apps/api/uploads
 
 # Vendor binaries (installed via npm run meilisearch:install)
 vendor/meilisearch/
+
+# Local documentation and credential exports
+docs/
+Broady_credentials.csv
