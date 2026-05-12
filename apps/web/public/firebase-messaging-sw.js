@@ -2,14 +2,16 @@
 importScripts("https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/12.12.1/firebase-messaging-compat.js");
 
+const urlParams = new URLSearchParams(self.location.search);
+
 const firebaseConfig = {
-  apiKey: "AIzaSyAj35DswTroeOFF-ghjDvdW52heLA45Uso",
-  authDomain: "broady-1.firebaseapp.com",
-  projectId: "broady-1",
-  storageBucket: "broady-1.firebasestorage.app",
-  messagingSenderId: "190709096272",
-  appId: "1:190709096272:web:8d7d2b10d38f27ee0f1655",
-  measurementId: "G-WS9W2XZJPV",
+  apiKey: urlParams.get("apiKey"),
+  authDomain: urlParams.get("authDomain"),
+  projectId: urlParams.get("projectId"),
+  storageBucket: urlParams.get("storageBucket"),
+  messagingSenderId: urlParams.get("messagingSenderId"),
+  appId: urlParams.get("appId"),
+  measurementId: urlParams.get("measurementId"),
 };
 
 firebase.initializeApp(firebaseConfig);

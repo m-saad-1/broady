@@ -30,18 +30,16 @@ type FirebaseMessagingModule = {
 const FIREBASE_MODULE_BASE = "https://www.gstatic.com/firebasejs/12.12.1";
 
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyAj35DswTroeOFF-ghjDvdW52heLA45Uso",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "broady-1.firebaseapp.com",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "broady-1",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "broady-1.firebasestorage.app",
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "190709096272",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:190709096272:web:8d7d2b10d38f27ee0f1655",
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || "G-WS9W2XZJPV",
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN!,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET!,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID!,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID!,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID!,
 };
 
-const vapidKey =
-  process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY ||
-  "BPpTKerM6IDfpLCLWrcescfMj8_GPY6RfnvR_HgWarWIzxi6fMH0bmyH36ikc_sKo681zDJJISGQeLetdZ1N_No";
+const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY!;
 
 async function loadFirebaseMessaging() {
   const [appModule, messagingModule] = await Promise.all([
@@ -88,7 +86,18 @@ export function PushNotificationRegistration() {
 
       if (!active || permission !== "granted") return;
 
-      const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js", {
+      const swUrl = new URL("/firebase-messaging-sw.js", window.location.origin);
+      swUrl.searchParams.set("apiKey", firebaseConfig.apiKey);
+      swUrl.searchParams.set("authDomain", firebaseConfig.authDomain);
+      swUrl.searchParams.set("projectId", firebaseConfig.projectId);
+      swUrl.searchParams.set("storageBucket", firebaseConfig.storageBucket);
+      swUrl.searchParams.set("messagingSenderId", firebaseConfig.messagingSenderId);
+      swUrl.searchParams.set("appId", firebaseConfig.appId);
+      if (firebaseConfig.measurementId) {
+        swUrl.searchParams.set("measurementId", firebaseConfig.measurementId);
+      }
+
+      const registration = await navigator.serviceWorker.register(swUrl.toString(), {
         scope: "/firebase-cloud-messaging-push-scope/",
       });
 
