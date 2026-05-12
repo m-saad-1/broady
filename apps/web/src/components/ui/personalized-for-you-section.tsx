@@ -17,8 +17,10 @@ export function PersonalizedForYouSection({ products }: PersonalizedForYouSectio
   const cartItems = useCartStore((state) => state.items);
   const [orderedProducts, setOrderedProducts] = useState<Product[]>([]);
   const [ordersChecked, setOrdersChecked] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     let active = true;
 
     if (!user) {
@@ -84,7 +86,7 @@ export function PersonalizedForYouSection({ products }: PersonalizedForYouSectio
     return [...related, ...fallback].slice(0, 10);
   }, [hasActivity, products, sourceProducts]);
 
-  if ((user && !ordersChecked) || !hasActivity || !recommended.length) {
+  if (!mounted || (user && !ordersChecked) || !hasActivity || !recommended.length) {
     return null;
   }
 

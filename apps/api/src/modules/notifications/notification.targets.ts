@@ -19,6 +19,10 @@ function isReviewType(type: string) {
   return type.startsWith("PRODUCT_REVIEW_");
 }
 
+function isAuthType(type: string) {
+  return type === "ACCOUNT_VERIFICATION" || type === "PASSWORD_RESET";
+}
+
 function extractSubOrderId(input: NotificationTargetInput) {
   const message = input.message || "";
   const title = input.title || "";
@@ -36,6 +40,11 @@ export function resolveNotificationTargetPath(input: NotificationTargetInput): s
     if (input.type === "BRAND_ORDER_ASSIGNED") return "/admin/products";
     if (isReviewType(input.type)) return "/admin/reviews";
     return "/admin";
+  }
+
+  if (isAuthType(input.type)) {
+    if (input.type === "PASSWORD_RESET") return "/login";
+    return "/account";
   }
 
   if (input.isBrandContext || isBrandRole(input.role)) {

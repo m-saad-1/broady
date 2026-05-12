@@ -22,7 +22,9 @@ import {
   getProducts,
   getUserCartItems,
   getUserNotifications,
+  getUserNotificationsUnreadCount,
   getBrandDashboardNotifications,
+  getBrandDashboardNotificationsUnreadCount,
   markAllNotificationsAsRead,
   getWishlistProducts,
   syncUserCartItems,
@@ -214,6 +216,7 @@ export function SiteHeader() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationError, setNotificationError] = useState<string | null>(null);
   const [sessionNewNotificationIds, setSessionNewNotificationIds] = useState<Set<string>>(new Set());
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const cartSyncEnabledRef = useRef(false);
   const dropdownCloseTimerRef = useRef<number | null>(null);
 
@@ -312,6 +315,12 @@ export function SiteHeader() {
     if (!user) return [];
     const isBrandUser = user.role === "BRAND" || user.role === "BRAND_ADMIN" || user.role === "BRAND_STAFF";
     return isBrandUser ? getBrandDashboardNotifications() : getUserNotifications();
+  }, [user]);
+
+  const getUnreadNotificationCount = useCallback(async () => {
+    if (!user) return 0;
+    const isBrandUser = user.role === "BRAND" || user.role === "BRAND_ADMIN" || user.role === "BRAND_STAFF";
+    return isBrandUser ? getBrandDashboardNotificationsUnreadCount() : getUserNotificationsUnreadCount();
   }, [user]);
 
   const clearDropdownCloseTimer = () => {
@@ -465,6 +474,8 @@ export function SiteHeader() {
             readAt: item.readAt || readAt,
           }));
           setNotifications(updatedNotifications);
+          // Update unread count to 0 since we marked all as read
+          setUnreadNotificationCount(0);
           // Clear NEW badges after marking as read (they'll be gone after a short delay)
           // Keep them visible for a moment for UX feedback
         } catch (readError) {
@@ -509,6 +520,37 @@ export function SiteHeader() {
       window.clearInterval(interval);
     };
   }, [user, getLatestNotifications]);
+
+  useEffect(() => {
+    if (!user) {
+      setUnreadNotificationCount(0);
+      return;
+    }
+
+    let active = true;
+
+    // Initial fetch
+    const fetchUnreadCount = async () => {
+      try {
+        const count = await getUnreadNotificationCount();
+        if (active) {
+          setUnreadNotificationCount(count);
+        }
+      } catch (error) {
+        console.error("Failed to fetch unread notification count:", error);
+      }
+    };
+
+    void fetchUnreadCount();
+
+    // Poll every 30 seconds
+    const interval = window.setInterval(fetchUnreadCount, 30000);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [user, getUnreadNotificationCount]);
 
   useEffect(() => {
     if (!searchOpen || searchTerm.trim().length < 2) {
@@ -581,7 +623,6 @@ export function SiteHeader() {
   };
 
   const hasQuery = useMemo(() => searchTerm.trim().length > 0, [searchTerm]);
-  const unreadNotificationCount = useMemo(() => notifications.filter((item) => !item.readAt).length, [notifications]);
 
   useEffect(() => {
     setHasHydrated(true);

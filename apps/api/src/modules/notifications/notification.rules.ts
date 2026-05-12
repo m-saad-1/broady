@@ -51,6 +51,15 @@ export const notificationRules: Record<NotificationEventName, NotificationEventR
     ],
     priority: "HIGH",
   },
+  account_verification: {
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+      },
+    ],
+    priority: "HIGH",
+  },
   suborder_confirmed: {
     audienceRules: [
       {
@@ -351,6 +360,15 @@ export const notificationRules: Record<NotificationEventName, NotificationEventR
       {
         audience: notificationAudience.admin,
         channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+    ],
+    priority: "HIGH",
+  },
+  password_reset: {
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
       },
     ],
     priority: "HIGH",

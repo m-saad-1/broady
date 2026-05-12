@@ -4,8 +4,6 @@ import { fileURLToPath } from "node:url";
 import app from "./app.js";
 import { env } from "./config/env.js";
 import { prisma } from "./config/prisma.js";
-import { startOrderDeliveryFailureWorker, stopOrderDeliveryFailureWorker } from "./modules/orders/deliveryFailure.worker.js";
-import { stopNotificationWorker, startNotificationWorker } from "./modules/notifications/notification.worker.js";
 import type { AddressInfo } from "node:net";
 
 const MAX_PORT_RETRIES = 10;
@@ -32,7 +30,6 @@ function runPrismaMigrations() {
   });
 }
 
-let workerStarted = false;
 let server: ReturnType<typeof app.listen> | null = null;
 let dbKeepAliveTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -43,17 +40,7 @@ function bootServer(port: number, attempt = 0) {
     const address = server.address() as AddressInfo | null;
     const boundPort = address?.port ?? port;
 
-    if (!workerStarted && env.notificationWorkerEmbedded) {
-      startNotificationWorker();
-      startOrderDeliveryFailureWorker();
-      workerStarted = true;
-    }
-
     console.log(`BROADY API running on http://localhost:${boundPort}`);
-    console.log("[notifications] embedded worker", {
-      enabled: env.notificationWorkerEmbedded,
-      adapter: env.notificationQueueAdapter,
-    });
 
     // Start a periodic keep-alive ping to keep DB connections active
     try {
@@ -78,7 +65,6 @@ function bootServer(port: number, attempt = 0) {
     if (error.code === "EADDRINUSE" && attempt < MAX_PORT_RETRIES) {
       const nextPort = port + 1;
       console.warn(`[server] port ${port} is in use, retrying on ${nextPort}`);
-      void stopNotificationWorker().catch(() => undefined);
       server.close();
       void bootServer(nextPort, attempt + 1);
       return;
@@ -116,15 +102,11 @@ async function shutdown(signal: string) {
   console.log(`[server] received ${signal}, shutting down`);
 
   if (!server) {
-    await stopOrderDeliveryFailureWorker();
-    await stopNotificationWorker();
     process.exit(0);
     return;
   }
 
   server.close(async () => {
-    await stopOrderDeliveryFailureWorker();
-    await stopNotificationWorker();
     if (dbKeepAliveTimer) {
       clearInterval(dbKeepAliveTimer);
       dbKeepAliveTimer = null;

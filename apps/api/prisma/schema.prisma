@@ -84,6 +84,8 @@ enum NotificationType {
   SUBORDER_DELIVERED
   SUBORDER_CANCELLED
   BRAND_ORDER_ASSIGNED
+  ACCOUNT_VERIFICATION
+  PASSWORD_RESET
   PRODUCT_APPROVED
   PRODUCT_REJECTED
   PRODUCT_REVIEW_SUBMITTED
@@ -170,6 +172,11 @@ model User {
   brandInviteTokenHash String?
   brandInviteTokenExpiresAt DateTime?
   brandInviteAcceptedAt DateTime?
+  emailVerifiedAt DateTime?
+  emailVerificationTokenHash String?
+  emailVerificationTokenExpiresAt DateTime?
+  passwordResetTokenHash String?
+  passwordResetTokenExpiresAt DateTime?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   sessions    Session[]
@@ -177,6 +184,7 @@ model User {
   orders      Order[]
   wishlistItems WishlistItem[]
   paymentMethods UserPaymentMethod[]
+  addresses   UserAddress[]
   notificationPreference NotificationPreference?
   deviceTokens UserDeviceToken[]
   brandMemberships BrandMember[]
@@ -206,6 +214,26 @@ model UserPaymentMethod {
   updatedAt    DateTime        @updatedAt
 
   @@index([userId, createdAt])
+}
+
+model UserAddress {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label        String
+  fullName     String
+  phone        String
+  addressLine1 String
+  addressLine2 String?
+  city         String
+  state        String?
+  postalCode   String?
+  country      String   @default("Pakistan")
+  isDefault    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId, isDefault])
 }
 
 model NotificationPreference {

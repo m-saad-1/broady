@@ -1024,12 +1024,9 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
     const updatedSubOrder = updated.subOrders.find((so) => so.id === targetSubOrder.id);
     const persistedNextAttemptDate = updatedSubOrder?.nextAttemptDate;
 
-    const isIncorrectAddressFailure = failureReasonKey === "INCORRECT_ADDRESS";
-    const failureEventNote = isIncorrectAddressFailure
-      ? `Delivery failed due to incorrect address. Please update your address.`
-      : status === OrderStatus.DELIVERY_FAILED
-        ? `${customerFacingNote}${parsed.data.failureReasonMessage ? ` Reason: ${parsed.data.failureReasonMessage}.` : parsed.data.failureReason ? ` Reason: ${parsed.data.failureReason}.` : ""}${persistedNextAttemptDate ? ` Next attempt: ${persistedNextAttemptDate.toISOString()}.` : ""}`
-        : customerFacingNote;
+    const failureEventNote = status === OrderStatus.DELIVERY_FAILED
+      ? describeFailureReason(failureReasonKey, parsed.data.failureReasonMessage)
+      : customerFacingNote;
 
     if (status === OrderStatus.DELIVERY_FAILED && persistedNextAttemptDate && !isIncorrectAddressFailure) {
       queueNotificationEvent({
@@ -1040,15 +1037,7 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
         brandId: targetSubOrder.brandId,
         brandName: targetSubOrder.brand.name,
         changedByRole: actingAsPlatformAdmin ? "ADMIN" : "BRAND",
-        note: `Retry scheduled for ${persistedNextAttemptDate.toISOString()}. ${buildBrandFailureMessage({
-          failureReason: failureReasonKey,
-          failureReasonMessage: parsed.data.failureReasonMessage,
-          paymentMethod: order.paymentMethod,
-          deliveryAttempt: targetSubOrder.deliveryAttempts,
-          maxAttempts: failurePolicy?.maxAttempts ?? MAX_DELIVERY_ATTEMPTS,
-          nextAttemptDate: persistedNextAttemptDate,
-          isFinalFailure: false,
-        })}`,
+        note: `Retry scheduled for ${persistedNextAttemptDate.toISOString()}. ${describeFailureReason(failureReasonKey, parsed.data.failureReasonMessage)}`,
         notifyAdmin: true,
       });
     }

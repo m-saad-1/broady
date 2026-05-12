@@ -29,6 +29,7 @@ import type {
   UserOrder,
   UserPaymentMethod,
   UserPaymentType,
+  UserAddress,
 } from "@/types/marketplace";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
@@ -674,6 +675,14 @@ export async function deleteProduct(productId: string): Promise<string | null> {
   return response?.message || null;
 }
 
+export async function updateUserProfile(payload: { fullName: string; email: string }): Promise<User> {
+  const response = await authFetch<ApiEnvelope<User>>("/users/profile", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
 export async function updatePassword(payload: { currentPassword?: string; newPassword: string }): Promise<void> {
   await authFetch<{ message: string }>("/users/password", {
     method: "POST",
@@ -715,6 +724,31 @@ export async function removePaymentMethod(methodId: string): Promise<void> {
   await authFetch(`/users/payment-methods/${methodId}`, { method: "DELETE" });
 }
 
+export async function getUserAddresses(): Promise<UserAddress[]> {
+  const response = await authFetch<ApiEnvelope<UserAddress[]>>("/users/addresses", { method: "GET" });
+  return response.data;
+}
+
+export async function addUserAddress(payload: Omit<UserAddress, "id">): Promise<UserAddress> {
+  const response = await authFetch<ApiEnvelope<UserAddress>>("/users/addresses", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function updateUserAddress(addressId: string, payload: Partial<Omit<UserAddress, "id">>): Promise<UserAddress> {
+  const response = await authFetch<ApiEnvelope<UserAddress>>(`/users/addresses/${addressId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function removeUserAddress(addressId: string): Promise<void> {
+  await authFetch(`/users/addresses/${addressId}`, { method: "DELETE" });
+}
+
 export async function getNotificationPreferences(): Promise<NotificationPreference> {
   const response = await authFetch<ApiEnvelope<NotificationPreference>>("/users/notification-preferences", {
     method: "GET",
@@ -737,6 +771,13 @@ export async function getUserNotifications(): Promise<NotificationItem[]> {
     method: "GET",
   });
   return response.data;
+}
+
+export async function getUserNotificationsUnreadCount(): Promise<number> {
+  const response = await authFetch<ApiEnvelope<{ count: number }>>("/users/notifications/unread-count", {
+    method: "GET",
+  });
+  return response.data.count;
 }
 
 export async function markNotificationAsRead(notificationId: string): Promise<void> {
@@ -874,6 +915,13 @@ export async function getBrandDashboardNotifications(): Promise<NotificationItem
     method: "GET",
   });
   return response.data;
+}
+
+export async function getBrandDashboardNotificationsUnreadCount(): Promise<number> {
+  const response = await authFetch<ApiEnvelope<{ count: number }>>("/brand-dashboard/notifications/unread-count", {
+    method: "GET",
+  });
+  return response.data.count;
 }
 
 export async function getAdminOrder(orderId: string): Promise<UserOrder> {

@@ -1,19 +1,29 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
-import { googleAuthSchema, loginSchema, registerSchema } from "./auth.schemas.js";
 import {
+  accountVerificationSchema,
+  googleAuthSchema,
+  loginSchema,
+  passwordResetCompleteSchema,
+  passwordResetRequestSchema,
+  registerSchema,
+} from "./auth.schemas.js";
+import {
+  completePasswordReset,
   completeBrandInvite,
+  requestPasswordReset,
   getSafeUserById,
   loginUser,
   loginWithGoogle,
   registerUser,
   revokeSessionFromToken,
+  verifyAccount,
 } from "./auth.service.js";
 
 export const tokenCookieOptions = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "lax" as const,
+  secure: true,
+  sameSite: "none" as const,
   maxAge: 7 * 24 * 60 * 60 * 1000,
   path: "/",
 };
@@ -96,6 +106,44 @@ export async function completeBrandInviteController(req: Request, res: Response)
   return res.json({ token: result.token, user: result.user });
 }
 
+export async function requestPasswordResetController(req: Request, res: Response) {
+  const parsed = passwordResetRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid input", issues: parsed.error.flatten() });
+  }
+
+  await requestPasswordReset(parsed.data);
+  return res.json({ message: "If the account exists, a reset email has been sent." });
+}
+
+export async function completePasswordResetController(req: Request, res: Response) {
+  const parsed = passwordResetCompleteSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid input", issues: parsed.error.flatten() });
+  }
+
+  const result = await completePasswordReset(parsed.data);
+  if (hasError(result)) {
+    return res.status(result.error.status).json({ message: result.error.message });
+  }
+
+  return res.json({ message: "Password reset successful." });
+}
+
+export async function verifyAccountController(req: Request, res: Response) {
+  const parsed = accountVerificationSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid input", issues: parsed.error.flatten() });
+  }
+
+  const result = await verifyAccount(parsed.data);
+  if (hasError(result)) {
+    return res.status(result.error.status).json({ message: result.error.message });
+  }
+
+  return res.json({ message: "Account verified successfully." });
+}
+
 export async function logoutController(req: Request, res: Response) {
   const bearerToken = req.headers.authorization?.replace("Bearer ", "");
   const cookieToken = req.cookies?.broady_token as string | undefined;
@@ -105,8 +153,8 @@ export async function logoutController(req: Request, res: Response) {
 
   res.clearCookie("broady_token", {
     httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    sameSite: "none",
+    secure: true,
     path: "/",
   });
 

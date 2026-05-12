@@ -77,6 +77,32 @@ async function sendCommand(socket: SmtpSocket, command: string, expectedCodes: n
   return response;
 }
 
+function upgradeToTls(socket: net.Socket) {
+  return new Promise<tls.TLSSocket>((resolve, reject) => {
+    const secureSocket = tls.connect({
+      socket,
+      servername: env.sesSmtpHost,
+      host: env.sesSmtpHost,
+    });
+
+    const onSecureConnect = () => {
+      cleanup();
+      resolve(secureSocket);
+    };
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    const cleanup = () => {
+      secureSocket.off("secureConnect", onSecureConnect);
+      secureSocket.off("error", onError);
+    };
+
+    secureSocket.once("secureConnect", onSecureConnect);
+    secureSocket.once("error", onError);
+  });
+}
+
 function connectSmtpSocket() {
   return new Promise<SmtpSocket>((resolve, reject) => {
     const options = {
@@ -111,27 +137,35 @@ export async function sendSmtpEmail(input: MailInput) {
   }
 
   const socket = await connectSmtpSocket();
+  let activeSocket = socket;
 
   try {
-    const greeting = await waitForResponse(socket);
+    const greeting = await waitForResponse(activeSocket);
     if (greeting.code !== 220) {
       throw new Error(`SMTP greeting failed (${greeting.code}): ${greeting.message.slice(0, 240)}`);
     }
 
-    await sendCommand(socket, `EHLO ${env.sesSmtpHost}`, [250]);
+    await sendCommand(activeSocket, `EHLO ${env.sesSmtpHost}`, [250]);
 
-    if (env.sesSmtpUser && env.sesSmtpPass) {
-      await sendCommand(socket, "AUTH LOGIN", [334]);
-      await sendCommand(socket, Buffer.from(env.sesSmtpUser).toString("base64"), [334]);
-      await sendCommand(socket, Buffer.from(env.sesSmtpPass).toString("base64"), [235]);
+    // On port 587, SES expects STARTTLS before SMTP AUTH.
+    if (!env.sesSmtpSecure && activeSocket instanceof net.Socket && !(activeSocket instanceof tls.TLSSocket)) {
+      await sendCommand(activeSocket, "STARTTLS", [220]);
+      activeSocket = await upgradeToTls(activeSocket);
+      await sendCommand(activeSocket, `EHLO ${env.sesSmtpHost}`, [250]);
     }
 
-    await sendCommand(socket, `MAIL FROM:<${env.emailFromAddress}>`, [250]);
-    await sendCommand(socket, `RCPT TO:<${input.to}>`, [250, 251]);
-    await sendCommand(socket, "DATA", [354]);
-    await sendCommand(socket, `${dotStuff(buildMessage(input))}\r\n.`, [250]);
-    await sendCommand(socket, "QUIT", [221]);
+    if (env.sesSmtpUser && env.sesSmtpPass) {
+      await sendCommand(activeSocket, "AUTH LOGIN", [334]);
+      await sendCommand(activeSocket, Buffer.from(env.sesSmtpUser).toString("base64"), [334]);
+      await sendCommand(activeSocket, Buffer.from(env.sesSmtpPass).toString("base64"), [235]);
+    }
+
+    await sendCommand(activeSocket, `MAIL FROM:<${env.emailFromAddress}>`, [250]);
+    await sendCommand(activeSocket, `RCPT TO:<${input.to}>`, [250, 251]);
+    await sendCommand(activeSocket, "DATA", [354]);
+    await sendCommand(activeSocket, `${dotStuff(buildMessage(input))}\r\n.`, [250]);
+    await sendCommand(activeSocket, "QUIT", [221]);
   } finally {
-    socket.end();
+    activeSocket.end();
   }
 }

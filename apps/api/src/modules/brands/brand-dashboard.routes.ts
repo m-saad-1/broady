@@ -939,4 +939,18 @@ router.get("/notifications", async (req, res) => {
   });
 });
 
+router.get("/notifications/unread-count", async (req, res) => {
+  const access = await getBrandAccess(req.auth!.userId);
+  if (!access) return res.status(403).json({ message: "Brand access required" });
+
+  const count = await prisma.notification.count({
+    where: {
+      OR: [{ userId: req.auth!.userId }, { brandId: access.brandId }],
+      readAt: null,
+    },
+  });
+
+  return res.json({ data: { count } });
+});
+
 export default router;

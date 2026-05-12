@@ -9,13 +9,12 @@ import {
 import { prisma } from "../../config/prisma.js";
 import { env } from "../../config/env.js";
 import type { NotificationEvent } from "./notification.events.js";
-import { enqueueNotificationEvent } from "./notification.queue.js";
 import {
   notificationRules,
   type NotificationAudience,
   type NotificationChannelPreference,
 } from "./notification.rules.js";
-import { sendSmtpEmail } from "./notification.email.js";
+import { sendEmail } from "../../services/email.service.js";
 import { sendPushNotification } from "./notification.push.js";
 import { buildNotificationTemplate } from "./notification.templates.js";
 import { resolveNotificationTargetPath } from "./notification.targets.js";
@@ -84,6 +83,10 @@ function mapEventToNotificationType(event: NotificationEvent): NotificationType 
     case "order_address_correction_required":
     case "order_address_updated":
       return NotificationType.ORDER_STATUS_UPDATED;
+    case "password_reset":
+      return NotificationType.PASSWORD_RESET;
+    case "account_verification":
+      return NotificationType.ACCOUNT_VERIFICATION;
     default:
       return NotificationType.ORDER_STATUS_UPDATED;
   }
@@ -99,7 +102,16 @@ async function sendEmailNotification(input: {
     throw new Error("SES email transport is not configured");
   }
 
-  await sendSmtpEmail(input);
+  const result = await sendEmail({
+    to: input.to,
+    subject: input.subject,
+    text: input.text,
+    html: input.html,
+  });
+  
+  if (!result.success) {
+    throw result.error || new Error("Email delivery failed");
+  }
 }
 
 async function withRetries(task: () => Promise<void>, attempts = 3) {
@@ -282,7 +294,7 @@ async function resolveRecipients(
             userId: member.user.id,
             brandId: member.brand.id,
             brandName: member.brand.name,
-            email: member.user.email || member.brand.contactEmail,
+            email: member.brand.contactEmail || member.user.email,
             whatsapp: member.brand.whatsappNumber,
             pushTokens: [],
             channels: channelsForAudience("BRAND_MEMBERS"),
@@ -297,7 +309,7 @@ async function resolveRecipients(
             userId: owner.id,
             brandId: owner.brandId!,
             brandName: owner.brand?.name,
-            email: owner.email || owner.brand?.contactEmail,
+            email: owner.brand?.contactEmail || owner.email,
             whatsapp: owner.brand?.whatsappNumber,
             pushTokens: [],
             channels: channelsForAudience("BRAND_MEMBERS"),
@@ -646,8 +658,9 @@ export async function emitNotificationEvent(
 }
 
 export function queueNotificationEvent(event: NotificationEvent) {
-  void enqueueNotificationEvent(event).catch((error) => {
-    console.error("[notifications] failed to enqueue event", {
+  // Execute immediately and directly without a background queue
+  void emitNotificationEvent(event).catch((error) => {
+    console.error("[notifications] failed to emit event", {
       event: event.name,
       orderId: event.orderId,
       brandId: event.brandId,

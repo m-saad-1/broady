@@ -1,4 +1,5 @@
 export const notificationEventNames = {
+  accountVerification: "account_verification",
   orderPlaced: "order_placed",
   orderConfirmed: "suborder_confirmed",
   orderProcessing: "suborder_processing",
@@ -34,6 +35,11 @@ type BaseEvent = {
 };
 
 export type NotificationEvent =
+  | (BaseEvent & {
+      name: typeof notificationEventNames.accountVerification;
+      userId: string;
+      verificationUrl: string;
+    })
   | (BaseEvent & {
       name:
         | typeof notificationEventNames.orderPlaced
@@ -121,4 +127,9 @@ export type NotificationEvent =
       productName: string;
       brandId: string;
       brandName?: string;
-    });
+    })
+  | (BaseEvent & {
+      name: typeof notificationEventNames.passwordReset;
+      userId: string;
+      resetUrl: string;
+    })

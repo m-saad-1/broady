@@ -112,3 +112,51 @@ export async function completeBrandInvite(payload: { token: string; password: st
   persistAuthToken(json.token);
   return json.user!;
 }
+
+export async function requestPasswordReset(payload: { email: string }) {
+  const response = await fetch(`${API_BASE}/auth/password-reset/request`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const json = (await response.json()) as { message?: string };
+  if (!response.ok) {
+    throw new Error(json.message || "Password reset request failed");
+  }
+
+  return json.message || "If the account exists, a reset email has been sent.";
+}
+
+export async function completePasswordReset(payload: { token: string; password: string }) {
+  const response = await fetch(`${API_BASE}/auth/password-reset/complete`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const json = (await response.json()) as { message?: string };
+  if (!response.ok) {
+    throw new Error(json.message || "Password reset failed");
+  }
+
+  return json.message || "Password reset successful.";
+}
+
+export async function verifyAccount(token: string) {
+  const response = await fetch(`${API_BASE}/auth/verify-account`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+
+  const json = (await response.json()) as { message?: string };
+  if (!response.ok) {
+    throw new Error(json.message || "Account verification failed");
+  }
+
+  return json.message || "Account verified successfully.";
+}

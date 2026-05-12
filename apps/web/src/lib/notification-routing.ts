@@ -17,6 +17,9 @@ export function getNotificationHref(item: NotificationItem, role?: User["role"])
     return item.targetPath;
   }
 
+  if (item.type === "ACCOUNT_VERIFICATION") return "/account";
+  if (item.type === "PASSWORD_RESET") return "/login";
+
   if (isAdminRole(role)) {
     if (item.order?.id) return `/admin/orders/${item.order.id}`;
     if (item.type === "BRAND_ORDER_ASSIGNED") return "/admin/products";

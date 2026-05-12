@@ -80,6 +80,20 @@ export type UserPaymentMethod = {
   isDefault: boolean;
 };
 
+export type UserAddress = {
+  id: string;
+  label: string;
+  fullName: string;
+  phone: string;
+  addressLine1: string;
+  addressLine2?: string | null;
+  city: string;
+  state?: string | null;
+  postalCode?: string | null;
+  country: string;
+  isDefault: boolean;
+};
+
 export type NotificationPreference = {
   id: string;
   userId: string;
@@ -207,6 +221,8 @@ export type NotificationItem = {
     | "ORDER_PLACED"
     | "ORDER_STATUS_UPDATED"
     | "BRAND_ORDER_ASSIGNED"
+    | "ACCOUNT_VERIFICATION"
+    | "PASSWORD_RESET"
     | "PRODUCT_REVIEW_SUBMITTED"
     | "PRODUCT_REVIEW_REPORTED"
     | "PRODUCT_REVIEW_MODERATED"

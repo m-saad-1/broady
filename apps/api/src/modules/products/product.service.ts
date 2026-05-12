@@ -39,6 +39,13 @@ export async function getProductById(id: string) {
   });
 }
 
+export async function getProductBySlug(slug: string) {
+  return prisma.product.findUnique({
+    where: { slug },
+    include: { brand: true },
+  });
+}
+
 export async function updateProduct(id: string, data: Partial<ProductCreateData>) {
     const validation = productBaseSchema.partial().safeParse(data);
     if (!validation.success) {

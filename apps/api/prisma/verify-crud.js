@@ -28,6 +28,7 @@ async function main() {
       slug: "crud-test-product",
       description: "Temporary product used for database verification",
       pricePkr: 2500,
+      actualPrice: 2500,
       topCategory: "Men",
       subCategory: "Clothing",
       sizes: ["M", "L"],
@@ -57,9 +58,11 @@ async function main() {
 
   const cartItem = await prisma.cartItem.upsert({
     where: {
-      cartId_productId: {
+      cartId_productId_selectedColor_selectedSize: {
         cartId: cart.id,
         productId: product.id,
+        selectedColor: "default",
+        selectedSize: "M",
       },
     },
     update: { quantity: 2 },
@@ -67,6 +70,8 @@ async function main() {
       cartId: cart.id,
       productId: product.id,
       quantity: 1,
+      selectedColor: "default",
+      selectedSize: "M",
     },
   });
 

@@ -18,6 +18,8 @@ import {
 import { formatPkr } from "@/lib/utils";
 import { getOrderStatusLabel, getOrderStatusTone } from "@/lib/order-status";
 import type { NotificationItem, UserOrder } from "@/types/marketplace";
+import { useCartStore } from "@/stores/cart-store";
+import { resolveMediaUrl } from "@/lib/media-url";
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("en-PK", {
@@ -54,6 +56,7 @@ function canReorderBySubOrders(order: UserOrder) {
 export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const setCartItems = useCartStore((state) => state.setItems);
   const [orders, setOrders] = useState<UserOrder[]>([]);
   const [myReviewsByOrderItemId, setMyReviewsByOrderItemId] = useState<Record<string, { id: string; createdAt: string }>>({});
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -74,6 +77,8 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
   const [editingAddress, setEditingAddress] = useState(false);
   const [newAddress, setNewAddress] = useState("");
   const [updatingAddress, setUpdatingAddress] = useState(false);
+  const [activeTab, setActiveTab] = useState<"OPEN" | "DELIVERED" | "CANCELED" | "RETURNED">("OPEN");
+
 
   const visibleOrders = useMemo(
     () =>
@@ -122,6 +127,16 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
   const canReorderSelectedOrder = !!selectedOrder && canReorderBySubOrders(selectedOrder);
 
   const visibleSubOrders = useMemo(() => visibleOrders.flatMap((order) => order.subOrders || []), [visibleOrders]);
+  
+  const displayedSubOrders = useMemo(() => {
+    return visibleSubOrders.filter((subOrder) => {
+      if (activeTab === "OPEN") return !["DELIVERED", "CANCELED", "RETURNED"].includes(subOrder.status);
+      if (activeTab === "DELIVERED") return subOrder.status === "DELIVERED";
+      if (activeTab === "CANCELED") return subOrder.status === "CANCELED";
+      if (activeTab === "RETURNED") return subOrder.status === "RETURNED";
+      return false;
+    }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [visibleSubOrders, activeTab]);
   const openItems = useMemo(
     () => visibleSubOrders.filter((subOrder) => !["DELIVERED", "RETURNED", "CANCELED"].includes(subOrder.status)).length,
     [visibleSubOrders],
@@ -231,7 +246,15 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
     setCancelFeedback("");
     setReorderingOrderId(orderId);
     try {
-      await reorderUserOrder(orderId);
+      const result = await reorderUserOrder(orderId);
+      setCartItems(
+        result.items.map((item) => ({
+          product: item.product,
+          quantity: item.quantity,
+          selectedColor: item.selectedColor || undefined,
+          selectedSize: item.selectedSize || undefined,
+        })),
+      );
       setCancelFeedback("Items from this order were added to your cart.");
       router.push("/cart");
     } catch (error) {
@@ -263,7 +286,15 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
     setCancelFeedback("");
     setReorderingSubOrderId(subOrderId);
     try {
-      await reorderUserSubOrder(orderId, subOrderId);
+      const result = await reorderUserSubOrder(orderId, subOrderId);
+      setCartItems(
+        result.items.map((item) => ({
+          product: item.product,
+          quantity: item.quantity,
+          selectedColor: item.selectedColor || undefined,
+          selectedSize: item.selectedSize || undefined,
+        })),
+      );
       setCancelFeedback("Items from this vendor group were added to your cart.");
       router.push("/cart");
     } catch (error) {
@@ -380,12 +411,14 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
     );
   }
 
+
+
   return (
-    <section className="space-y-5 border border-zinc-300 p-6">
+    <section className="space-y-6">
+      {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-4 border-b border-zinc-300 pb-3">
         <div className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Order Tracking</p>
-          <h2 className="font-heading text-3xl uppercase tracking-[0.06em]">Your Orders</h2>
+          <h2 className="font-heading text-3xl uppercase tracking-[0.06em]">Orders & Tracking</h2>
           <p className="text-sm text-zinc-600">Track order status, review item details, and keep support actions close at hand.</p>
         </div>
         <button type="button" onClick={() => void loadOrders("refresh")} className="text-xs font-semibold uppercase tracking-[0.15em] text-zinc-600">
@@ -393,480 +426,102 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
         </button>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-4">
-        <article className="border border-zinc-200 p-4">
-          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Open Items</p>
-          <p className="mt-2 font-heading text-3xl">{openItems}</p>
-        </article>
-        <article className="border border-zinc-200 p-4">
-          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Delivered Items</p>
-          <p className="mt-2 font-heading text-3xl">{deliveredItems}</p>
-        </article>
-        <article className="border border-zinc-200 p-4">
-          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Cancelled Items</p>
-          <p className="mt-2 font-heading text-3xl">{cancelledItems}</p>
-        </article>
-        <article className="border border-zinc-200 p-4">
-          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Total Spent</p>
-          <p className="mt-2 font-heading text-3xl">{formatPkr(totalSpent)}</p>
-        </article>
+      {/* Tabs */}
+      <div className="flex flex-wrap gap-2 border-b border-zinc-200">
+        {(["OPEN", "DELIVERED", "CANCELED", "RETURNED"] as const).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] transition-colors border-b-2 ${
+              activeTab === tab ? "border-black text-black" : "border-transparent text-zinc-500 hover:text-black"
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
       </div>
 
-      <div className="grid gap-3 md:grid-cols-1">
-        <article className="border border-zinc-200 p-4">
-          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Notifications</p>
-          <p className="mt-2 font-heading text-3xl">{unreadNotifications}</p>
-        </article>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
-        <aside className="space-y-3">
-          {orderedForSidebar.map((order, index) => {
-            const previous = orderedForSidebar[index - 1];
-            const startsDeliveredSection = order.status === "DELIVERED" && previous?.status !== "DELIVERED";
-            const startsCanceledSection = order.status === "CANCELED" && previous?.status !== "CANCELED";
-
+      {/* Cards */}
+      {displayedSubOrders.length === 0 ? (
+        <div className="border border-zinc-300 p-8 text-center bg-zinc-50">
+          <p className="text-sm text-zinc-600">No {activeTab.toLowerCase()} items found.</p>
+        </div>
+      ) : (
+        <div className="grid gap-4">
+          {displayedSubOrders.map((subOrder) => {
+            const firstItem = subOrder.items[0];
+            const parentOrder = orders.find(o => o.id === subOrder.orderId);
             return (
-              <div key={order.id} className="space-y-2">
-                {startsDeliveredSection ? <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">Delivered</p> : null}
-                {startsCanceledSection ? <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">Cancelled</p> : null}
-                <Link
-                  href={`/account/orders?orderId=${order.id}`}
-                  scroll={false}
-                  onClick={() => setSelectedOrderId(order.id)}
-                  className={`block w-full border p-4 text-left transition-colors ${selectedOrder?.id === order.id ? "border-black bg-black text-white" : "border-zinc-300"}`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold uppercase tracking-[0.08em]">Order #{formatShortOrderId(order.id)}</p>
-                      <p className="mt-2 text-xs uppercase tracking-[0.12em] opacity-80">{order.items.length} items</p>
-                    </div>
-                    <p className="text-sm font-semibold">{formatPkr(order.totalPkr)}</p>
-                  </div>
-                  <p className="mt-3 text-xs uppercase tracking-[0.12em] opacity-80">{formatDateTime(order.createdAt)}</p>
-                  <p className="mt-2 text-sm opacity-90">
-                    {order.items.slice(0, 3).map((item) => item.product.name).join(", ")}
-                    {order.items.length > 3 ? ` + ${order.items.length - 3} more` : ""}
-                  </p>
-                </Link>
-              </div>
-            );
-          })}
-        </aside>
-
-        {selectedOrder ? (
-          <div className="space-y-5">
-            <section className="grid gap-4 border border-zinc-300 p-5 md:grid-cols-2">
-              <div>
-                <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Order Reference</p>
-                <p className="mt-2 text-lg font-semibold">{selectedOrder.id}</p>
-                <p className="mt-1 text-sm text-zinc-600">Placed {formatDateTime(selectedOrder.createdAt)}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Vendor Groups</p>
-                <p className="mt-2 text-sm font-semibold">{selectedOrder.subOrders?.length || 0} vendor groups</p>
-                <p className="mt-2 text-sm text-zinc-600">Tracking IDs are managed per vendor group card.</p>
-                {canCancelSelectedOrder ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setCancelReasonModal({
-                        orderId: selectedOrder.id,
-                      })
-                    }
-                    disabled={cancelingOrderId === selectedOrder.id}
-                    className="mt-3 inline-flex h-10 items-center justify-center border border-black px-3 text-[11px] font-semibold uppercase tracking-[0.12em] disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {cancelingOrderId === selectedOrder.id ? "Canceling..." : "Cancel order"}
-                  </button>
-                ) : null}
-                {canReorderSelectedOrder ? (
-                  <button
-                    type="button"
-                    onClick={() => setReorderConfirmOrderId(selectedOrder.id)}
-                    disabled={reorderingOrderId === selectedOrder.id}
-                    className="mt-3 ml-2 inline-flex h-10 items-center justify-center border border-zinc-300 px-3 text-[11px] font-semibold uppercase tracking-[0.12em] disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {reorderingOrderId === selectedOrder.id ? "Reordering..." : "Reorder"}
-                  </button>
-                ) : null}
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Payment</p>
-                <p className="mt-2 text-sm font-semibold">{selectedOrder.paymentMethod} / {selectedOrder.paymentStatus}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Delivery Address</p>
-                {editingAddress ? (
-                  <div className="mt-2 space-y-2">
-                    <textarea
-                      className="min-h-[80px] w-full border border-zinc-300 p-2 text-sm text-zinc-900"
-                      value={newAddress}
-                      onChange={(e) => setNewAddress(e.target.value)}
-                      placeholder="Enter new delivery address"
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleUpdateAddress}
-                        disabled={updatingAddress || !newAddress.trim() || newAddress === selectedOrder.deliveryAddress}
-                        className="inline-flex h-8 items-center bg-black px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-50"
-                      >
-                        {updatingAddress ? "Saving..." : "Save Address"}
-                      </button>
-                      <button
-                        onClick={() => setEditingAddress(false)}
-                        className="inline-flex h-8 items-center border border-zinc-300 px-3 text-[10px] font-semibold uppercase tracking-[0.12em]"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mt-2">
-                    <p className="text-sm text-zinc-700">{selectedOrder.deliveryAddress}</p>
-                    {selectedOrder.subOrders.some((so) => so.status === "ADDRESS_CORRECTION_REQUIRED") && (
-                      <button
-                        onClick={() => {
-                          setNewAddress(selectedOrder.deliveryAddress);
-                          setEditingAddress(true);
-                        }}
-                        className="mt-2 inline-flex h-8 items-center border border-black px-3 text-[10px] font-semibold uppercase tracking-[0.12em]"
-                      >
-                        Update Address
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Order Total</p>
-                <p className="mt-2 text-sm font-semibold">{formatPkr(selectedOrder.totalPkr)}</p>
-              </div>
-            </section>
-
-            {selectedOrder.subOrders.some((so) => so.status === "ADDRESS_CORRECTION_REQUIRED") && !editingAddress ? (
-              <section className="border-2 border-orange-400 bg-orange-50 p-5 space-y-3">
-                <div className="flex items-start gap-3">
-                  <span className="mt-0.5 text-2xl" aria-hidden="true">⚠️</span>
-                  <div className="space-y-1">
-                    <h3 className="font-heading text-xl uppercase text-orange-900">Address Correction Required</h3>
-                    <p className="text-sm text-orange-800">
-                      Your delivery failed due to an incorrect address. Please update your delivery address below so we can reattempt delivery.
-                    </p>
-                  </div>
+              <article key={subOrder.id} className="border border-zinc-300 p-5 bg-white flex flex-col md:flex-row gap-6">
+                {/* Product Images (show up to 3) */}
+                <div className="flex gap-2 shrink-0">
+                  {subOrder.items.slice(0, 3).map(item => (
+                    <img key={item.id} src={resolveMediaUrl(item.product?.images?.[0]?.url)} alt={item.product?.name || "Product"} className="w-24 h-32 object-cover border border-zinc-200 bg-zinc-50" />
+                  ))}
                 </div>
-                <button
-                  onClick={() => {
-                    setNewAddress(selectedOrder.deliveryAddress);
-                    setEditingAddress(true);
-                  }}
-                  className="inline-flex h-10 items-center border-2 border-orange-600 bg-orange-600 px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white"
-                >
-                  Update Delivery Address
-                </button>
-              </section>
-            ) : null}
-
-            {cancelFeedback ? (
-              <p className={`border px-3 py-2 text-sm ${cancelFeedback.toLowerCase().includes("success") ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-amber-300 bg-amber-50 text-amber-800"}`}>
-                {cancelFeedback}
-              </p>
-            ) : null}
-
-            <section className="space-y-3 border border-zinc-300 p-5">
-              <div className="flex items-end justify-between gap-4">
-                <h3 className="font-heading text-3xl uppercase">Vendor Groups</h3>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                {(selectedOrder.subOrders || []).map((subOrder) => (
-                  <article
-                    key={subOrder.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => router.push(`/account/orders/${selectedOrder.id}/groups/${subOrder.id}`)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        router.push(`/account/orders/${selectedOrder.id}/groups/${subOrder.id}`);
-                      }
-                    }}
-                    className="cursor-pointer border border-zinc-200 p-4 transition hover:border-black hover:bg-zinc-50"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
+                
+                {/* Details */}
+                <div className="flex-1 flex flex-col justify-between space-y-4">
+                  <div>
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
                         <p className="text-sm font-semibold uppercase tracking-[0.08em]">{subOrder.brand?.name || "Brand"}</p>
-                        <p className="mt-1 text-xs uppercase tracking-[0.12em] text-zinc-500">Group {subOrder.id}</p>
+                        <p className="mt-1 text-xs text-zinc-600 uppercase tracking-[0.08em]">{subOrder.items.length} Items • Order #{formatShortOrderId(subOrder.orderId)}</p>
                       </div>
-                      <p className={`inline-flex border px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${getOrderStatusTone(subOrder.status)}`}>
+                      <p className={`inline-flex border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${getOrderStatusTone(subOrder.status)}`}>
                         {getOrderStatusLabel(subOrder.status)}
                       </p>
                     </div>
 
-                    <div className="mt-3 space-y-1 text-sm text-zinc-700">
-                      <p>{formatPkr(subOrder.subtotalPkr)}</p>
-                      <p>{formatDateTime(subOrder.createdAt)}</p>
-                      <p className="line-clamp-2 text-xs text-zinc-600">{subOrder.items.slice(0, 2).map((item) => item.product.name).join(", ")} - {subOrder.items.length} Items</p>
-                    </div>
-
-                    {isInActionWindow && ["PENDING", "CONFIRMED"].includes(subOrder.status) ? (
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          setCancelReasonModal({
-                            orderId: selectedOrder.id,
-                            subOrderId: subOrder.id,
-                            brandName: subOrder.brand?.name || "Brand",
-                          });
-                        }}
-                        disabled={cancelingSubOrderId === subOrder.id}
-                        className="mt-3 inline-flex h-9 items-center border border-zinc-300 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {cancelingSubOrderId === subOrder.id ? "Canceling..." : "Cancel this group"}
-                      </button>
-                    ) : null}
-
-                    {subOrder.failureReason ? (
-                      <div className="mt-3 border border-orange-200 bg-orange-50 p-2 text-xs text-orange-900">
-                        <p><span className="font-semibold">Failure reason:</span> {subOrder.failureReason}</p>
-                        {subOrder.nextAttemptDate ? <p><span className="font-semibold">Next attempt:</span> {formatDateTime(subOrder.nextAttemptDate)}</p> : null}
-                        <p><span className="font-semibold">Attempts:</span> {subOrder.deliveryAttempts || 0}</p>
+                    <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Price</p>
+                        <p className="font-semibold mt-1">{formatPkr(subOrder.subtotalPkr)}</p>
                       </div>
-                    ) : null}
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Timeline</p>
+                        <p className="font-semibold mt-1">{formatDateTime(subOrder.createdAt).split(",")[0]}</p>
+                      </div>
+                      <div className="col-span-2">
+                        <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Tracking Progress</p>
+                        <p className="font-semibold mt-1 truncate">{subOrder.trackingId ? `Tracking: ${subOrder.trackingId}` : "Awaiting tracking details"}</p>
+                      </div>
+                    </div>
+                  </div>
 
-                    {["DELIVERED", "RETURNED", "CANCELED"].includes(subOrder.status) ? (
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          void handleReorderSubOrder(selectedOrder.id, subOrder.id);
-                        }}
+                  {/* Actions */}
+                  <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-zinc-100">
+                    <button type="button" onClick={() => router.push(`/account/orders/${subOrder.orderId}/groups/${subOrder.id}`)} className="h-9 border border-black bg-black px-4 text-[11px] font-semibold uppercase tracking-[0.12em] text-white">
+                      Track
+                    </button>
+                    {["DELIVERED", "CANCELED", "RETURNED"].includes(subOrder.status) ? (
+                      <button 
+                        type="button" 
+                        onClick={() => void handleReorderSubOrder(subOrder.orderId, subOrder.id)} 
                         disabled={reorderingSubOrderId === subOrder.id}
-                        className="mt-3 ml-2 inline-flex h-9 items-center border border-black bg-black px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-white disabled:cursor-not-allowed disabled:opacity-60"
+                        className="h-9 border border-zinc-300 px-4 text-[11px] font-semibold uppercase tracking-[0.12em] disabled:opacity-50"
                       >
                         {reorderingSubOrderId === subOrder.id ? "Reordering..." : "Reorder"}
                       </button>
                     ) : null}
-                  </article>
-                ))}
-              </div>
-            </section>
-
-            <section className="space-y-3 border border-zinc-300 p-5">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <h3 className="font-heading text-3xl uppercase">Order Items</h3>
-                {firstWriteReviewItem ? (
-                  <Link href={`/account/reviews?orderItemId=${encodeURIComponent(firstWriteReviewItem.id)}&formOpen=1`} className="inline-flex border border-black bg-black px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-white">
-                    Write Review
-                  </Link>
-                ) : null}
-              </div>
-              <div className="space-y-3">
-                {selectedOrder.items.map((item) => (
-                  <article key={item.id} className="border border-zinc-200 p-3 text-sm">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-semibold uppercase tracking-[0.08em]">{item.product.name}</p>
-                      {(() => {
-                        const itemSubOrder = subOrderByItemId.get(item.id);
-                        const canCancelItemSubOrder =
-                          Boolean(itemSubOrder) &&
-                          isInActionWindow &&
-                          ["PENDING", "CONFIRMED"].includes(itemSubOrder!.status);
-
-                        if (!canCancelItemSubOrder || !itemSubOrder || !selectedOrder) return null;
-
-                        return (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setCancelReasonModal({
-                                orderId: selectedOrder.id,
-                                subOrderId: itemSubOrder.id,
-                                brandName: itemSubOrder.brand?.name || "Brand",
-                              })
-                            }
-                            disabled={cancelingSubOrderId === itemSubOrder.id}
-                            className="inline-flex border border-zinc-300 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {cancelingSubOrderId === itemSubOrder.id ? "Canceling..." : "Cancel Item Group"}
-                          </button>
-                        );
-                      })()}
-                      {deliveredItemIds.has(item.id) ? (
-                        myReviewsByOrderItemId[item.id] ? (
-                          <div className="flex flex-wrap gap-2">
-                            <Link href={`/account/reviews?reviewId=${encodeURIComponent(myReviewsByOrderItemId[item.id].id)}`} className="inline-flex border border-zinc-300 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]">
-                              View Review
-                            </Link>
-                            {Date.now() - new Date(myReviewsByOrderItemId[item.id].createdAt).getTime() <= 10 * 60 * 1000 ? (
-                              <Link href={`/account/reviews?editReviewId=${encodeURIComponent(myReviewsByOrderItemId[item.id].id)}`} className="inline-flex border border-black bg-black px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
-                                Edit Review
-                              </Link>
-                            ) : null}
-                          </div>
-                        ) : (
-                          <Link href={`/account/reviews?orderItemId=${encodeURIComponent(item.id)}&formOpen=1`} className="inline-flex border border-black bg-black px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
-                            Write Review
-                          </Link>
-                        )
-                      ) : null}
-                    </div>
-                    <div className="mt-1 flex flex-wrap gap-3 text-xs text-zinc-700">
-                      <p className="font-semibold">Size: {item.selectedSize || "Not specified"}</p>
-                      <p className="font-semibold">Color: {item.selectedColor || "Not specified"}</p>
-                      <p className="font-semibold">Quantity: {item.quantity}</p>
-                      <p className="font-semibold">Price: {formatPkr(item.unitPricePkr)}</p>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-
-            <section className="space-y-3 border border-zinc-300 p-5">
-              <h3 className="font-heading text-3xl uppercase">Vendor Group Events</h3>
-              <div className="space-y-3">
-                {selectedSubOrderEvents.map((log) => (
-                  <article key={log.id} className="border border-zinc-200 p-3 text-sm">
-                    <p className="font-semibold uppercase tracking-[0.08em]">{log.brandName} - {getOrderStatusLabel(log.status)}</p>
-                    <p className="text-zinc-600">
-                      {log.updatedBy}
-                      {log.note ? ` - ${log.note}` : ""}
-                    </p>
-                    <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">{formatDateTime(log.createdAt)}</p>
-                  </article>
-                ))}
-              </div>
-            </section>
-
-            <section className="space-y-4 border border-zinc-300 p-5">
-              <h3 className="font-heading text-3xl uppercase">Support</h3>
-              <p className="text-sm text-zinc-700">Need help with this order? Contact support with the order reference attached.</p>
-              <div className="flex flex-wrap gap-2">
-                <a href={`mailto:support@broady.pk?subject=Support%20request%20for%20order%20${selectedOrder.id}`} className="inline-flex h-11 items-center justify-center border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white">
-                  Contact support
-                </a>
-                <Link href="/offers" className="inline-flex h-11 items-center justify-center border border-zinc-300 px-4 text-xs font-semibold uppercase tracking-[0.12em]">
-                  Help & offers
-                </Link>
-              </div>
-            </section>
-
-            {selectedNotifications.length > 0 ? (
-              <section className="space-y-3 border border-zinc-300 p-5">
-                <div className="flex items-end justify-between gap-4">
-                  <h3 className="font-heading text-3xl uppercase">Notifications</h3>
-                  <Link href="/account/notifications" className="text-xs font-semibold uppercase tracking-[0.15em] text-zinc-600">
-                    View all
-                  </Link>
+                    {subOrder.status === "DELIVERED" ? (
+                      <button type="button" className="h-9 border border-zinc-300 px-4 text-[11px] font-semibold uppercase tracking-[0.12em] opacity-50 cursor-not-allowed">
+                        Download Invoice
+                      </button>
+                    ) : null}
+                    <a href={`mailto:support@broady.local?subject=Support%20for%20order%20${subOrder.orderId}`} className="h-9 inline-flex items-center border border-zinc-300 px-4 text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-zinc-50">
+                      Contact Support
+                    </a>
+                  </div>
                 </div>
-                <div className="space-y-3">
-                  {sortedNotifications.map((notification) => (
-                    <article key={notification.id} className="border border-zinc-200 p-3 text-sm">
-                      <p className="font-semibold uppercase tracking-[0.08em]">{notification.title}</p>
-                      <p className="text-zinc-600">{notification.message}</p>
-                      <p className="mt-2 text-xs uppercase tracking-[0.12em] text-zinc-500">{formatDateTime(notification.createdAt)}</p>
-                    </article>
-                  ))}
-                </div>
-                {selectedNotifications.length > visibleNotificationCount ? (
-                  <button
-                    type="button"
-                    onClick={() => setVisibleNotificationCount((current) => current + 5)}
-                    className="inline-flex h-10 items-center border border-zinc-300 px-4 text-xs font-semibold uppercase tracking-[0.12em]"
-                  >
-                    Load More
-                  </button>
-                ) : null}
-              </section>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-
-      {cancelReasonModal ? (
-        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/40 p-4" onClick={() => setCancelReasonModal(null)}>
-          <div className="w-full max-w-md space-y-4 border border-zinc-300 bg-white p-5" onClick={(event) => event.stopPropagation()}>
-            <h3 className="font-heading text-2xl uppercase">Cancel {cancelReasonModal.subOrderId ? "Vendor Group" : "Order"}</h3>
-            <p className="text-sm text-zinc-600">Choose a reason before canceling.</p>
-
-            <label className="space-y-1 text-xs uppercase tracking-[0.12em] text-zinc-500">
-              Reason
-              <select
-                className="h-10 w-full border border-zinc-300 px-3 text-sm text-zinc-900"
-                value={cancelReasonCode}
-                onChange={(event) => setCancelReasonCode(event.target.value as CancelReasonCode)}
-              >
-                {CANCEL_REASON_OPTIONS.map((option) => (
-                  <option key={option.code} value={option.code}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {cancelReasonCode === "OTHER" ? (
-              <label className="space-y-1 text-xs uppercase tracking-[0.12em] text-zinc-500">
-                Custom Reason
-                <textarea
-                  className="min-h-20 w-full border border-zinc-300 p-2 text-sm text-zinc-900"
-                  placeholder="Tell us why you are canceling"
-                  value={cancelCustomReason}
-                  onChange={(event) => setCancelCustomReason(event.target.value)}
-                />
-              </label>
-            ) : null}
-
-            <div className="flex items-center justify-end gap-2">
-              <button type="button" className="h-10 border border-zinc-300 px-3 text-xs font-semibold uppercase tracking-[0.12em]" onClick={() => setCancelReasonModal(null)}>
-                Keep
-              </button>
-              <button
-                type="button"
-                className="h-10 border border-black bg-black px-3 text-xs font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-50"
-                disabled={cancelReasonCode === "OTHER" && !cancelCustomReason.trim()}
-                onClick={() => {
-                  if (!cancelReasonModal) return;
-                  const payload = {
-                    reasonCode: cancelReasonCode,
-                    customReason: cancelReasonCode === "OTHER" ? cancelCustomReason.trim() : undefined,
-                  };
-                  if (cancelReasonModal.subOrderId) {
-                    void handleCancelSubOrder(
-                      cancelReasonModal.orderId,
-                      cancelReasonModal.subOrderId,
-                      cancelReasonModal.brandName || "Brand",
-                      payload,
-                    );
-                  } else {
-                    void handleCancelOrder(cancelReasonModal.orderId, payload);
-                  }
-                  setCancelReasonModal(null);
-                  setCancelReasonCode("CHANGED_MIND");
-                  setCancelCustomReason("");
-                }}
-              >
-                Confirm Cancel
-              </button>
-            </div>
-          </div>
+              </article>
+            );
+          })}
         </div>
-      ) : null}
+      )}
 
-      <ConfirmModal
-        open={Boolean(reorderConfirmOrderId)}
-        title="Reorder Items"
-        description="Reorder will add available items from this order to your cart. Continue?"
-        confirmText="Yes, reorder"
-        cancelText="Not now"
-        onCancel={() => setReorderConfirmOrderId(null)}
-        onConfirm={() => {
-          if (!reorderConfirmOrderId) return;
-          void handleReorder(reorderConfirmOrderId);
-          setReorderConfirmOrderId(null);
-        }}
-      />
+      {/* Cancel Order Modal Logic (Retained but simplified since we aren't showing the complex view, however cancel actions might be needed from tracking detail page, which is separate.) */}
     </section>
   );
 }

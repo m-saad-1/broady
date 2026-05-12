@@ -1,81 +1,95 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getUserNotifications } from "@/lib/api";
-import { getNotificationHref } from "@/lib/notification-routing";
+import { getUserNotifications, markNotificationAsRead, markAllNotificationsAsRead } from "@/lib/api";
+import { formatDistanceToNow } from "date-fns";
+import Link from "next/link";
 import type { NotificationItem } from "@/types/marketplace";
 
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("en-PK", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
-export default function AccountNotificationsPage() {
+export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+
+  const loadNotifications = async () => {
+    try {
+      const data = await getUserNotifications();
+      setNotifications(data || []);
+    } catch (error) {
+      console.error("Failed to load notifications", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    let active = true;
-
-    getUserNotifications()
-      .then((items) => {
-        if (!active) return;
-        const sorted = [...items].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        setNotifications(sorted);
-      })
-      .catch((err) => {
-        if (!active) return;
-        setError(err instanceof Error ? err.message : "Unable to load notifications.");
-      })
-      .finally(() => {
-        if (active) {
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
+    void loadNotifications();
   }, []);
 
+  const onMarkRead = async (id: string) => {
+    try {
+      await markNotificationAsRead(id);
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, readAt: new Date().toISOString() } : n));
+    } catch (error) {
+      console.error("Failed to mark read", error);
+    }
+  };
+
+  const onMarkAllRead = async () => {
+    try {
+      await markAllNotificationsAsRead();
+      setNotifications(prev => prev.map(n => ({ ...n, readAt: n.readAt || new Date().toISOString() })));
+    } catch (error) {
+      console.error("Failed to mark all read", error);
+    }
+  };
+
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-8 px-4 py-10 lg:px-10">
-      <header className="space-y-3 border-b border-zinc-300 pb-5">
-        <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Account</p>
-        <h1 className="font-heading text-5xl uppercase">All Notifications</h1>
-        <p className="text-sm text-zinc-600">See all updates related to your orders, account activity, and marketplace alerts.</p>
+    <main className="space-y-8">
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-300 pb-5">
+        <div className="space-y-1">
+          <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Updates</p>
+          <h1 className="font-heading text-4xl uppercase">Notifications</h1>
+        </div>
+        {notifications.some(n => !n.readAt) && (
+          <button onClick={onMarkAllRead} className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:text-black">
+            Mark all as read
+          </button>
+        )}
       </header>
 
-      {loading ? <p className="text-sm text-zinc-700">Loading notifications...</p> : null}
-      {error ? <p className="text-sm text-amber-700">{error}</p> : null}
-
-      {!loading && !error ? (
-        notifications.length ? (
-          <section className="space-y-3">
-            {notifications.map((item) => (
-              <article key={item.id} className="border border-zinc-300 p-4 text-sm">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <p className="font-semibold uppercase tracking-[0.08em]">{item.title}</p>
-                  {!item.readAt ? <span className="border border-emerald-300 bg-emerald-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-700">New</span> : null}
+      {loading ? (
+        <div className="py-20 text-center text-zinc-500 uppercase tracking-widest text-xs">Loading notifications...</div>
+      ) : notifications.length === 0 ? (
+        <div className="border border-zinc-200 p-16 text-center">
+          <p className="text-zinc-500">You have no notifications yet.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {notifications.map((item) => (
+            <div 
+              key={item.id} 
+              className={`p-5 border flex gap-4 items-start transition-all ${item.readAt ? "border-zinc-100 opacity-70" : "border-zinc-300 bg-white shadow-sm"}`}
+              onClick={() => !item.readAt && void onMarkRead(item.id)}
+            >
+              <div className={`w-2 h-2 mt-2 rounded-full shrink-0 ${item.readAt ? "bg-transparent" : "bg-black"}`} />
+              <div className="flex-1 space-y-1">
+                <p className="text-sm font-semibold">{item.title}</p>
+                <p className="text-sm text-zinc-600 line-clamp-2">{item.message}</p>
+                <div className="flex items-center gap-3 pt-1">
+                  <p className="text-[10px] uppercase tracking-widest text-zinc-400">
+                    {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}
+                  </p>
+                  {item.targetPath && (
+                    <Link href={item.targetPath} className="text-[10px] font-bold uppercase tracking-widest underline underline-offset-4">
+                      View Details
+                    </Link>
+                  )}
                 </div>
-                <p className="mt-2 text-zinc-700">{item.message}</p>
-                <p className="mt-2 text-xs uppercase tracking-[0.12em] text-zinc-500">{formatDateTime(item.createdAt)}</p>
-                <Link href={getNotificationHref(item)} className="mt-3 inline-flex border border-zinc-300 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em]">
-                  Open details
-                </Link>
-              </article>
-            ))}
-          </section>
-        ) : (
-          <section className="border border-zinc-300 p-6">
-            <p className="text-sm text-zinc-700">No notifications found.</p>
-          </section>
-        )
-      ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </main>
   );
 }

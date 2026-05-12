@@ -94,6 +94,9 @@ export default function LoginPage() {
       <p className="text-sm text-zinc-600">
         New here? <Link href="/register" className="underline">Create account</Link>
       </p>
+      <p className="text-sm text-zinc-600">
+        Forgot your password? <Link href="/forgot-password" className="underline">Reset it here</Link>
+      </p>
     </main>
   );
 }

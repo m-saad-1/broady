@@ -4,6 +4,7 @@ import {
   createProduct,
   deleteProduct,
   getProductById,
+  getProductBySlug,
   listProducts,
   updateProduct,
 } from "./product.service.js";
@@ -35,12 +36,16 @@ router.get("/", async (req, res, next) => {
 
 router.get("/:id", async (req, res, next) => {
   try {
-    const productId = getParamValue(req.params.id);
-    if (!productId) {
-      return res.status(400).json({ message: "Product id is required" });
+    const idOrSlug = getParamValue(req.params.id);
+    if (!idOrSlug) {
+      return res.status(400).json({ message: "Product id or slug is required" });
     }
 
-    const product = await getProductById(productId);
+    let product = await getProductById(idOrSlug);
+    if (!product) {
+      product = await getProductBySlug(idOrSlug);
+    }
+
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }

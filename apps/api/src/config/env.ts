@@ -1,4 +1,23 @@
-import "dotenv/config";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { config as dotenvConfig } from "dotenv";
+
+function findEnvFile(startDir: string): string | null {
+  let dir = path.resolve(startDir);
+  for (let i = 0; i < 5; i += 1) {
+    const candidate = path.join(dir, ".env");
+    if (fs.existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
+const envFile = findEnvFile(process.cwd()) || findEnvFile(path.resolve(process.cwd(), ".."));
+if (envFile) {
+  dotenvConfig({ path: envFile, override: false });
+}
 
 export const env = {
   port: Number(process.env.PORT || 4000),

@@ -7,6 +7,25 @@ import { requireAuth } from "../../middleware/auth.js";
 import { getCart, getCartScopeFromUser, replaceCart } from "../carts/cart.service.js";
 import { normalizeOrderNotificationPresentation } from "../notifications/notification.presentation.js";
 import { resolveNotificationTargetPath } from "../notifications/notification.targets.js";
+import { sendEmail } from "../../services/email.service.js";
+
+const updateProfileSchema = z.object({
+  fullName: z.string().trim().min(2).max(100),
+  email: z.string().email(),
+});
+
+const addressSchema = z.object({
+  label: z.string().trim().min(2).max(50),
+  fullName: z.string().trim().min(2).max(100),
+  phone: z.string().trim().min(7).max(20),
+  addressLine1: z.string().trim().min(5).max(255),
+  addressLine2: z.string().trim().max(255).optional().nullable(),
+  city: z.string().trim().min(2).max(100),
+  state: z.string().trim().max(100).optional().nullable(),
+  postalCode: z.string().trim().max(20).optional().nullable(),
+  country: z.string().trim().min(2).max(100).default("Pakistan"),
+  isDefault: z.boolean().optional().default(false),
+});
 
 const router = Router();
 
@@ -135,7 +154,114 @@ router.post("/password", requireAuth, async (req, res) => {
     },
   });
 
+  void sendEmail({
+    to: user.email,
+    subject: "Broady Password Changed",
+    text: "Your Broady account password has been successfully changed. If you did not make this change, please contact support immediately.",
+  }).catch(err => console.error("[users.routes] Failed to send password change email", err));
+
   return res.json({ message: "Password updated" });
+});
+
+router.put("/profile", requireAuth, async (req, res) => {
+  const parsed = updateProfileSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid payload", issues: parsed.error.flatten() });
+
+  const updated = await prisma.user.update({
+    where: { id: req.auth!.userId },
+    data: parsed.data,
+    select: { id: true, fullName: true, email: true, role: true, brandId: true },
+  });
+
+  return res.json({ data: updated });
+});
+
+router.get("/addresses", requireAuth, async (req, res) => {
+  const addresses = await prisma.userAddress.findMany({
+    where: { userId: req.auth!.userId },
+    orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }],
+  });
+  return res.json({ data: addresses });
+});
+
+router.post("/addresses", requireAuth, async (req, res) => {
+  const parsed = addressSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid payload", issues: parsed.error.flatten() });
+
+  const isDefault = parsed.data.isDefault ?? false;
+  if (!isDefault) {
+    const hasDefault = await prisma.userAddress.findFirst({
+      where: { userId: req.auth!.userId, isDefault: true },
+    });
+    if (!hasDefault) parsed.data.isDefault = true;
+  }
+
+  const created = await prisma.$transaction(async (tx) => {
+    if (parsed.data.isDefault) {
+      await tx.userAddress.updateMany({
+        where: { userId: req.auth!.userId, isDefault: true },
+        data: { isDefault: false },
+      });
+    }
+
+    return tx.userAddress.create({
+      data: {
+        userId: req.auth!.userId,
+        ...parsed.data,
+      },
+    });
+  });
+
+  return res.status(201).json({ data: created });
+});
+
+router.put("/addresses/:id", requireAuth, async (req, res) => {
+  const addressId = String(req.params.id);
+  const parsed = addressSchema.partial().safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid payload", issues: parsed.error.flatten() });
+
+  const existing = await prisma.userAddress.findFirst({
+    where: { id: addressId, userId: req.auth!.userId },
+  });
+  if (!existing) return res.status(404).json({ message: "Address not found" });
+
+  const updated = await prisma.$transaction(async (tx) => {
+    if (parsed.data.isDefault === true) {
+      await tx.userAddress.updateMany({
+        where: { userId: req.auth!.userId, isDefault: true },
+        data: { isDefault: false },
+      });
+    }
+
+    return tx.userAddress.update({
+      where: { id: addressId },
+      data: parsed.data,
+    });
+  });
+
+  return res.json({ data: updated });
+});
+
+router.delete("/addresses/:id", requireAuth, async (req, res) => {
+  const addressId = String(req.params.id);
+  const existing = await prisma.userAddress.findFirst({
+    where: { id: addressId, userId: req.auth!.userId },
+  });
+  if (!existing) return res.status(404).json({ message: "Address not found" });
+
+  await prisma.userAddress.delete({ where: { id: addressId } });
+
+  if (existing.isDefault) {
+    const newest = await prisma.userAddress.findFirst({
+      where: { userId: req.auth!.userId },
+      orderBy: { createdAt: "desc" },
+    });
+    if (newest) {
+      await prisma.userAddress.update({ where: { id: newest.id }, data: { isDefault: true } });
+    }
+  }
+
+  return res.status(204).send();
 });
 
 router.get("/payment-methods", requireAuth, async (req, res) => {
@@ -368,6 +494,17 @@ router.patch("/notifications/:id/read", requireAuth, async (req, res) => {
   });
 
   return res.json({ data: updated });
+});
+
+router.get("/notifications/unread-count", requireAuth, async (req, res) => {
+  const count = await prisma.notification.count({
+    where: {
+      userId: req.auth!.userId,
+      readAt: null,
+    },
+  });
+
+  return res.json({ data: { count } });
 });
 
 export default router;

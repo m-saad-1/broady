@@ -77,6 +77,20 @@ export function buildNotificationTemplate(
   audience: NotificationAudience,
   context?: NotificationTemplateContext,
 ): TemplatePayload {
+  if (event.name === "account_verification") {
+    return {
+      title: "Verify Your Account",
+      message: `Welcome to Broady. Verify your account using this link: ${event.verificationUrl}`,
+    };
+  }
+
+  if (event.name === "password_reset") {
+    return {
+      title: "Reset Your Password",
+      message: `Use this link to reset your Broady password: ${event.resetUrl}`,
+    };
+  }
+
   if (
     event.name === "order_placed" ||
     event.name === "suborder_confirmed" ||
@@ -100,7 +114,7 @@ export function buildNotificationTemplate(
       if (normalizedOrderEventName === "order_placed") {
         return {
           title,
-          message: `Your order ${maskOrderId(event.orderId)} has been placed successfully on Broady.`,
+          message: `Your ${orderBrandLabel || "Broady"} order ${maskOrderId(event.orderId)} has been placed.`,
         };
       }
 
@@ -119,25 +133,32 @@ export function buildNotificationTemplate(
       }
 
       if (normalizedOrderEventName === "suborder_shipped") {
-        const shippedByBrandName = context?.recipientBrandName || event.brandName || orderBrandLabel || "the brand";
+        if (title === "Out For Delivery") {
+          return {
+            title,
+            message: `Order ${maskOrderId(event.orderId)} is out for delivery.`,
+          };
+        }
         return {
           title,
-          message: noteSuffix.trim() || `Order ${maskOrderId(event.orderId)} has been shipped by ${shippedByBrandName}.`,
+          message: `Order ${maskOrderId(event.orderId)} has been shipped.`,
         };
       }
 
       if (normalizedOrderEventName === "order_address_correction_required") {
         return {
           title: "Address Correction Required",
-          message: `Your delivery failed due to incorrect address. Please update your address to proceed with delivery.`,
+          message: `Delivery unsuccessful for order ${maskOrderId(event.orderId)}. Please update your address to proceed with delivery.`,
         };
       }
 
       if (normalizedOrderEventName === "suborder_delivery_failed") {
-        const failureNote = event.note ? `\n${event.note}` : "";
+        const failureNote = event.note?.toLowerCase().includes("incorrect address")
+          ? "Please update the address before the order can be reattempted."
+          : event.note || "Please check your delivery details.";
         return {
           title,
-          message: `Delivery unsuccessful for order ${maskOrderId(event.orderId)}.${failureNote}${failureNote ? "" : " We're working on your delivery."}`,
+          message: `Delivery unsuccessful for order ${maskOrderId(event.orderId)}. ${failureNote}`,
         };
       }
 
@@ -152,12 +173,12 @@ export function buildNotificationTemplate(
         const returnNote = event.note || "Your order has been processed for return.";
         return {
           title,
-          message: `Order ${maskOrderId(event.orderId)} status: Returned. ${returnNote}`,
+          message: `Order ${maskOrderId(event.orderId)} has been returned. ${returnNote}`,
         };
       }
 
       if (normalizedOrderEventName === "suborder_cancelled") {
-        const cancelledRef = event.subOrderId ? `Sub-order ${maskOrderId(event.subOrderId)}` : `Your order ${maskOrderId(event.orderId)}`;
+        const cancelledRef = event.subOrderId ? `Sub-order ${maskOrderId(event.subOrderId)}` : `Order ${maskOrderId(event.orderId)}`;
         return {
           title,
           message: `${cancelledRef} has been cancelled.${noteSuffix}`,
@@ -172,11 +193,10 @@ export function buildNotificationTemplate(
       }
 
       if (normalizedOrderEventName === "suborder_delivered") {
-        const deliveredBrandName = context?.recipientBrandName || event.brandName || orderBrandLabel || "brand";
         const deliveredRef = event.subOrderId ? `Sub-order ${maskOrderId(event.subOrderId)}` : `Order ${maskOrderId(event.orderId)}`;
         return {
           title,
-          message: `${deliveredRef} has been delivered. Your ${deliveredBrandName} item has been delivered.`,
+          message: `${deliveredRef} has been delivered.`,
         };
       }
     }
@@ -204,9 +224,10 @@ export function buildNotificationTemplate(
       }
 
       if (normalizedOrderEventName === "suborder_shipped") {
+        const statusVerb = title === "Out For Delivery" ? "is out for delivery" : "has been shipped";
         return {
           title,
-          message: noteSuffix.trim() || `Order ${maskOrderId(event.orderId)} has been shipped.`,
+          message: `Order ${maskOrderId(event.orderId)} ${statusVerb}.`,
         };
       }
 
@@ -218,10 +239,10 @@ export function buildNotificationTemplate(
       }
 
       if (normalizedOrderEventName === "suborder_delivery_failed") {
-        const failureNote = event.note ? `\n${event.note}` : "";
+        const failureReason = event.note?.toLowerCase().includes("incorrect address") ? "Incorrect address" : "Logistic issue";
         return {
           title,
-          message: `You updated the status for order ${maskOrderId(event.orderId)} to Delivery Failed.${failureNote}`,
+          message: `Delivery failed for order ${maskOrderId(event.orderId)} (${failureReason}). Waiting for customer update.`,
         };
       }
 
@@ -281,10 +302,10 @@ export function buildNotificationTemplate(
     }
 
     if (normalizedOrderEventName === "suborder_shipped") {
-      const shippedByBrandName = event.brandName || orderBrandLabel || "the brand";
+      const statusVerb = title === "Out For Delivery" ? "is out for delivery" : "has been shipped";
       return {
         title,
-        message: noteSuffix.trim() || `Order ${maskOrderId(event.orderId)} has been shipped by ${shippedByBrandName}.`,
+        message: `Order ${maskOrderId(event.orderId)} ${statusVerb}.`,
       };
     }
 
@@ -296,9 +317,10 @@ export function buildNotificationTemplate(
     }
 
     if (normalizedOrderEventName === "suborder_delivery_failed") {
+      const failureReason = event.note?.toLowerCase().includes("incorrect address") ? "Incorrect address" : "Logistic issue";
       return {
         title,
-        message: `Delivery failed for ${event.subOrderId ? `sub-order ${maskOrderId(event.subOrderId)}` : `order ${maskOrderId(event.orderId)}`}.${noteSuffix}`,
+        message: `Logistics report: Delivery failed for order ${maskOrderId(event.orderId)} (${failureReason}).`,
       };
     }
 
@@ -327,11 +349,10 @@ export function buildNotificationTemplate(
     }
 
     if (normalizedOrderEventName === "suborder_delivered") {
-      const deliveredByBrandName = event.brandName || orderBrandLabel || "the brand";
       const deliveredRef = event.subOrderId ? `Sub-order ${maskOrderId(event.subOrderId)}` : `Order ${maskOrderId(event.orderId)}`;
       return {
         title,
-        message: `${deliveredRef} has been delivered by ${deliveredByBrandName}.`,
+        message: `${deliveredRef} has been delivered.`,
       };
     }
   }

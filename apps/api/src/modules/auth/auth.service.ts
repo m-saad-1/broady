@@ -5,6 +5,9 @@ import { OAuth2Client } from "google-auth-library";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { env } from "../../config/env.js";
 import { prisma } from "../../config/prisma.js";
+import { notificationEventNames } from "../notifications/notification.events.js";
+import { queueNotificationEvent } from "../notifications/notification.service.js";
+import { sendEmail } from "../../services/email.service.js";
 import type { LoginInput, RegisterInput } from "./auth.schemas.js";
 
 type SafeUser = {
@@ -32,8 +35,20 @@ type AuthTokenPayload = {
 
 const oauthClient = env.googleClientId ? new OAuth2Client(env.googleClientId) : null;
 
-function hashInviteToken(token: string) {
+function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
+}
+
+function buildVerificationUrl(token: string) {
+  return `${env.webAppUrl.replace(/\/$/, "")}/account/verify-email?token=${encodeURIComponent(token)}`;
+}
+
+function buildPasswordResetUrl(token: string) {
+  return `${env.webAppUrl.replace(/\/$/, "")}/reset-password?token=${encodeURIComponent(token)}`;
+}
+
+function queueAuthNotification(event: Parameters<typeof queueNotificationEvent>[0]) {
+  void queueNotificationEvent(event);
 }
 
 function toSafeUser(user: { id: string; email: string; fullName: string; role: SafeUser["role"]; brandId?: string | null }): SafeUser {
@@ -104,6 +119,21 @@ export async function registerUser(input: RegisterInput, meta?: { userAgent?: st
   }
 
   const { token } = await createSessionAndToken(user, meta);
+  const verificationToken = randomBytes(32).toString("hex");
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      emailVerificationTokenHash: hashToken(verificationToken),
+      emailVerificationTokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    },
+  });
+
+  queueAuthNotification({
+    name: notificationEventNames.accountVerification,
+    userId: user.id,
+    verificationUrl: buildVerificationUrl(verificationToken),
+  } as any);
+
   return { token, user: toSafeUser(user) } as const;
 }
 
@@ -189,7 +219,7 @@ export async function createBrandInviteAccount(input: {
   fullName?: string;
 }): Promise<any> {
   const inviteToken = randomBytes(32).toString("hex");
-  const inviteTokenHash = hashInviteToken(inviteToken);
+  const inviteTokenHash = hashToken(inviteToken);
   const brandInviteTokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   const brandEmail = input.contactEmail?.trim().toLowerCase() || `brand.${input.brandName.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "") || input.brandId}@broady.local`;
 
@@ -246,7 +276,7 @@ export async function createBrandInviteAccount(input: {
 }
 
 export async function completeBrandInvite(input: { token: string; password: string }) {
-  const tokenHash = hashInviteToken(input.token);
+  const tokenHash = hashToken(input.token);
   const user = await prisma.user.findFirst({
     where: {
       brandInviteTokenHash: tokenHash,
@@ -288,6 +318,94 @@ export async function completeBrandInvite(input: { token: string; password: stri
       brandId: updatedData.brandId,
     },
   } as const;
+}
+
+export async function requestPasswordReset(input: { email: string }) {
+  const user = await prisma.user.findUnique({
+    where: { email: input.email.toLowerCase() },
+    select: { id: true, email: true },
+  });
+
+  if (!user) {
+    return { ok: true } as const;
+  }
+
+  const resetToken = randomBytes(32).toString("hex");
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordResetTokenHash: hashToken(resetToken),
+      passwordResetTokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    },
+  });
+
+  queueAuthNotification({
+    name: notificationEventNames.passwordReset,
+    userId: user.id,
+    resetUrl: buildPasswordResetUrl(resetToken),
+  } as any);
+
+  return { ok: true } as const;
+}
+
+export async function completePasswordReset(input: { token: string; password: string }) {
+  const tokenHash = hashToken(input.token);
+  const user = await prisma.user.findFirst({
+    where: {
+      passwordResetTokenHash: tokenHash,
+      passwordResetTokenExpiresAt: { gt: new Date() },
+    },
+  });
+
+  if (!user) {
+    return { error: { status: 400, message: "Invalid or expired reset link" } } as const;
+  }
+
+  const hashedPassword = await bcrypt.hash(input.password, 12);
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        passwordResetTokenHash: null,
+        passwordResetTokenExpiresAt: null,
+      },
+    }),
+    prisma.session.deleteMany({ where: { userId: user.id } }),
+  ]);
+
+  void sendEmail({
+    to: user.email,
+    subject: "Broady Password Reset Successful",
+    text: "Your Broady account password has been successfully reset. If you did not make this change, please contact support immediately.",
+  }).catch(err => console.error("[auth.service] Failed to send password reset confirmation email", err));
+
+  return { ok: true } as const;
+}
+
+export async function verifyAccount(input: { token: string }) {
+  const tokenHash = hashToken(input.token);
+  const user = await prisma.user.findFirst({
+    where: {
+      emailVerificationTokenHash: tokenHash,
+      emailVerificationTokenExpiresAt: { gt: new Date() },
+    },
+  });
+
+  if (!user) {
+    return { error: { status: 400, message: "Invalid or expired verification link" } } as const;
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      emailVerifiedAt: new Date(),
+      emailVerificationTokenHash: null,
+      emailVerificationTokenExpiresAt: null,
+    },
+  });
+
+  return { ok: true } as const;
 }
 
 export async function revokeSessionFromToken(token: string | undefined) {

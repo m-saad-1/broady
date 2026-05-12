@@ -756,10 +756,12 @@ async function main() {
       where: { slug: product.slug },
       update: {
         ...product,
+        actualPrice: product.actualPrice || product.pricePkr,
         ...content,
       },
       create: {
         ...product,
+        actualPrice: product.actualPrice || product.pricePkr,
         ...content,
       },
     });

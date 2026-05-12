@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
@@ -22,6 +22,8 @@ export default function CartPage() {
   const [previewItemKey, setPreviewItemKey] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<{ productId: string; selectedColor?: string; selectedSize?: string } | null>(null);
   const renderNow = useStableNow();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const getRowKey = useCallback(
     (item: (typeof items)[number]) => `${item.product.id}:${item.selectedSize || ""}:${item.selectedColor || ""}`,
@@ -73,7 +75,7 @@ export default function CartPage() {
       </header>
 
       <section className="space-y-3">
-        {items.length === 0 ? (
+        {!mounted || items.length === 0 ? (
           <p className="border border-zinc-300 p-6 text-sm uppercase tracking-[0.12em] text-zinc-600">Your cart is empty.</p>
         ) : (
           <>
