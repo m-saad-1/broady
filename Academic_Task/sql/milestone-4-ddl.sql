@@ -430,8 +430,6 @@ CREATE TABLE IF NOT EXISTS user_activities (
   product_id TEXT,
   event_type TEXT NOT NULL,
   search_query TEXT,
-  top_category TEXT,
-  sub_category TEXT,
   weight NUMERIC(8,2) NOT NULL DEFAULT 0,
   metadata JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

@@ -115,11 +115,11 @@ VALUES
   ('np_003', 'usr_heritage_mgr', TRUE, FALSE, TRUE, FALSE),
   ('np_004', 'usr_nova_mgr', TRUE, FALSE, TRUE, FALSE);
 
-INSERT INTO user_activities (id, user_id, product_id, event_type, search_query, top_category, sub_category, weight, metadata)
+INSERT INTO user_activities (id, user_id, product_id, event_type, search_query, weight, metadata)
 VALUES
-  ('ua_001', 'usr_ahmed', 'prd_001', 'VIEW_PRODUCT', NULL, 'cat_women', 'cat_tops', 1.00, '{"source":"homepage"}'),
-  ('ua_002', 'usr_ahmed', NULL, 'SEARCH', 'cotton top', 'cat_women', 'cat_tops', 0.75, '{"source":"search"}'),
-  ('ua_003', 'usr_sara', 'prd_002', 'ADD_TO_WISHLIST', NULL, 'cat_women', 'cat_dresses', 0.50, '{"source":"wishlist"}');
+  ('ua_001', 'usr_ahmed', 'prd_001', 'VIEW_PRODUCT', NULL, 1.00, '{"source":"homepage"}'),
+  ('ua_002', 'usr_ahmed', NULL, 'SEARCH', 'cotton top', 0.75, '{"source":"search"}'),
+  ('ua_003', 'usr_sara', 'prd_002', 'ADD_TO_WISHLIST', NULL, 0.50, '{"source":"wishlist"}');
 
 -- Example update and delete operations required by the assignment.
 UPDATE products
