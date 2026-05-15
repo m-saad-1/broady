@@ -1,0 +1,101 @@
+id,user_id,product_id,event_type,search_query,top_category,sub_category,weight,metadata,created_at
+ua_001,usr_001,prd_001,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_002,usr_002,prd_002,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_003,usr_003,prd_003,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_004,usr_004,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_005,usr_005,prd_005,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_006,usr_006,prd_006,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_007,usr_007,prd_007,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_008,usr_008,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_009,usr_009,prd_009,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_010,usr_010,prd_010,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_011,usr_011,prd_011,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_012,usr_012,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_013,usr_013,prd_013,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_014,usr_014,prd_014,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_015,usr_015,prd_015,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_016,usr_016,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_017,usr_017,prd_017,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_018,usr_018,prd_018,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_019,usr_019,prd_019,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_020,usr_020,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_021,usr_021,prd_021,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_022,usr_022,prd_022,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_023,usr_023,prd_023,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_024,usr_024,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_025,usr_025,prd_025,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_026,usr_026,prd_026,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_027,usr_027,prd_027,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_028,usr_028,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_029,usr_029,prd_029,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_030,usr_030,prd_030,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_031,usr_031,prd_031,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_032,usr_032,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_033,usr_033,prd_033,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_034,usr_034,prd_034,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_035,usr_035,prd_035,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_036,usr_036,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_037,usr_037,prd_037,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_038,usr_038,prd_038,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_039,usr_039,prd_039,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_040,usr_040,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_041,usr_041,prd_041,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_042,usr_042,prd_042,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_043,usr_043,prd_043,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_044,usr_044,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_045,usr_045,prd_045,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_046,usr_046,prd_046,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_047,usr_047,prd_047,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_048,usr_048,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_049,usr_049,prd_049,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_050,usr_050,prd_050,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_051,usr_051,prd_051,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_052,usr_052,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_053,usr_053,prd_053,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_054,usr_054,prd_054,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_055,usr_055,prd_055,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_056,usr_056,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_057,usr_001,prd_057,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_058,usr_002,prd_058,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_059,usr_003,prd_059,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_060,usr_004,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_061,usr_005,prd_001,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_062,usr_006,prd_002,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_063,usr_007,prd_003,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_064,usr_008,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_065,usr_009,prd_005,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_066,usr_010,prd_006,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_067,usr_011,prd_007,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_068,usr_012,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_069,usr_013,prd_009,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_070,usr_014,prd_010,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_071,usr_015,prd_011,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_072,usr_016,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_073,usr_017,prd_013,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_074,usr_018,prd_014,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_075,usr_019,prd_015,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_076,usr_020,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_077,usr_021,prd_017,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_078,usr_022,prd_018,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_079,usr_023,prd_019,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_080,usr_024,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_081,usr_025,prd_021,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_082,usr_026,prd_022,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_083,usr_027,prd_023,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_084,usr_028,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_085,usr_029,prd_025,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_086,usr_030,prd_026,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_087,usr_031,prd_027,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_088,usr_032,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_089,usr_033,prd_029,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_090,usr_034,prd_030,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_091,usr_035,prd_031,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_092,usr_036,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_093,usr_037,prd_033,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_094,usr_038,prd_034,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_095,usr_039,prd_035,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_096,usr_040,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z
+ua_097,usr_041,prd_037,SEARCH,cotton top,cat_women,cat_tops,0.75,"{""source"": ""search""}",2026-05-15T00:00:00Z
+ua_098,usr_042,prd_038,ADD_TO_WISHLIST,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_099,usr_043,prd_039,PURCHASE,,cat_women,cat_tops,0.75,"{""source"": ""wishlist""}",2026-05-15T00:00:00Z
+ua_100,usr_044,,VIEW_PRODUCT,,cat_women,cat_tops,1.00,"{""source"": ""homepage""}",2026-05-15T00:00:00Z

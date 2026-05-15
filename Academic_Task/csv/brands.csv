@@ -1,0 +1,7 @@
+id,name,slug,logo_url,description,verified,commission_rate,api_enabled,contact_email,whatsapp_number,created_at,updated_at
+br_heritage,Heritage Loom,heritage-loom,https://cdn.example.com/brands/heritage.png,Contemporary womenswear brand.,true,12.00,false,hello@heritageloom.test,+923001111111,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+br_nova,Nova Stitch,nova-stitch,https://cdn.example.com/brands/nova.png,Minimal essentials and occasion wear.,true,10.50,false,support@novastitch.test,+923002222222,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+br_verve,Verve Atelier,verve-atelier,https://cdn.example.com/brands/verve.png,Elegant ready-to-wear with a modern edge.,true,11.00,false,hello@verveatelier.test,+923003333333,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+br_mira,Mira Mode,mira-mode,https://cdn.example.com/brands/mira.png,Premium day-to-night clothing.,true,13.00,false,contact@miramode.test,+923004444444,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+br_rise,Rise Studio,rise-studio,https://cdn.example.com/brands/rise.png,Bold sustainable fashion essentials.,true,9.50,false,support@risestudio.test,+923005555555,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+br_luna,Luna Threads,luna-threads,https://cdn.example.com/brands/luna.png,Comfortable feminine silhouettes.,true,10.75,false,hello@lunathreads.test,+923006666666,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z

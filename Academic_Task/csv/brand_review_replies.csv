@@ -1,0 +1,51 @@
+id,review_id,brand_id,user_id,content,created_at,updated_at
+brr_003,rev_003,br_mira,usr_023,Thank you for the review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_006,rev_006,br_heritage,usr_026,Thank you for the review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_009,rev_009,br_mira,usr_029,Thank you for the review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_012,rev_012,br_heritage,usr_032,Thank you for the review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_015,rev_015,br_mira,usr_035,Thank you for the review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_018,rev_018,br_heritage,usr_038,Thank you for the review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_021,rev_021,br_mira,usr_041,Thank you for the review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_024,rev_024,br_heritage,usr_044,Thank you for the review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_027,rev_027,br_mira,usr_047,Thank you for the review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_030,rev_030,br_heritage,usr_050,Thank you for the review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_033,rev_033,br_mira,usr_053,Thank you for the review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_036,rev_036,br_heritage,usr_056,Thank you for the review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_039,rev_039,br_mira,usr_003,Thank you for the review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_042,rev_042,br_heritage,usr_006,Thank you for the review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_045,rev_045,br_mira,usr_009,Thank you for the review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_048,rev_048,br_heritage,usr_012,Thank you for the review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_051,rev_051,br_mira,usr_015,Thank you for the review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_054,rev_054,br_heritage,usr_018,Thank you for the review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_057,rev_057,br_mira,usr_021,Thank you for the review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_060,rev_060,br_heritage,usr_024,Thank you for the review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_071,rev_021,br_mira,usr_041,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_072,rev_022,br_rise,usr_042,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_073,rev_023,br_luna,usr_043,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_074,rev_024,br_heritage,usr_044,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_075,rev_025,br_nova,usr_045,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_076,rev_026,br_verve,usr_046,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_077,rev_027,br_mira,usr_047,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_078,rev_028,br_rise,usr_048,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_079,rev_029,br_luna,usr_049,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_080,rev_030,br_heritage,usr_050,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_081,rev_031,br_nova,usr_051,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_082,rev_032,br_verve,usr_052,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_083,rev_033,br_mira,usr_053,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_084,rev_034,br_rise,usr_054,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_085,rev_035,br_luna,usr_055,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_086,rev_036,br_heritage,usr_056,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_087,rev_037,br_nova,usr_001,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_088,rev_038,br_verve,usr_002,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_089,rev_039,br_mira,usr_003,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_090,rev_040,br_rise,usr_004,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_091,rev_041,br_luna,usr_005,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_092,rev_042,br_heritage,usr_006,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_093,rev_043,br_nova,usr_007,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_094,rev_044,br_verve,usr_008,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_095,rev_045,br_mira,usr_009,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_096,rev_046,br_rise,usr_010,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_097,rev_047,br_luna,usr_011,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_098,rev_048,br_heritage,usr_012,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_099,rev_049,br_nova,usr_013,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+brr_100,rev_050,br_verve,usr_014,Thank you for your detailed review.,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z

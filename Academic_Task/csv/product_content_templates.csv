@@ -1,0 +1,45 @@
+id,type,name,content,brand_id,created_by_id,created_at,updated_at
+pct_001,DESCRIPTION,Heritage Loom Template 1,"{""tone"": ""premium"", ""length"": ""short""}",br_heritage,usr_heritage_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_002,SIZE_GUIDE,Heritage Loom Template 2,"{""sizes"": [""S"", ""M"", ""L""]}",br_heritage,usr_heritage_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_003,DESCRIPTION,Heritage Loom Template 3,"{""tone"": ""premium"", ""length"": ""short""}",br_heritage,usr_heritage_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_004,SIZE_GUIDE,Heritage Loom Template 4,"{""sizes"": [""S"", ""M"", ""L""]}",br_heritage,usr_heritage_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_005,DESCRIPTION,Heritage Loom Template 5,"{""tone"": ""premium"", ""length"": ""short""}",br_heritage,usr_heritage_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_007,DESCRIPTION,Nova Stitch Template 1,"{""tone"": ""premium"", ""length"": ""short""}",br_nova,usr_nova_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_008,SIZE_GUIDE,Nova Stitch Template 2,"{""sizes"": [""S"", ""M"", ""L""]}",br_nova,usr_nova_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_009,DESCRIPTION,Nova Stitch Template 3,"{""tone"": ""premium"", ""length"": ""short""}",br_nova,usr_nova_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_010,SIZE_GUIDE,Nova Stitch Template 4,"{""sizes"": [""S"", ""M"", ""L""]}",br_nova,usr_nova_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_011,DESCRIPTION,Nova Stitch Template 5,"{""tone"": ""premium"", ""length"": ""short""}",br_nova,usr_nova_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_013,DESCRIPTION,Verve Atelier Template 1,"{""tone"": ""premium"", ""length"": ""short""}",br_verve,usr_verve_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_014,SIZE_GUIDE,Verve Atelier Template 2,"{""sizes"": [""S"", ""M"", ""L""]}",br_verve,usr_verve_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_015,DESCRIPTION,Verve Atelier Template 3,"{""tone"": ""premium"", ""length"": ""short""}",br_verve,usr_verve_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_016,SIZE_GUIDE,Verve Atelier Template 4,"{""sizes"": [""S"", ""M"", ""L""]}",br_verve,usr_verve_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_017,DESCRIPTION,Verve Atelier Template 5,"{""tone"": ""premium"", ""length"": ""short""}",br_verve,usr_verve_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_019,DESCRIPTION,Mira Mode Template 1,"{""tone"": ""premium"", ""length"": ""short""}",br_mira,usr_mira_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_020,SIZE_GUIDE,Mira Mode Template 2,"{""sizes"": [""S"", ""M"", ""L""]}",br_mira,usr_mira_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_021,DESCRIPTION,Mira Mode Template 3,"{""tone"": ""premium"", ""length"": ""short""}",br_mira,usr_mira_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_022,SIZE_GUIDE,Mira Mode Template 4,"{""sizes"": [""S"", ""M"", ""L""]}",br_mira,usr_mira_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_023,DESCRIPTION,Mira Mode Template 5,"{""tone"": ""premium"", ""length"": ""short""}",br_mira,usr_mira_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_025,DESCRIPTION,Rise Studio Template 1,"{""tone"": ""premium"", ""length"": ""short""}",br_rise,usr_rise_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_026,SIZE_GUIDE,Rise Studio Template 2,"{""sizes"": [""S"", ""M"", ""L""]}",br_rise,usr_rise_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_027,DESCRIPTION,Rise Studio Template 3,"{""tone"": ""premium"", ""length"": ""short""}",br_rise,usr_rise_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_028,SIZE_GUIDE,Rise Studio Template 4,"{""sizes"": [""S"", ""M"", ""L""]}",br_rise,usr_rise_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_029,DESCRIPTION,Rise Studio Template 5,"{""tone"": ""premium"", ""length"": ""short""}",br_rise,usr_rise_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_031,DESCRIPTION,Luna Threads Template 1,"{""tone"": ""premium"", ""length"": ""short""}",br_luna,usr_luna_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_032,SIZE_GUIDE,Luna Threads Template 2,"{""sizes"": [""S"", ""M"", ""L""]}",br_luna,usr_luna_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_033,DESCRIPTION,Luna Threads Template 3,"{""tone"": ""premium"", ""length"": ""short""}",br_luna,usr_luna_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_034,SIZE_GUIDE,Luna Threads Template 4,"{""sizes"": [""S"", ""M"", ""L""]}",br_luna,usr_luna_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_035,DESCRIPTION,Luna Threads Template 5,"{""tone"": ""premium"", ""length"": ""short""}",br_luna,usr_luna_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_037,DESCRIPTION,Additional Template 37,"{""tone"": ""standard"", ""length"": ""medium""}",br_heritage,usr_heritage_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_038,DESCRIPTION,Additional Template 38,"{""tone"": ""standard"", ""length"": ""medium""}",br_nova,usr_nova_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_039,DESCRIPTION,Additional Template 39,"{""tone"": ""standard"", ""length"": ""medium""}",br_verve,usr_verve_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_040,DESCRIPTION,Additional Template 40,"{""tone"": ""standard"", ""length"": ""medium""}",br_mira,usr_mira_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_041,DESCRIPTION,Additional Template 41,"{""tone"": ""standard"", ""length"": ""medium""}",br_rise,usr_rise_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_042,DESCRIPTION,Additional Template 42,"{""tone"": ""standard"", ""length"": ""medium""}",br_luna,usr_luna_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_043,DESCRIPTION,Additional Template 43,"{""tone"": ""standard"", ""length"": ""medium""}",br_heritage,usr_heritage_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_044,DESCRIPTION,Additional Template 44,"{""tone"": ""standard"", ""length"": ""medium""}",br_nova,usr_nova_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_045,DESCRIPTION,Additional Template 45,"{""tone"": ""standard"", ""length"": ""medium""}",br_verve,usr_verve_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_046,DESCRIPTION,Additional Template 46,"{""tone"": ""standard"", ""length"": ""medium""}",br_mira,usr_mira_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_047,DESCRIPTION,Additional Template 47,"{""tone"": ""standard"", ""length"": ""medium""}",br_rise,usr_rise_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_048,DESCRIPTION,Additional Template 48,"{""tone"": ""standard"", ""length"": ""medium""}",br_luna,usr_luna_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_049,DESCRIPTION,Additional Template 49,"{""tone"": ""standard"", ""length"": ""medium""}",br_heritage,usr_heritage_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+pct_050,DESCRIPTION,Additional Template 50,"{""tone"": ""standard"", ""length"": ""medium""}",br_nova,usr_nova_mgr,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
