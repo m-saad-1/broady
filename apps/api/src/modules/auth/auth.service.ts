@@ -40,7 +40,7 @@ function hashToken(token: string) {
 }
 
 function buildVerificationUrl(token: string) {
-  return `${env.webAppUrl.replace(/\/$/, "")}/account/verify-email?token=${encodeURIComponent(token)}`;
+  return `${env.webAppUrl.replace(/\/$/, "")}/verify-account?token=${encodeURIComponent(token)}`;
 }
 
 function buildPasswordResetUrl(token: string) {
@@ -118,7 +118,7 @@ export async function registerUser(input: RegisterInput, meta?: { userAgent?: st
     throw error;
   }
 
-  const { token } = await createSessionAndToken(user, meta);
+  // session creation removed
   const verificationToken = randomBytes(32).toString("hex");
   await prisma.user.update({
     where: { id: user.id },
@@ -134,7 +134,7 @@ export async function registerUser(input: RegisterInput, meta?: { userAgent?: st
     verificationUrl: buildVerificationUrl(verificationToken),
   } as any);
 
-  return { token, user: toSafeUser(user) } as const;
+  return { message: "Verification email sent", user: toSafeUser(user) } as const;
 }
 
 export async function loginUser(input: LoginInput, meta?: { userAgent?: string; ipAddress?: string }) {
@@ -146,6 +146,10 @@ export async function loginUser(input: LoginInput, meta?: { userAgent?: string; 
   const valid = await bcrypt.compare(input.password, user.password);
   if (!valid) {
     return { error: { status: 401, message: "Invalid credentials" } } as const;
+  }
+
+  if (!user.emailVerifiedAt) {
+    return { error: { status: 403, message: "Please verify your email before logging in" } } as const;
   }
 
   const { token } = await createSessionAndToken(user, meta);
@@ -396,7 +400,7 @@ export async function verifyAccount(input: { token: string }) {
     return { error: { status: 400, message: "Invalid or expired verification link" } } as const;
   }
 
-  await prisma.user.update({
+  const updatedUser = await prisma.user.update({
     where: { id: user.id },
     data: {
       emailVerifiedAt: new Date(),
@@ -405,7 +409,8 @@ export async function verifyAccount(input: { token: string }) {
     },
   });
 
-  return { ok: true } as const;
+  const { token } = await createSessionAndToken(updatedUser);
+  return { token, user: toSafeUser(updatedUser) } as const;
 }
 
 export async function revokeSessionFromToken(token: string | undefined) {

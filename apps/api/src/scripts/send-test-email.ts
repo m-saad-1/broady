@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import dotenv from "dotenv";
 import path from "path";
-import { sendEmail } from "../services/email.service";
+import { sendEmail } from "../services/email.service.js";
 
 dotenv.config({ path: path.resolve(process.cwd(), "apps/api/.env") });
 

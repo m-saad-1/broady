@@ -1,7 +1,5 @@
 import nodemailer from "nodemailer";
-import dotenv from "dotenv";
-
-dotenv.config({ path: process.cwd() + "/apps/api/.env" });
+import { env } from "../config/env.js";
 
 type SendEmailOptions = {
   to: string | string[];
@@ -11,8 +9,8 @@ type SendEmailOptions = {
   from?: string;
 };
 
-const EMAIL_PROVIDER = process.env.EMAIL_PROVIDER || "smtp";
-const DEFAULT_FROM = process.env.EMAIL_FROM_ADDRESS || `no-reply@${process.env.WEB_APP_URL?.replace(/^https?:\/\//, "") || "broady.local"}`;
+const EMAIL_PROVIDER = env.emailProvider || "smtp";
+const DEFAULT_FROM = env.emailFromAddress || `no-reply@${env.webAppUrl?.replace(/^https?:\/\//, "") || "broady.local"}`;
 
 let transporter: nodemailer.Transporter | null = null;
 
@@ -20,17 +18,17 @@ function initTransport() {
   if (transporter) return transporter;
 
   if (EMAIL_PROVIDER === "ses") {
-    const host = process.env.SES_SMTP_HOST;
-    const port = Number(process.env.SES_SMTP_PORT || 587);
-    const secure = String(process.env.SES_SMTP_SECURE || "false") === "true";
-    const user = process.env.SES_SMTP_USER;
-    const pass = process.env.SES_SMTP_PASS;
+    const host = env.sesSmtpHost;
+    const port = env.sesSmtpPort || 587;
+    const secure = env.sesSmtpSecure || false;
+    const user = env.sesSmtpUser;
+    const pass = env.sesSmtpPass;
 
     if (!host) {
-      throw new Error("SES_SMTP_HOST is not configured in apps/api/.env");
+      throw new Error("SES_SMTP_HOST is not configured in env");
     }
     if (!user || !pass) {
-      throw new Error("SES_SMTP_USER or SES_SMTP_PASS is not configured in apps/api/.env");
+      throw new Error("SES_SMTP_USER or SES_SMTP_PASS is not configured in env");
     }
 
     transporter = nodemailer.createTransport({
@@ -41,11 +39,11 @@ function initTransport() {
     });
   } else {
     // generic SMTP fallback (use env variables)
-    const host = process.env.SMTP_HOST || process.env.SES_SMTP_HOST;
-    const port = Number(process.env.SMTP_PORT || process.env.SES_SMTP_PORT || 587);
-    const secure = String(process.env.SMTP_SECURE || process.env.SES_SMTP_SECURE || "false") === "true";
-    const user = process.env.SMTP_USER || process.env.SES_SMTP_USER;
-    const pass = process.env.SMTP_PASS || process.env.SES_SMTP_PASS;
+    const host = env.smtpHost;
+    const port = env.smtpPort;
+    const secure = env.smtpSecure;
+    const user = env.smtpUser;
+    const pass = env.smtpPass;
 
     transporter = nodemailer.createTransport({
       host,
@@ -56,7 +54,7 @@ function initTransport() {
   }
 
   // verify connection (non-blocking)
-  transporter.verify((err, success) => {
+  transporter.verify((err: Error | null, success: boolean) => {
     if (err) console.warn("[email.service] transporter verify warning:", err.message || err);
     else console.info("[email.service] transporter ready");
   });

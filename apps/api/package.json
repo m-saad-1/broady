@@ -22,7 +22,6 @@
   "dependencies": {
     "@broady/shared": "*",
     "@prisma/client": "^6.5.0",
-    "nodemailer": "^6.9.3",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.74.1",
     "cookie-parser": "^1.4.7",
@@ -32,10 +31,11 @@
     "google-auth-library": "^10.6.2",
     "helmet": "^8.0.0",
     "ioredis": "^5.10.1",
-    "meilisearch": "^0.58.0",
     "jsonwebtoken": "^9.0.2",
+    "meilisearch": "^0.58.0",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.2",
+    "nodemailer": "^6.9.3",
     "zod": "^3.24.2"
   },
   "devDependencies": {
@@ -47,6 +47,7 @@
     "@types/morgan": "^1.9.9",
     "@types/multer": "^1.4.12",
     "@types/node": "^22.13.14",
+    "@types/nodemailer": "^8.0.0",
     "eslint": "^9.22.0",
     "prisma": "^6.5.0",
     "tsx": "^4.19.3",

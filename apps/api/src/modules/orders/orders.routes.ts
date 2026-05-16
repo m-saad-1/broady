@@ -1028,7 +1028,7 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
       ? describeFailureReason(failureReasonKey, parsed.data.failureReasonMessage)
       : customerFacingNote;
 
-    if (status === OrderStatus.DELIVERY_FAILED && persistedNextAttemptDate && !isIncorrectAddressFailure) {
+    if (status === OrderStatus.DELIVERY_FAILED && persistedNextAttemptDate && failureReasonKey !== "INCORRECT_ADDRESS") {
       queueNotificationEvent({
         name: notificationEventNames.orderRetryScheduled,
         orderId: order.id,

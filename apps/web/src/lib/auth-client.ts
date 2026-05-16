@@ -153,10 +153,11 @@ export async function verifyAccount(token: string) {
     body: JSON.stringify({ token }),
   });
 
-  const json = (await response.json()) as { message?: string };
+  const json = (await response.json()) as { message?: string; user?: User; token?: string };
   if (!response.ok) {
     throw new Error(json.message || "Account verification failed");
   }
 
-  return json.message || "Account verified successfully.";
+  persistAuthToken(json.token);
+  return json.user!;
 }

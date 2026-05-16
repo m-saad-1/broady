@@ -24,6 +24,7 @@ export const notificationEventNames = {
   reviewReplied: "review_replied",
   orderAddressCorrectionRequired: "order_address_correction_required",
   orderAddressUpdated: "order_address_updated",
+  passwordReset: "password_reset",
 } as const;
 
 export type NotificationEventName = (typeof notificationEventNames)[keyof typeof notificationEventNames];

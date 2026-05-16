@@ -4,7 +4,7 @@ This document records the Milestone 2 normalization work for the academic DBLab 
 
 ## Scope
 
-The goal is to apply formal normalization to the academic marketplace schema while preserving the existing business entities and relationships. The main schema scope includes:
+The goal is to keep the marketplace schema normalized without removing important business data or relationships. The normalization focus is the core academic model represented in the ERD:
 
 - Users
 - Brands
@@ -17,122 +17,77 @@ The goal is to apply formal normalization to the academic marketplace schema whi
 - CartItems
 - WishlistItems
 - Reviews and review support tables
-- Notifications
-- Payment methods
-- Notification preferences
-- User activities
 
-## 1NF — First Normal Form
+## 1NF
 
-### Requirement
+First normal form requires atomic values and no repeating groups.
 
-1NF requires each table to store atomic values and no repeating groups within a single row.
+### Findings
 
-### What changed
+- Product variant data is stored in separate fields such as size and color selections instead of repeating groups.
+- Multi-value product sizes are represented as a structured list and should be treated carefully in the academic write-up so the final ERD remains understandable.
+- Orders and order items are split so each purchased line item is stored once.
 
-- The schema maps each business concept to a dedicated table, so there are no repeating groups stored in a single row for core entities.
-- Category metadata was extracted into a separate `categories` table instead of leaving category labels duplicated across the `products` table.
-- Repeating associations and lists are represented by child tables where appropriate:
-  - `brand_members` for user-brand memberships
-  - `cart_items` for cart line items
-  - `wishlist_items` for wishlist entries
-  - `review_images`, `review_helpfulness_votes`, `review_reports`, and `brand_review_replies` for review-related child records
-- `user_activities` was normalized by removing redundant `top_category` and `sub_category` fields; this event log now stores only event-level attributes and references `product_id`.
+### Result
 
-### Why
+The schema already follows the core 1NF idea because each table stores one type of entity and each row represents a single record. Where list-like values exist, they are handled as controlled attributes in the app layer or through child tables.
 
-This ensures that each row represents a single atomic business fact and that no table contains embedded lists or duplicated attribute groups that belong to an associated entity.
+## 2NF
 
-### Justification for the existing attribute design
+Second normal form requires that non-key attributes depend on the whole key, not part of a composite key.
 
-- `products.sizes` and `products.tags` remain PostgreSQL array attributes in this academic schema. In PostgreSQL these values are stored as atomic array elements, and they are treated as domain-specific variant lists rather than repeating relational rows.
-- The core relational design still avoids embedded repeating groups for the tables used in normalization analysis.
+### Findings
 
-## 2NF — Second Normal Form
+- OrderItems stores item-specific fields such as quantity and unit price that depend on the order-item record, not on the parent order alone.
+- CartItems stores the chosen product and quantity for one cart entry, which keeps item-level data attached to the associative entity.
+- BrandMembers resolves the many-to-many relationship between users and brands instead of duplicating membership data in either parent table.
 
-### Requirement
+### Result
 
-2NF requires that every non-key attribute depends on the whole primary key and not on only a part of a composite key.
+The schema avoids partial dependency problems by separating many-to-many relationships into dedicated junction tables.
 
-### What changed
+## 3NF
 
-- Every table uses a single surrogate primary key or a proper unique composite association, so non-key columns depend on the whole key.
-- Junction tables and association tables were kept separate to avoid partial dependency:
-  - `brand_members`: membership permissions depend on the pair (`user_id`, `brand_id`)
-  - `cart_items`: quantity and selected variant data depend on the cart item row, not only on `cart_id`
-  - `wishlist_items`: wishlist entries depend on the unique (`user_id`, `product_id`) relationship
-  - `review_helpfulness_votes`: each vote depends on the review and voter pair
-  - `brand_review_replies`: reply content depends on the linking review and brand
-- `order_items` stores line-level quantity and unit price for the specific item row instead of storing them in `orders`.
+Third normal form requires that non-key attributes depend only on the key and not on other non-key attributes.
 
-### Why
+### Findings
 
-This prevents partial dependency anomalies and ensures each non-key attribute is associated with the full identifying key of its table.
+- Product category labels should not remain duplicated across multiple product records as free-form repeated logic in the ERD. The academic model treats Categories as a separate conceptual entity.
+- Order-level data stays in Orders, while brand-specific fulfillment data stays in SubOrders.
+- Review moderation, voting, images, and reports are split into separate tables so each concern is stored once.
 
-### Confirmation
+### Result
 
-The schema already satisfied 2NF for most tables once the association tables were separated and surrogate keys were used. That separation was explicitly verified in the normalization review.
+The normalized design reduces update anomalies and keeps each table focused on a single responsibility.
 
-## 3NF — Third Normal Form
+## Key Normalization Decisions
 
-### Requirement
+1. Categories are treated as a conceptual entity for the academic ERD.
+2. OrderItems remains the associative table for the order-product relationship.
+3. SubOrders preserves the split-order fulfillment pattern instead of merging brand-specific data back into Orders.
+4. Review helper tables stay separate to avoid repeating moderation and attachment data inside the main Reviews table.
 
-3NF requires that non-key attributes depend only on the primary key and not on other non-key attributes.
+## Tables That Already Fit Well
 
-### What changed
+These tables are already naturally normalized for the academic scope:
 
-- Product category metadata was normalized into the `categories` table, so `products` no longer stores duplicated category label logic by itself.
-- Review-related details were moved into dedicated tables instead of mixing them into `reviews`:
-  - `review_images`
-  - `review_helpfulness_votes`
-  - `review_reports`
-  - `brand_review_replies`
-- `product_review_aggregates` is a separate summary table for derived review metrics.
-- `user_activities` was cleaned up so it does not store redundant category labels derived from `product_id`.
-- Notification, payment method, and preference tables each store only attributes relevant to their own entity.
-
-### Why
-
-This removes transitive dependencies across tables and avoids update anomalies where a single attribute change could require multiple rows to be updated.
-
-### Confirmation
-
-The revised schema satisfies 3NF because:
-- `products` references categories by foreign key rather than duplicating category labels
-- review support data exists in child tables, not as additional review columns
-- user activity events reference `product_id` and do not duplicate product category state
-
-## Duplicate Removal and Restructuring
-
-### Redundant data removed
-
-- Category labels were centralized in `categories` and referenced by `products`.
-- `user_activities` no longer stores `top_category` and `sub_category`, eliminating duplicate category data that could be derived from the referenced product.
-- `brand_members` avoids duplicating membership data in both `users` and `brands`.
-
-### Restructuring
-
-- The review domain was restructured so moderation, votes, images, reports, and replies are each stored in their own table.
-- The split-order model preserves order-level and brand-level separation in `orders`, `sub_orders`, and `order_items`.
-
-## ERD Update
-
-The normalization changes are reflected in the academic ERD files:
-
-- `Academic_Task/academic-erd.drawio`
-- `Academic_Task/academic-erd-simplified.md`
-
-These files now include the normalized `categories` entity and the relationships that support the revised schema.
+- Users
+- Brands
+- Carts
+- WishlistItems
+- ReviewImages
+- ReviewHelpfulnessVotes
+- ReviewReports
+- BrandReviewReplies
+- ProductReviewAggregates
+- NotificationPreferences
 
 ## Milestone 2 Deliverables
 
-- Formal 1NF/2NF/3NF documentation
-- Redundant category storage removed from `user_activities`
-- ERD updated to reflect normalized category and association tables
-- Schema notes preserved in the academic repository
+- normalization walkthrough from 1NF to 3NF
+- updated ERD reference
+- schema notes for the academic submission
 
-## Commit Intention
+## Notes For Final Submission
 
-This change set will be committed as:
-
-`M2: Applied 2NF and 3NF normalization, updated ERD and schema`
+If the instructor asks why the project uses PostgreSQL instead of MySQL, explain that the existing Broady stack already uses PostgreSQL and Prisma, and the academic goal is to preserve the same relationships and constraints.

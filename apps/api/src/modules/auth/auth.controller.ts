@@ -51,8 +51,7 @@ export async function registerController(req: Request, res: Response) {
     return res.status(result.error.status).json({ message: result.error.message });
   }
 
-  res.cookie("broady_token", result.token, tokenCookieOptions);
-  return res.status(201).json({ token: result.token, user: result.user });
+  return res.status(201).json({ message: result.message, user: result.user });
 }
 
 export async function loginController(req: Request, res: Response) {
@@ -141,7 +140,8 @@ export async function verifyAccountController(req: Request, res: Response) {
     return res.status(result.error.status).json({ message: result.error.message });
   }
 
-  return res.json({ message: "Account verified successfully." });
+  res.cookie("broady_token", result.token, tokenCookieOptions);
+  return res.json({ message: "Account verified successfully.", token: result.token, user: result.user });
 }
 
 export async function logoutController(req: Request, res: Response) {

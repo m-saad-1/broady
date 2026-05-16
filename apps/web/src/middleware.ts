@@ -5,6 +5,13 @@ const protectedRoutes = ["/checkout", "/admin", "/account", "/brand/dashboard", 
 
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+
+  // Catch old email links and redirect to the unprotected route
+  if (pathname.startsWith("/account/verify-email") || pathname.startsWith("/account/verify")) {
+    const newUrl = new URL(`/verify-account${request.nextUrl.search}`, request.url);
+    return NextResponse.redirect(newUrl);
+  }
+
   const isProtected = protectedRoutes.some((route) => pathname.startsWith(route));
 
   if (!isProtected) return NextResponse.next();
