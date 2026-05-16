@@ -1,13 +1,17 @@
 import nodemailer from "nodemailer";
+import dotenv from "dotenv";
+
+// Load environment variables from .env
+dotenv.config();
 
 async function main() {
   const transporter = nodemailer.createTransport({
-    host: "email-smtp.ap-south-1.amazonaws.com",
-    port: 465,
-    secure: true,
+    host: process.env.SES_SMTP_HOST || "email-smtp.ap-south-1.amazonaws.com",
+    port: parseInt(process.env.SES_SMTP_PORT || "465"),
+    secure: process.env.SES_SMTP_SECURE === "true" || true,
     auth: {
-      user: "AKIA3TQ3WO5SGTIEQO73",
-      pass: "BHv4yVZ8OsFFoBRLoGbSoMA0Rfjt+5A0KEs7w3JOveW8",
+      user: process.env.SES_SMTP_USER,
+      pass: process.env.SES_SMTP_PASS,
     },
   });
 
