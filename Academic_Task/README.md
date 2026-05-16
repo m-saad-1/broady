@@ -11,8 +11,7 @@ The main application in this workspace is a PostgreSQL + Prisma project. The ass
 - `academic-task-plan.md` - step-by-step milestone guide
 - `NORMALIZATION.md` - Milestone 2 normalization write-up
 - `DATAFLOW.md` - Milestone 3 dataset preprocessing and flow
-- `csv/` - synthetic CSV staging notes for Milestone 3
-- `generate_academic_csv.py` - synthetic CSV dataset generator
+- `csv/` - real dataset extracts for Milestone 3
 - `sql/milestone-4-ddl.sql` - PostgreSQL DDL for Milestone 4
 - `sql/milestone-5-dml.sql` - data load and validation SQL for Milestone 5
 - `FINAL_SUBMISSION_GUIDE.md` - final PDF submission checklist and guidance
@@ -28,20 +27,19 @@ The main application in this workspace is a PostgreSQL + Prisma project. The ass
 
 ## Milestone 2 Goal
 
-Milestone 2 starts the academic implementation by documenting normalization from 1NF to 3NF and aligning the ERD with the normalized structure.
+Milestone 2 started the academic implementation by documenting normalization from 1NF to 3NF and aligning the ERD with the normalized structure.
 
-The priority for this repo is to preserve the existing business relationships and avoid deleting sensitive data, seed data, or important records.
+The priority for this repo has been to preserve the existing business relationships and avoid deleting sensitive data, seed data, or important records while fulfilling the academic requirements.
 
 ## Working Notes
 
-- Keep the academic work separate from the production Broady flow.
-- Reuse the existing marketplace relationships as the schema reference.
-- Document any normalization choice clearly when a table already satisfies a normal form.
-- Use PostgreSQL terminology in the final write-up where it matters, while keeping the assignment language understandable for the instructor.
+- The academic work is kept separate from the production Broady flow.
+- It reuses the existing marketplace relationships as the schema reference.
+- Normalization choices are clearly documented when a table already satisfies a normal form.
+- PostgreSQL terminology is used where it matters, while keeping the assignment language understandable for the instructor.
 
-## Recommended Next Steps
+## Final Status
 
-1. Review `NORMALIZATION.md` and update it as the schema is finalized.
-2. Export or update the ERD if normalization changes any relationships.
-3. Review `DATAFLOW.md` and the `csv/` staging notes for Milestone 3.
-4. Review the SQL scripts for Milestones 4 and 5 before packaging the final submission.
+**All milestones (M2 to M5) are fully completed.**
+
+Please refer to the `FINAL_SUBMISSION_GUIDE.md` to produce the final PDF and package the repository for submission.

@@ -1,151 +1,20 @@
 id,user_id,product_id,event_type,search_query,top_category,sub_category,weight,metadata,created_at
-ua_001,usr_mgr_001,prd_001,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_002,usr_mgr_002,prd_002,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_003,usr_mgr_003,prd_003,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_004,usr_mgr_004,prd_004,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_005,usr_mgr_005,prd_005,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_006,usr_mgr_006,prd_006,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_007,usr_mgr_007,prd_007,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_008,usr_mgr_008,prd_008,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_009,usr_mgr_009,prd_009,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_010,usr_mgr_010,prd_010,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_011,usr_mgr_011,prd_011,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_012,usr_mgr_012,prd_012,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_013,usr_mgr_013,prd_013,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_014,usr_mgr_014,prd_014,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_015,usr_mgr_015,prd_015,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_016,usr_mgr_016,prd_016,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_017,usr_mgr_017,prd_017,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_018,usr_mgr_018,prd_018,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_019,usr_mgr_019,prd_019,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_020,usr_mgr_020,prd_020,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_021,usr_mgr_021,prd_021,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_022,usr_mgr_022,prd_022,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_023,usr_mgr_023,prd_023,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_024,usr_mgr_024,prd_024,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_025,usr_mgr_025,prd_025,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_026,usr_mgr_026,prd_026,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_027,usr_mgr_027,prd_027,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_028,usr_mgr_028,prd_028,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_029,usr_mgr_029,prd_029,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_030,usr_mgr_030,prd_030,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_031,usr_mgr_031,prd_031,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_032,usr_mgr_032,prd_032,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_033,usr_mgr_033,prd_033,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_034,usr_mgr_034,prd_034,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_035,usr_mgr_035,prd_035,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_036,usr_mgr_036,prd_036,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_037,usr_mgr_037,prd_037,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_038,usr_mgr_038,prd_038,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_039,usr_mgr_039,prd_039,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_040,usr_mgr_040,prd_040,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_041,usr_mgr_041,prd_041,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_042,usr_mgr_042,prd_042,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_043,usr_mgr_043,prd_043,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_044,usr_mgr_044,prd_044,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_045,usr_mgr_045,prd_045,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_046,usr_mgr_046,prd_046,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_047,usr_mgr_047,prd_047,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_048,usr_mgr_048,prd_048,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_049,usr_mgr_049,prd_049,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_050,usr_mgr_050,prd_050,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_051,usr_001,prd_051,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_052,usr_002,prd_052,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_053,usr_003,prd_053,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_054,usr_004,prd_054,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_055,usr_005,prd_055,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_056,usr_006,prd_056,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_057,usr_007,prd_057,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_058,usr_008,prd_058,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_059,usr_009,prd_059,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_060,usr_010,prd_060,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_061,usr_011,prd_061,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_062,usr_012,prd_062,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_063,usr_013,prd_063,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_064,usr_014,prd_064,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_065,usr_015,prd_065,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_066,usr_016,prd_066,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_067,usr_017,prd_067,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_068,usr_018,prd_068,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_069,usr_019,prd_069,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_070,usr_020,prd_070,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_071,usr_021,prd_071,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_072,usr_022,prd_072,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_073,usr_023,prd_073,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_074,usr_024,prd_074,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_075,usr_025,prd_075,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_076,usr_026,prd_076,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_077,usr_027,prd_077,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_078,usr_028,prd_078,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_079,usr_029,prd_079,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_080,usr_030,prd_080,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_081,usr_031,prd_081,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_082,usr_032,prd_082,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_083,usr_033,prd_083,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_084,usr_034,prd_084,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_085,usr_035,prd_085,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_086,usr_036,prd_086,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_087,usr_037,prd_087,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_088,usr_038,prd_088,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_089,usr_039,prd_089,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_090,usr_040,prd_090,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_091,usr_041,prd_091,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_092,usr_042,prd_092,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_093,usr_043,prd_093,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_094,usr_044,prd_094,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_095,usr_045,prd_095,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_096,usr_046,prd_096,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_097,usr_047,prd_097,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_098,usr_048,prd_098,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_099,usr_049,prd_099,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_100,usr_050,prd_100,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_101,usr_051,prd_001,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_102,usr_052,prd_002,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_103,usr_053,prd_003,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_104,usr_054,prd_004,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_105,usr_055,prd_005,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_106,usr_056,prd_006,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_107,usr_057,prd_007,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_108,usr_058,prd_008,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_109,usr_059,prd_009,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_110,usr_060,prd_010,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_111,usr_061,prd_011,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_112,usr_062,prd_012,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_113,usr_063,prd_013,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_114,usr_064,prd_014,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_115,usr_065,prd_015,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_116,usr_066,prd_016,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_117,usr_067,prd_017,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_118,usr_068,prd_018,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_119,usr_069,prd_019,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_120,usr_070,prd_020,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_121,usr_071,prd_021,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_122,usr_072,prd_022,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_123,usr_073,prd_023,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_124,usr_074,prd_024,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_125,usr_075,prd_025,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_126,usr_076,prd_026,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_127,usr_077,prd_027,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_128,usr_078,prd_028,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_129,usr_079,prd_029,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_130,usr_080,prd_030,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_131,usr_081,prd_031,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_132,usr_082,prd_032,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_133,usr_083,prd_033,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_134,usr_084,prd_034,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_135,usr_085,prd_035,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_136,usr_086,prd_036,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_137,usr_087,prd_037,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_138,usr_088,prd_038,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_139,usr_089,prd_039,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_140,usr_090,prd_040,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_141,usr_091,prd_041,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_142,usr_092,prd_042,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_143,usr_093,prd_043,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_144,usr_094,prd_044,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_145,usr_095,prd_045,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_146,usr_096,prd_046,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_147,usr_097,prd_047,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_148,usr_098,prd_048,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_149,usr_099,prd_049,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
-ua_150,usr_100,prd_050,VIEW_PRODUCT,,cat_women,cat_women_1,1.0,{},2026-05-15T00:00:00Z
+cmosz2y0t0024h2784ls34071,cmos92dgi0000h22gli65jmaq,cmoa452vk000mh2gsbvuwq4tn,PRODUCT_PURCHASED,,Toddler Boys,Hoodies,5,"{""orderId"": ""cmosz2xwz001rh2787jfwsw5o"", ""quantity"": 1}",2026-05-05 18:39:23.068
+cmosz3bb8002rh278qyedlfnj,cmos92dgi0000h22gli65jmaq,cmohpem5v001yh2m0x5g3miyv,PRODUCT_PURCHASED,,Toddler Boys,Shorts,5,"{""orderId"": ""cmosz3b7q002dh278nl7kmiu1"", ""quantity"": 1}",2026-05-05 18:39:40.292
+cmosz3bb9002th278xrki61jy,cmos92dgi0000h22gli65jmaq,cmoa452wg000sh2gs9jdveuu5,PRODUCT_PURCHASED,,Junior Boys,Caps,5,"{""orderId"": ""cmosz3b7q002dh278nl7kmiu1"", ""quantity"": 1}",2026-05-05 18:39:40.292
+cmosz3ls8003vh2785pajl5wd,cmos92dgi0000h22gli65jmaq,cmohpem59001wh2m0qc4w1yoc,PRODUCT_PURCHASED,,Toddler Boys,Jeans,5,"{""orderId"": ""cmosz3lqj003ih27885a1ckj2"", ""quantity"": 1}",2026-05-05 18:39:53.865
+cmox2dqmc000yh2gs3j70zjnv,cmowyd0wn0000h2sg5so2qm74,cmohpem4r001sh2m0s99m07md,PRODUCT_PURCHASED,,Women,Jeans,5,"{""orderId"": ""cmox2dqk7000lh2gssxjg8bls"", ""quantity"": 1}",2026-05-08 15:22:50.243
+cmoxh62x60037h2gscyip54zc,cmowyd0wn0000h2sg5so2qm74,cmohpem8t0026h2m0jolad5er,PRODUCT_PURCHASED,,Junior Boys,Socks,5,"{""orderId"": ""cmoxh62l3002uh2gsyk3ta3o1"", ""quantity"": 1}",2026-05-08 22:16:46.979
+cmoxipjt0000wh2jc50hudxxs,cmowyd0wn0000h2sg5so2qm74,cmohpem0o001ih2m0f2seterq,PRODUCT_PURCHASED,,Women,Trousers,5,"{""orderId"": ""cmoxipjo4000jh2jcwn4cofjj"", ""quantity"": 1}",2026-05-08 22:59:55.137
+cmoxj29bi0022h2jc4jl7zxbn,cmowyd0wn0000h2sg5so2qm74,cmoa452su0006h2gswnziugz9,PRODUCT_PURCHASED,,Men,Trousers,5,"{""orderId"": ""cmoxj2999001ph2jcga8te4dh"", ""quantity"": 1}",2026-05-08 23:09:48.077
+cmp064r6q000vh2ekwchxed2c,cmowyd0wn0000h2sg5so2qm74,cmohpem4r001sh2m0s99m07md,PRODUCT_PURCHASED,,Women,Jeans,5,"{""orderId"": ""cmp064r4y000ih2ekml0p1nff"", ""quantity"": 1}",2026-05-10 19:31:08.063
+cmp1i156k0030h21wsprw687q,cmowyd0wn0000h2sg5so2qm74,cmohpem8t0026h2m0jolad5er,PRODUCT_PURCHASED,,Junior Boys,Socks,5,"{""orderId"": ""cmp1i1555002nh21w1rw8c1pd"", ""quantity"": 1}",2026-05-11 17:52:01.148
+cmp1nj4xl0009h290d42476uz,cmp1knebq001ih20sjqrvvums,cmoa452u8000eh2gshov7zl4t,PRODUCT_VIEW,,Women,Shirts,1,,2026-05-11 20:25:58.712
+cmp1njdr5000bh2909p5cc0bm,cmp1knebq001ih20sjqrvvums,cmohpem0o001ih2m0f2seterq,PRODUCT_VIEW,,Women,Trousers,1,,2026-05-11 20:26:10.145
+cmp1njds0000dh290bdt1bspn,cmp1knebq001ih20sjqrvvums,cmohpem0o001ih2m0f2seterq,PRODUCT_VIEW,,Women,Trousers,1,,2026-05-11 20:26:10.175
+cmp1njl9i000hh29065gbl9ws,cmp1knebq001ih20sjqrvvums,cmohpem0o001ih2m0f2seterq,WISHLIST_ADDED,,Women,Trousers,1.5,"{""source"": ""product-detail""}",2026-05-11 20:26:19.878
+cmp1njr2l000jh290dcc5otdu,cmp1knebq001ih20sjqrvvums,cmohpelxa0016h2m0uzh74v9l,PRODUCT_VIEW,,Men,Trousers,1,,2026-05-11 20:26:27.405
+cmp1njssu000lh2906bdup4cv,cmp1knebq001ih20sjqrvvums,cmohpembj002eh2m0oi49a3c4,PRODUCT_VIEW,,Men,Trousers,1,,2026-05-11 20:26:29.647
+cmp4fvei4000ph26wsedheiui,cmowyd0wn0000h2sg5so2qm74,cmoa452wg000sh2gs9jdveuu5,PRODUCT_PURCHASED,,Junior Boys,Accessories,5,"{""orderId"": ""cmp4fvech000ch26wylzjkup3"", ""quantity"": 1}",2026-05-13 19:14:52.586
+cmp87rdro000xh23wjo6w44g9,cmowyd0wn0000h2sg5so2qm74,cmoa452wg000sh2gs9jdveuu5,PRODUCT_PURCHASED,,Junior Boys,Accessories,5,"{""orderId"": ""cmp87rdq3000kh23wmmi1fun2"", ""quantity"": 1}",2026-05-16 10:38:52.788
+cmp89r3u5001hh2ecgl6ooe6y,cmp89nrx8000dh2ecmsog1kfo,cmohpem0o001ih2m0f2seterq,PRODUCT_PURCHASED,,Women,Bottom,5,"{""orderId"": ""cmp89r3qd0014h2ecxv0ixufs"", ""quantity"": 1}",2026-05-16 11:34:39.146

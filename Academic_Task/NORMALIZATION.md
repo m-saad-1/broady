@@ -18,47 +18,46 @@ The goal is to keep the marketplace schema normalized without removing important
 - WishlistItems
 - Reviews and review support tables
 
-## 1NF
+## 1NF (First Normal Form)
 
-First normal form requires atomic values and no repeating groups.
-
-### Findings
-
-- Product variant data is stored in separate fields such as size and color selections instead of repeating groups.
-- Multi-value product sizes are represented as a structured list and should be treated carefully in the academic write-up so the final ERD remains understandable.
-- Orders and order items are split so each purchased line item is stored once.
-
-### Result
-
-The schema already follows the core 1NF idea because each table stores one type of entity and each row represents a single record. Where list-like values exist, they are handled as controlled attributes in the app layer or through child tables.
-
-## 2NF
-
-Second normal form requires that non-key attributes depend on the whole key, not part of a composite key.
+First normal form requires that every table contains atomic values, meaning there are no repeating groups or arrays embedded directly inside the table rows.
 
 ### Findings
 
-- OrderItems stores item-specific fields such as quantity and unit price that depend on the order-item record, not on the parent order alone.
-- CartItems stores the chosen product and quantity for one cart entry, which keeps item-level data attached to the associative entity.
-- BrandMembers resolves the many-to-many relationship between users and brands instead of duplicating membership data in either parent table.
+- **Product Variants:** Instead of storing multiple variant details in a single repeating string (e.g., "Color: Red, Blue, Green"), variant data is managed through distinct fields (`color`, `type`) and arrays. While arrays (`sizes`) technically break strict 1NF in pure relational theory, PostgreSQL supports array types natively. However, for the academic ERD, we conceptualize variant structures clearly so they do not manifest as repeating groups.
+- **Line Items:** A single order can contain multiple products. To comply with 1NF, we cannot store a list of product IDs inside the `Orders` table.
 
 ### Result
 
-The schema avoids partial dependency problems by separating many-to-many relationships into dedicated junction tables.
+The schema satisfies 1NF by ensuring that core entities (Users, Brands, Products, Orders) store discrete attributes. The `Orders` to `Products` relationship is resolved by extracting repeating product groups into a dedicated `OrderItems` table.
 
-## 3NF
+## 2NF (Second Normal Form)
 
-Third normal form requires that non-key attributes depend only on the key and not on other non-key attributes.
+Second normal form requires compliance with 1NF and that every non-key attribute fully depends on the entire primary key, not just a part of a composite key.
 
 ### Findings
 
-- Product category labels should not remain duplicated across multiple product records as free-form repeated logic in the ERD. The academic model treats Categories as a separate conceptual entity.
-- Order-level data stays in Orders, while brand-specific fulfillment data stays in SubOrders.
-- Review moderation, voting, images, and reports are split into separate tables so each concern is stored once.
+- **Order Tracking:** Information like `quantity` and `unitPrice` depends specifically on the unique combination of an Order and a Product. Storing `unitPrice` on the `Orders` table would cause a partial dependency.
+- **Cart Management:** Similarly, the `CartItems` table holds the user's specific product selections (including `selectedColor` and `selectedSize`) linking the `Cart` to the `Product`.
+- **User-Brand Affiliations:** `BrandMembers` utilizes a composite-like understanding (User + Brand) to store permissions (`canManageProducts`).
 
 ### Result
 
-The normalized design reduces update anomalies and keeps each table focused on a single responsibility.
+The schema satisfies 2NF by isolating many-to-many relationships into dedicated associative junction tables (`OrderItems`, `CartItems`, `BrandMembers`). Non-key attributes in these tables are fully dependent on the associative primary key (or composite keys where conceptualized).
+
+## 3NF (Third Normal Form)
+
+Third normal form requires compliance with 2NF and that no transitive dependencies exist. A non-key attribute must not depend on another non-key attribute.
+
+### Findings
+
+- **Categories:** Product categories (`topCategory`, `subCategory`) conceptually represent separate entities. Leaving them as free-text fields in the `Products` table risks update anomalies (e.g., renaming a category requires updating every product row). We extract them into a distinct `Categories` entity for the academic ERD.
+- **Fulfillment Separation:** Storing brand-specific tracking and sub-total amounts directly on the `Orders` table creates transitive dependencies, as these values depend on the fulfilling Brand, not just the overarching Order. We resolve this by introducing the `SubOrders` table.
+- **Review Moderation:** Keeping moderation details and attached images directly within the `Reviews` table risks bloat and anomalies. These are split into `ReviewImages` and `ReviewReports`.
+
+### Result
+
+The schema satisfies 3NF. Transitive dependencies are removed. Each table focuses entirely on a single logical entity or relationship, drastically minimizing data redundancy and preventing modification anomalies.
 
 ## Key Normalization Decisions
 

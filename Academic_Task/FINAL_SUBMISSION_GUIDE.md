@@ -33,8 +33,6 @@ The DBLab assignment requires both of the following:
 - `csv/` — synthetic dataset exports for Milestone 3
 - `sql/milestone-4-ddl.sql` — DDL definitions for the normalized schema
 - `sql/milestone-5-dml.sql` — data loading, update/delete examples, and validation queries
-- `generate_academic_csv.py` — script used to generate the synthetic CSV dataset
-
 ## How to Produce the Final PDF
 
 1. Open the ERD diagram (`academic-erd.drawio`) and export it as a PDF or image.

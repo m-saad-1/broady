@@ -1,101 +1,111 @@
 id,user_id,brand_id,order_id,type,title,message,read_at,channel,delivery_status,delivery_attempts,failed_reason,next_attempt_at,created_at,updated_at
-ntf_001,usr_001,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_002,usr_002,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_003,usr_003,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_004,usr_004,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_005,usr_005,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_006,usr_006,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_007,usr_007,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_008,usr_008,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_009,usr_009,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_010,usr_010,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_011,usr_011,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_012,usr_012,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_013,usr_013,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_014,usr_014,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_015,usr_015,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_016,usr_016,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_017,usr_017,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_018,usr_018,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_019,usr_019,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_020,usr_020,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_021,usr_021,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_022,usr_022,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_023,usr_023,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_024,usr_024,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_025,usr_025,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_026,usr_026,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_027,usr_027,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_028,usr_028,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_029,usr_029,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_030,usr_030,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_031,usr_031,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_032,usr_032,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_033,usr_033,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_034,usr_034,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_035,usr_035,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_036,usr_036,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_037,usr_037,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_038,usr_038,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_039,usr_039,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_040,usr_040,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_041,usr_041,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_042,usr_042,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_043,usr_043,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_044,usr_044,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_045,usr_045,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_046,usr_046,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_047,usr_047,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_048,usr_048,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_049,usr_049,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_050,usr_050,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_051,usr_051,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_052,usr_052,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_053,usr_053,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_054,usr_054,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_055,usr_055,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_056,usr_056,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_057,usr_057,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_058,usr_058,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_059,usr_059,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_060,usr_060,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_061,usr_061,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_062,usr_062,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_063,usr_063,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_064,usr_064,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_065,usr_065,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_066,usr_066,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_067,usr_067,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_068,usr_068,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_069,usr_069,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_070,usr_070,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_071,usr_071,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_072,usr_072,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_073,usr_073,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_074,usr_074,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_075,usr_075,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_076,usr_076,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_077,usr_077,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_078,usr_078,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_079,usr_079,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_080,usr_080,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_081,usr_081,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_082,usr_082,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_083,usr_083,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_084,usr_084,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_085,usr_085,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_086,usr_086,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_087,usr_087,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_088,usr_088,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_089,usr_089,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_090,usr_090,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_091,usr_091,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_092,usr_092,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_093,usr_093,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_094,usr_094,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_095,usr_095,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_096,usr_096,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_097,usr_097,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_098,usr_098,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_099,usr_099,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
-ntf_100,usr_100,,,ACCOUNT_UPDATE,Welcome,Hello user,,DASHBOARD,DELIVERED,1,,,2026-05-15T00:00:00Z,2026-05-15T00:00:00Z
+cmp6s4e8b0002h2m0x3vm5vb4,cmp6s4e390000h2m0m0ka53u1,,,ACCOUNT_VERIFICATION,Verify Your Account,Welcome to Broady. Verify your account using this link: http://localhost:3000/verify-email?token=1db8b0b19ff0123d45e9898fe4424c6a83b781f0f0f78869efc56e14fb3e069a,,DASHBOARD,QUEUED,0,,,2026-05-15 10:33:19.881,2026-05-15 10:33:19.881
+cmp6s6xjn0009h2m0qr453zjr,cmp6s6xfa0007h2m0m1e05bs7,,,ACCOUNT_VERIFICATION,Verify Your Account,Welcome to Broady. Verify your account using this link: http://localhost:3000/verify-email?token=8605398a83412595e9ef0a6e4185f65633d4e7961b65f0870989b75d36422121,,DASHBOARD,QUEUED,0,,,2026-05-15 10:35:18.222,2026-05-15 10:35:18.222
+cmosz2yeh0003h2vw5vvqkdis,cmos92dgi0000h22gli65jmaq,,cmosz2xwz001rh2787jfwsw5o,ORDER_STATUS_UPDATED,Order Confirmed,Order cmosz2xwz001rh2787jfwsw5o has been confirmed.,2026-05-05 18:39:56.437,DASHBOARD,QUEUED,0,,,2026-05-05 18:39:23.555,2026-05-05 18:39:56.442
+cmosz2yeh0002h2vwiamz057t,cmos92dgi0000h22gli65jmaq,,cmosz2xwz001rh2787jfwsw5o,ORDER_PLACED,Order Placed,Your order cmosz2xwz001rh2787jfwsw5o has been placed successfully on Broady.,2026-05-05 18:39:56.437,DASHBOARD,QUEUED,0,,,2026-05-05 18:39:23.555,2026-05-05 18:39:56.442
+cmosz3bho002xh278re7tti35,cmos92dgi0000h22gli65jmaq,,cmosz3b7q002dh278nl7kmiu1,ORDER_PLACED,Order Placed,Your order cmosz3b7q002dh278nl7kmiu1 has been placed successfully on Broady.,2026-05-05 18:39:56.437,DASHBOARD,QUEUED,0,,,2026-05-05 18:39:40.524,2026-05-05 18:39:56.442
+cmosz3bhp002zh278uphjrmsp,cmos92dgi0000h22gli65jmaq,,cmosz3b7q002dh278nl7kmiu1,ORDER_STATUS_UPDATED,Order Confirmed,Order cmosz3b7q002dh278nl7kmiu1 has been confirmed.,2026-05-05 18:39:56.437,DASHBOARD,QUEUED,0,,,2026-05-05 18:39:40.525,2026-05-05 18:39:56.442
+cmosz3lym003zh278zoon9zco,cmos92dgi0000h22gli65jmaq,,cmosz3lqj003ih27885a1ckj2,ORDER_STATUS_UPDATED,Order Confirmed,Order cmosz3lqj003ih27885a1ckj2 has been confirmed.,2026-05-05 18:39:56.437,DASHBOARD,QUEUED,0,,,2026-05-05 18:39:54.094,2026-05-05 18:39:56.442
+cmosz3lzf0045h27885vx4qzw,cmos92dgi0000h22gli65jmaq,,cmosz3lqj003ih27885a1ckj2,ORDER_PLACED,Order Placed,Your order cmosz3lqj003ih27885a1ckj2 has been placed successfully on Broady.,2026-05-05 18:39:56.437,DASHBOARD,QUEUED,0,,,2026-05-05 18:39:54.123,2026-05-05 18:39:56.442
+cmosz7e8g0061h2783kktkk6u,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmosz3b7q002dh278nl7kmiu1,ORDER_STATUS_UPDATED,Order Processing,Order cmosz3b7q002dh278nl7kmiu1 is being processed.,2026-05-05 18:43:02.765,DASHBOARD,QUEUED,0,,,2026-05-05 18:42:50.704,2026-05-05 18:43:02.766
+cmosz7j7u006hh278mtl1orab,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmosz3b7q002dh278nl7kmiu1,ORDER_STATUS_UPDATED,Order Shipped,Your Outfitters item has been shipped.,2026-05-05 18:43:02.765,DASHBOARD,QUEUED,0,,,2026-05-05 18:42:57.163,2026-05-05 18:43:02.766
+cmosz7n6p006xh27808z7nnyj,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmosz3b7q002dh278nl7kmiu1,ORDER_STATUS_UPDATED,Out For Delivery,Your Outfitters item is out for delivery.,2026-05-05 18:43:02.765,DASHBOARD,QUEUED,0,,,2026-05-05 18:43:02.304,2026-05-05 18:43:02.766
+cmosz7e7a005vh278iyaq16ib,cmos92dgi0000h22gli65jmaq,,cmosz3b7q002dh278nl7kmiu1,ORDER_STATUS_UPDATED,Order Processing,Order cmosz3b7q002dh278nl7kmiu1 is being processed.,2026-05-05 18:44:51.23,DASHBOARD,QUEUED,0,,,2026-05-05 18:42:50.662,2026-05-05 18:44:51.236
+cmosz7j62006bh278dsqzktyj,cmos92dgi0000h22gli65jmaq,,cmosz3b7q002dh278nl7kmiu1,ORDER_STATUS_UPDATED,Order Shipped,Your Outfitters item has been shipped.,2026-05-05 18:44:51.23,DASHBOARD,QUEUED,0,,,2026-05-05 18:42:57.099,2026-05-05 18:44:51.236
+cmosz7n0m006rh2785yej9nbg,cmos92dgi0000h22gli65jmaq,,cmosz3b7q002dh278nl7kmiu1,ORDER_STATUS_UPDATED,Out For Delivery,Your Outfitters item is out for delivery.,2026-05-05 18:44:51.23,DASHBOARD,QUEUED,0,,,2026-05-05 18:43:02.086,2026-05-05 18:44:51.236
+cmosz81yx0077h278o5yydode,cmos92dgi0000h22gli65jmaq,,cmosz3b7q002dh278nl7kmiu1,ORDER_STATUS_UPDATED,Delivery Failed,"Delivery unsuccessful for order cmosz3b7q002dh278nl7kmiu1.
+Delivery failed (Refused delivery). This COD order will be cancelled after Attempt 1 of 1. Final delivery attempt failed (Refused delivery). The order will be cancelled.",2026-05-05 18:44:51.23,DASHBOARD,QUEUED,0,,,2026-05-05 18:43:21.465,2026-05-05 18:44:51.236
+cmosz81z90079h2789ouabk6k,cmos92dgi0000h22gli65jmaq,,cmosz3b7q002dh278nl7kmiu1,ORDER_STATUS_UPDATED,Order Returned,Order cmosz3b7q002dh278nl7kmiu1 status: Returned. Final delivery failure reached for Refused delivery. Order will be cancelled after the return window.,2026-05-05 18:44:51.23,DASHBOARD,QUEUED,0,,,2026-05-05 18:43:21.478,2026-05-05 18:44:51.236
+cmosz8ast000jh2vw2wt3mnwu,cmos92dgi0000h22gli65jmaq,,cmosz2xwz001rh2787jfwsw5o,ORDER_STATUS_UPDATED,Order Processing,Order cmosz2xwz001rh2787jfwsw5o is being processed.,2026-05-05 18:44:51.23,DASHBOARD,QUEUED,0,,,2026-05-05 18:43:32.908,2026-05-05 18:44:51.236
+cmowzy0m8000xh2goergtrzz5,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmowzxyvz0001h2go94od268g,ORDER_STATUS_UPDATED,Order Confirmed,Order cmow...268g has been confirmed.,2026-05-08 15:24:18.293,DASHBOARD,QUEUED,0,,,2026-05-08 14:14:37.472,2026-05-08 15:24:18.296
+cmox22379000jh2asui0jfbd0,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmox21uvd0001h2as596wpok8,ORDER_PLACED,Order Placed,New order cmox...pok8 received for Outfitters. Confirmation is handled by Broady automatically.,2026-05-08 15:24:18.293,DASHBOARD,QUEUED,0,,,2026-05-08 15:13:46.666,2026-05-08 15:24:18.296
+cmox226h2000xh2as3ggmee3n,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmox21uvd0001h2as596wpok8,ORDER_STATUS_UPDATED,Order Confirmed,Order cmox...pok8 has been confirmed.,2026-05-08 15:24:18.293,DASHBOARD,QUEUED,0,,,2026-05-08 15:13:50.918,2026-05-08 15:24:18.296
+cmosz96sn001jh2vwp0pzgjrw,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmosz2xwz001rh2787jfwsw5o,ORDER_STATUS_UPDATED,Delivery Failed,"Delivery attempt failed for order cmosz2xwz001rh2787jfwsw5o.
+Delivery failed (Incorrect address). Please update the address before the order can be reattempted. Delivery failed (Incorrect address). Hold reattempts until the customer updates their address.",2026-05-05 18:44:16.419,DASHBOARD,QUEUED,0,,,2026-05-05 18:44:14.375,2026-05-05 18:44:16.421
+cmp6scsn60002h2g863ptjcwj,cmp6scsky0000h2g8el0w0ke0,,,ACCOUNT_VERIFICATION,Verify Your Account,Welcome to Broady. Verify your account using this link: http://localhost:3000/verify-email?token=85f30f017a144785a36745522cc46424f555a8701cac52eb4ad0e17a5fc053de,,DASHBOARD,QUEUED,0,,,2026-05-15 10:39:51.808,2026-05-15 10:39:51.808
+cmp87rdtv0013h23wnhx5yarv,cmowyd0wn0000h2sg5so2qm74,,cmp87rdq3000kh23wmmi1fun2,ORDER_STATUS_UPDATED,Order Confirmed,Order cmp8...fun2 has been confirmed.,,DASHBOARD,QUEUED,0,,,2026-05-16 10:38:52.868,2026-05-16 10:38:52.868
+cmp87rjui001ph23wcn432x73,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmp87rdq3000kh23wmmi1fun2,ORDER_STATUS_UPDATED,Order Confirmed,Order cmp8...fun2 has been confirmed.,,DASHBOARD,QUEUED,0,,,2026-05-16 10:39:00.665,2026-05-16 10:39:00.665
+cmp89m6mi0004h2ecbkjpjfjd,cmp89m6lf0002h2ec3mt0uv4g,,,ACCOUNT_VERIFICATION,Verify Your Account,Welcome to Broady. Verify your account using this link: http://localhost:3000/verify-account?token=5d1f4bb6d34cdc785fbc77728447156b54684433af378f21929d2191fefdaf68,,DASHBOARD,QUEUED,0,,,2026-05-16 11:30:49.482,2026-05-16 11:30:49.482
+cmp89r40u001nh2ec3bek8ige,cmp89nrx8000dh2ecmsog1kfo,,cmp89r3qd0014h2ecxv0ixufs,ORDER_STATUS_UPDATED,Order Confirmed,Order cmp8...xufs has been confirmed.,,DASHBOARD,QUEUED,0,,,2026-05-16 11:34:39.39,2026-05-16 11:34:39.39
+cmp89r5ob0021h2ecsvvfbn2h,cmp1knebq001ih20sjqrvvums,,cmp89r3qd0014h2ecxv0ixufs,ORDER_PLACED,Order Placed,New order cmp8...xufs placed for Outfitters.,,DASHBOARD,QUEUED,0,,,2026-05-16 11:34:41.531,2026-05-16 11:34:41.531
+cmp89r7n5002bh2ecdme7a082,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmp89r3qd0014h2ecxv0ixufs,ORDER_PLACED,Order Placed,New order cmp8...xufs received for Outfitters. Confirmation is handled by Broady automatically.,,DASHBOARD,QUEUED,0,,,2026-05-16 11:34:44.082,2026-05-16 11:34:44.082
+cmosz820j007vh278auiewnre,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmosz3b7q002dh278nl7kmiu1,ORDER_STATUS_UPDATED,Delivery Failed,"Delivery attempt failed for order cmosz3b7q002dh278nl7kmiu1.
+Delivery failed (Refused delivery). This COD order will be cancelled after Attempt 1 of 1. Final delivery attempt failed (Refused delivery). The order will be cancelled.",2026-05-05 18:44:16.419,DASHBOARD,QUEUED,0,,,2026-05-05 18:43:21.523,2026-05-05 18:44:16.421
+cmosz820n007xh278ppajsaus,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmosz3b7q002dh278nl7kmiu1,ORDER_STATUS_UPDATED,Order Returned,Order cmosz3b7q002dh278nl7kmiu1 returned for Outfitters. Final delivery failure reached for Refused delivery. Order will be cancelled after the return window.,2026-05-05 18:44:16.419,DASHBOARD,QUEUED,0,,,2026-05-05 18:43:21.527,2026-05-05 18:44:16.421
+cmosz8au8000ph2vw19lk32qx,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmosz2xwz001rh2787jfwsw5o,ORDER_STATUS_UPDATED,Order Processing,Order cmosz2xwz001rh2787jfwsw5o is being processed.,2026-05-05 18:44:16.419,DASHBOARD,QUEUED,0,,,2026-05-05 18:43:32.96,2026-05-05 18:44:16.421
+cmosz8e1x0011h2vwnw52bavq,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmosz2xwz001rh2787jfwsw5o,ORDER_STATUS_UPDATED,Order Shipped,Your Outfitters item has been shipped.,2026-05-05 18:44:16.419,DASHBOARD,QUEUED,0,,,2026-05-05 18:43:37.125,2026-05-05 18:44:16.421
+cmosz8h3y008ph278ik6qnxd5,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmosz2xwz001rh2787jfwsw5o,ORDER_STATUS_UPDATED,Out For Delivery,Your Outfitters item is out for delivery.,2026-05-05 18:44:16.419,DASHBOARD,QUEUED,0,,,2026-05-05 18:43:41.086,2026-05-05 18:44:16.421
+cmosz8e13000vh2vwa0qm81xl,cmos92dgi0000h22gli65jmaq,,cmosz2xwz001rh2787jfwsw5o,ORDER_STATUS_UPDATED,Order Shipped,Your Outfitters item has been shipped.,2026-05-05 18:44:51.23,DASHBOARD,QUEUED,0,,,2026-05-05 18:43:37.095,2026-05-05 18:44:51.236
+cmosz8h3a008jh278uifo36b6,cmos92dgi0000h22gli65jmaq,,cmosz2xwz001rh2787jfwsw5o,ORDER_STATUS_UPDATED,Out For Delivery,Your Outfitters item is out for delivery.,2026-05-05 18:44:51.23,DASHBOARD,QUEUED,0,,,2026-05-05 18:43:41.062,2026-05-05 18:44:51.236
+cmosz96rl0017h2vwazl19di8,cmos92dgi0000h22gli65jmaq,,cmosz2xwz001rh2787jfwsw5o,ORDER_STATUS_UPDATED,Delivery Failed,"Delivery unsuccessful for order cmosz2xwz001rh2787jfwsw5o.
+Delivery failed (Incorrect address). Please update the address before the order can be reattempted. Delivery failed (Incorrect address). Hold reattempts until the customer updates their address.",2026-05-05 18:44:51.23,DASHBOARD,QUEUED,0,,,2026-05-05 18:44:14.337,2026-05-05 18:44:51.236
+cmoszaj8o001vh2vwrluwfiz1,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmosz2xwz001rh2787jfwsw5o,ORDER_STATUS_UPDATED,Address Updated,Customer has updated the delivery address for Order cmosz2xwz001rh2787jfwsw5o. New address: Dera I khan Updated,2026-05-05 18:47:41.31,DASHBOARD,QUEUED,0,,,2026-05-05 18:45:17.16,2026-05-05 18:47:41.311
+cmoszdt5u009zh278duf4cre2,cmos92dgi0000h22gli65jmaq,,cmosz2xwz001rh2787jfwsw5o,ORDER_STATUS_UPDATED,Order Delivered,Your order cmosz2xwz001rh2787jfwsw5o has been fully delivered.,,DASHBOARD,QUEUED,0,,,2026-05-05 18:47:49.986,2026-05-05 18:47:49.986
+cmoszdt8p00abh2787ei47za3,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmosz2xwz001rh2787jfwsw5o,ORDER_STATUS_UPDATED,Order Delivered,Sub-order cmosz2xxm001th278e8sejcyd has been delivered.,2026-05-05 19:29:39.993,DASHBOARD,QUEUED,0,,,2026-05-05 18:47:50.09,2026-05-05 19:29:40.004
+cmovu3ulw0005h25k023jred9,cmos92dgi0000h22gli65jmaq,,cmosz3b7q002dh278nl7kmiu1,ORDER_STATUS_UPDATED,Delivery Failed,Sub-order cmos...e1l4 has been cancelled. Delivery failed (Refused delivery). This COD order will be cancelled after Attempt 1 of 1.,,DASHBOARD,QUEUED,0,,,2026-05-07 18:43:25.747,2026-05-07 18:43:25.747
+cmp6slw780001h26stvlwsiij,cmp6scsky0000h2g8el0w0ke0,,,PASSWORD_RESET,Reset Your Password,Use this link to reset your Broady password: http://localhost:3000/reset-password?token=3e0a2ed9ac39570b53bcfabbcf44a4ca27f98a34404ede14ee69110722123c44,,DASHBOARD,QUEUED,0,,,2026-05-15 10:46:56.321,2026-05-15 10:46:56.321
+cmp87rdtu0011h23wmshnl1lu,cmowyd0wn0000h2sg5so2qm74,,cmp87rdq3000kh23wmmi1fun2,ORDER_PLACED,Order Placed,Your Outfitters order cmp8...fun2 has been placed.,,DASHBOARD,QUEUED,0,,,2026-05-16 10:38:52.866,2026-05-16 10:38:52.866
+cmp87rjp0001jh23wgt4n3smh,cmp1knebq001ih20sjqrvvums,,cmp87rdq3000kh23wmmi1fun2,ORDER_PLACED,Order Placed,New order cmp8...fun2 placed for Outfitters.,,DASHBOARD,QUEUED,0,,,2026-05-16 10:39:00.455,2026-05-16 10:39:00.455
+cmp89nry5000fh2ecgzm8pzrd,cmp89nrx8000dh2ecmsog1kfo,,,ACCOUNT_VERIFICATION,Verify Your Account,Welcome to Broady. Verify your account using this link: http://localhost:3000/verify-account?token=88a9e745bb7bb3d4d5d16241d4dcff15665a7f7e2cfcced528966406416023f0,2026-05-16 11:33:53.359,DASHBOARD,QUEUED,0,,,2026-05-16 11:32:03.773,2026-05-16 11:33:53.36
+cmovu3uox000hh25kmunp4ptr,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmosz3b7q002dh278nl7kmiu1,ORDER_STATUS_UPDATED,Delivery Failed,Sub-order cmos...e1l4 for Outfitters has been cancelled. Delivery failed (Refused delivery). This COD order will be cancelled after Attempt 1 of 1.,2026-05-08 15:24:18.293,DASHBOARD,QUEUED,0,,,2026-05-07 18:43:25.857,2026-05-08 15:24:18.296
+cmowzq194000jh2k8ewkwt3fs,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmowzpzwm0001h2k82xwk2eig,ORDER_PLACED,Order Placed,New order cmow...2eig received for Outfitters. Confirmation is handled by Broady automatically.,2026-05-08 15:24:18.293,DASHBOARD,QUEUED,0,,,2026-05-08 14:08:25.048,2026-05-08 15:24:18.296
+cmowzq20y000xh2k8npj6im6y,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmowzpzwm0001h2k82xwk2eig,ORDER_STATUS_UPDATED,Order Confirmed,Order cmow...2eig has been confirmed.,2026-05-08 15:24:18.293,DASHBOARD,QUEUED,0,,,2026-05-08 14:08:26.05,2026-05-08 15:24:18.296
+cmowzviu6000jh2eowgwex5n2,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmowzvhcs0001h2eo9q7v1hg1,ORDER_PLACED,Order Placed,New order cmow...1hg1 received for Outfitters. Confirmation is handled by Broady automatically.,2026-05-08 15:24:18.293,DASHBOARD,QUEUED,0,,,2026-05-08 14:12:41.118,2026-05-08 15:24:18.296
+cmox21vgq0007h2asm4vosmm3,cmowyd0wn0000h2sg5so2qm74,,cmox21uvd0001h2as596wpok8,ORDER_PLACED,Order Placed,Your order cmox...pok8 has been placed successfully on Broady.,2026-05-08 15:21:57.043,DASHBOARD,QUEUED,0,,,2026-05-08 15:13:36.65,2026-05-08 15:21:57.046
+cmox224qb000rh2as4umh9cct,cmowyd0wn0000h2sg5so2qm74,,cmox21uvd0001h2as596wpok8,ORDER_STATUS_UPDATED,Order Confirmed,Order cmox...pok8 has been confirmed.,2026-05-08 15:21:57.043,DASHBOARD,QUEUED,0,,,2026-05-08 15:13:48.659,2026-05-08 15:21:57.046
+cmox28zlx0007h2o4k32enbr1,cmowyd0wn0000h2sg5so2qm74,,cmox28zg60001h2o4du9354p4,ORDER_PLACED,Order Placed,Your order cmox...54p4 has been placed successfully on Broady.,2026-05-08 15:21:57.043,DASHBOARD,QUEUED,0,,,2026-05-08 15:19:08.614,2026-05-08 15:21:57.046
+cmox293uq000rh2o4c02df5sj,cmowyd0wn0000h2sg5so2qm74,,cmox28zg60001h2o4du9354p4,ORDER_STATUS_UPDATED,Order Confirmed,Order cmox...54p4 has been confirmed.,2026-05-08 15:21:57.043,DASHBOARD,QUEUED,0,,,2026-05-08 15:19:14.114,2026-05-08 15:21:57.046
+cmowzq08u0007h2k8pdlzd2dj,cmowyd0wn0000h2sg5so2qm74,,cmowzpzwm0001h2k82xwk2eig,ORDER_PLACED,Order Placed,Your order cmow...2eig has been placed successfully on Broady.,2026-05-08 15:21:57.043,DASHBOARD,QUEUED,0,,,2026-05-08 14:08:23.743,2026-05-08 15:21:57.046
+cmowzq1mr000rh2k8n9vk1ym2,cmowyd0wn0000h2sg5so2qm74,,cmowzpzwm0001h2k82xwk2eig,ORDER_STATUS_UPDATED,Order Confirmed,Order cmow...2eig has been confirmed.,2026-05-08 15:21:57.043,DASHBOARD,QUEUED,0,,,2026-05-08 14:08:25.54,2026-05-08 15:21:57.046
+cmowzvhk40007h2eo4j9sq0wh,cmowyd0wn0000h2sg5so2qm74,,cmowzvhcs0001h2eo9q7v1hg1,ORDER_PLACED,Order Placed,Your order cmow...1hg1 has been placed successfully on Broady.,2026-05-08 15:21:57.043,DASHBOARD,QUEUED,0,,,2026-05-08 14:12:39.46,2026-05-08 15:21:57.046
+cmowzvjez000rh2eojnppvb6a,cmowyd0wn0000h2sg5so2qm74,,cmowzvhcs0001h2eo9q7v1hg1,ORDER_STATUS_UPDATED,Order Confirmed,Order cmow...1hg1 has been confirmed.,2026-05-08 15:21:57.043,DASHBOARD,QUEUED,0,,,2026-05-08 14:12:41.868,2026-05-08 15:21:57.046
+cmowzxz2m0007h2go5dbu0cst,cmowyd0wn0000h2sg5so2qm74,,cmowzxyvz0001h2go94od268g,ORDER_PLACED,Order Placed,Your order cmow...268g has been placed successfully on Broady.,2026-05-08 15:21:57.043,DASHBOARD,QUEUED,0,,,2026-05-08 14:14:35.471,2026-05-08 15:21:57.046
+cmowzy09y000rh2gonlime6j6,cmowyd0wn0000h2sg5so2qm74,,cmowzxyvz0001h2go94od268g,ORDER_STATUS_UPDATED,Order Confirmed,Order cmow...268g has been confirmed.,2026-05-08 15:21:57.043,DASHBOARD,QUEUED,0,,,2026-05-08 14:14:37.03,2026-05-08 15:21:57.046
+cmox291zr000jh2o4sqm51ice,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmox28zg60001h2o4du9354p4,ORDER_PLACED,Order Placed,New order cmox...54p4 received for Outfitters. Confirmation is handled by Broady automatically.,2026-05-08 15:24:18.293,DASHBOARD,QUEUED,0,,,2026-05-08 15:19:11.703,2026-05-08 15:24:18.296
+cmowzvjzs000xh2eo8c4z34hi,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmowzvhcs0001h2eo9q7v1hg1,ORDER_STATUS_UPDATED,Order Confirmed,Order cmow...1hg1 has been confirmed.,2026-05-08 15:24:18.293,DASHBOARD,QUEUED,0,,,2026-05-08 14:12:42.616,2026-05-08 15:24:18.296
+cmowzxzuz000jh2gorfprephg,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmowzxyvz0001h2go94od268g,ORDER_PLACED,Order Placed,New order cmow...268g received for Outfitters. Confirmation is handled by Broady automatically.,2026-05-08 15:24:18.293,DASHBOARD,QUEUED,0,,,2026-05-08 14:14:36.491,2026-05-08 15:24:18.296
+cmox295nr000xh2o4nrc7a9zh,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmox28zg60001h2o4du9354p4,ORDER_STATUS_UPDATED,Order Confirmed,Order cmox...54p4 has been confirmed.,2026-05-08 15:24:18.293,DASHBOARD,QUEUED,0,,,2026-05-08 15:19:16.455,2026-05-08 15:24:18.296
+cmox2pn2z0007h2z0hbm5c5rh,cmowyd0wn0000h2sg5so2qm74,,cmox2pmww0001h2z0l9l05bxw,ORDER_PLACED,Order Placed,Your order cmox...5bxw has been placed successfully on Broady.,2026-05-08 17:15:56.123,DASHBOARD,QUEUED,0,,,2026-05-08 15:32:05.531,2026-05-08 17:15:56.132
+cmox2prf4000rh2z01b0ydjcf,cmowyd0wn0000h2sg5so2qm74,,cmox2pmww0001h2z0l9l05bxw,ORDER_STATUS_UPDATED,Order Confirmed,Order cmox...5bxw has been confirmed.,2026-05-08 17:15:56.123,DASHBOARD,QUEUED,0,,,2026-05-08 15:32:11.152,2026-05-08 17:15:56.132
+cmox2pql4000lh2z0a0wr1u0x,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmox2pmww0001h2z0l9l05bxw,ORDER_PLACED,Order Placed,New order cmox...5bxw received for Outfitters. Confirmation is handled by Broady automatically.,2026-05-08 22:18:33.923,DASHBOARD,QUEUED,0,,,2026-05-08 15:32:10.072,2026-05-08 22:18:33.924
+cmox2psdj000zh2z0f564nyah,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmox2pmww0001h2z0l9l05bxw,ORDER_STATUS_UPDATED,Order Confirmed,Order cmox...5bxw has been confirmed.,2026-05-08 22:18:33.923,DASHBOARD,QUEUED,0,,,2026-05-08 15:32:12.391,2026-05-08 22:18:33.924
+cmp87rnbi001vh23wg0f6qio7,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmp87rdq3000kh23wmmi1fun2,ORDER_PLACED,Order Placed,New order cmp8...fun2 received for Outfitters. Confirmation is handled by Broady automatically.,,DASHBOARD,QUEUED,0,,,2026-05-16 10:39:05.166,2026-05-16 10:39:05.166
+cmoxjb42w0007h2lk9r8auxy8,cmowyd0wn0000h2sg5so2qm74,,cmoxjb3tq0001h2lkrsu5qexc,ORDER_PLACED,Order Placed,Your order cmox...qexc has been placed successfully on Broady.,2026-05-08 23:33:07.305,DASHBOARD,QUEUED,0,,,2026-05-08 23:16:41.192,2026-05-08 23:33:07.31
+cmoxjb8i9000rh2lkhqlq86k8,cmowyd0wn0000h2sg5so2qm74,,cmoxjb3tq0001h2lkrsu5qexc,ORDER_STATUS_UPDATED,Order Confirmed,Order cmox...qexc has been confirmed.,2026-05-08 23:33:07.305,DASHBOARD,QUEUED,0,,,2026-05-08 23:16:46.929,2026-05-08 23:33:07.31
+cmoxjhiyz0007h2wwnsirw8o7,cmowyd0wn0000h2sg5so2qm74,,cmoxjhiq50001h2ww1n0f0kf9,ORDER_PLACED,Order Placed,Your order cmox...0kf9 has been placed successfully on Broady.,2026-05-08 23:33:07.305,DASHBOARD,QUEUED,0,,,2026-05-08 23:21:40.427,2026-05-08 23:33:07.31
+cmoxjhovl000rh2wwgyx4y7dj,cmowyd0wn0000h2sg5so2qm74,,cmoxjhiq50001h2ww1n0f0kf9,ORDER_STATUS_UPDATED,Order Confirmed,Order cmox...0kf9 has been confirmed.,2026-05-08 23:33:07.305,DASHBOARD,QUEUED,0,,,2026-05-08 23:21:48.081,2026-05-08 23:33:07.31
+cmoxjb6zx000lh2lkg55k8o3z,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmoxjb3tq0001h2lkrsu5qexc,ORDER_PLACED,Order Placed,New order cmox...qexc received for Outfitters. Confirmation is handled by Broady automatically.,2026-05-10 19:31:56.992,DASHBOARD,QUEUED,0,,,2026-05-08 23:16:44.973,2026-05-10 19:31:56.995
+cmoxjb9x7000zh2lktf59dlsg,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmoxjb3tq0001h2lkrsu5qexc,ORDER_STATUS_UPDATED,Order Confirmed,Order cmox...qexc has been confirmed.,2026-05-10 19:31:56.992,DASHBOARD,QUEUED,0,,,2026-05-08 23:16:48.763,2026-05-10 19:31:56.995
+cmoxjhmtf000lh2ww7hq5xnzj,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmoxjhiq50001h2ww1n0f0kf9,ORDER_PLACED,Order Placed,New order cmox...0kf9 received for Outfitters. Confirmation is handled by Broady automatically.,2026-05-10 19:31:56.992,DASHBOARD,QUEUED,0,,,2026-05-08 23:21:45.411,2026-05-10 19:31:56.995
+cmoxjhrd1000zh2wwpcg5pjx7,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmoxjhiq50001h2ww1n0f0kf9,ORDER_STATUS_UPDATED,Order Confirmed,Order cmox...0kf9 has been confirmed.,2026-05-10 19:31:56.992,DASHBOARD,QUEUED,0,,,2026-05-08 23:21:51.301,2026-05-10 19:31:56.995
+cmp89ou9g000ph2ec0u1fkkwp,cmp89nrx8000dh2ecmsog1kfo,,,PASSWORD_RESET,Reset Your Password,Use this link to reset your Broady password: http://localhost:3000/reset-password?token=21512c8d65284f3842f5dcb8cdde0ec87405e30761282d1cd4249b27b8bbb703,2026-05-16 11:33:53.359,DASHBOARD,QUEUED,0,,,2026-05-16 11:32:53.428,2026-05-16 11:33:53.36
+cmp19w6o2000lh2s43zibu6wr,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmp064r4y000ih2ekml0p1nff,ORDER_STATUS_UPDATED,Order Delivered,Sub-order cmp0...mpfj has been delivered.,2026-05-11 17:30:18.334,DASHBOARD,QUEUED,0,,,2026-05-11 14:04:12.866,2026-05-11 17:30:18.338
+cmp1ha6vj0009h23s7w007wl1,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmoxj2999001ph2jcga8te4dh,ORDER_STATUS_UPDATED,Order Processing,Order cmox...e4dh is being processed.,2026-05-11 17:31:12.601,DASHBOARD,QUEUED,0,,,2026-05-11 17:31:03.631,2026-05-11 17:31:12.603
+cmp1hae4i000ph23sv78bpvvx,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmoxj2999001ph2jcga8te4dh,ORDER_STATUS_UPDATED,Order Shipped,Your Outfitters item has been shipped.,2026-05-11 17:31:50.389,DASHBOARD,QUEUED,0,,,2026-05-11 17:31:13.027,2026-05-11 17:31:50.392
+cmp1halfg0015h23sctmt5nkt,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmoxj2999001ph2jcga8te4dh,ORDER_STATUS_UPDATED,Out For Delivery,Your Outfitters item is out for delivery.,2026-05-11 17:31:50.389,DASHBOARD,QUEUED,0,,,2026-05-11 17:31:22.492,2026-05-11 17:31:50.392
+cmp1hb3fw001rh23slefrvc6v,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmoxj2999001ph2jcga8te4dh,ORDER_STATUS_UPDATED,Delivery Failed,"You updated the status for order cmox...e4dh to Delivery Failed.
+Delivery failed (Incorrect address). Please update the address before the order can be reattempted. Delivery failed (Incorrect address). Hold reattempts until the customer updates their address.",2026-05-11 17:31:50.389,DASHBOARD,QUEUED,0,,,2026-05-11 17:31:45.836,2026-05-11 17:31:50.392
+cmp19w3v30007h2s4ybcqfdgd,cmowyd0wn0000h2sg5so2qm74,,cmp064r4y000ih2ekml0p1nff,ORDER_STATUS_UPDATED,Order Delivered,Your order cmp0...1nff has been fully delivered.,2026-05-11 17:34:32.988,DASHBOARD,QUEUED,0,,,2026-05-11 14:04:09.226,2026-05-11 17:34:32.99
+cmp1ha4pv0001h23s9osp14tj,cmowyd0wn0000h2sg5so2qm74,,cmoxj2999001ph2jcga8te4dh,ORDER_STATUS_UPDATED,Order Processing,Order cmox...e4dh is being processed.,2026-05-11 17:34:32.988,DASHBOARD,QUEUED,0,,,2026-05-11 17:31:00.834,2026-05-11 17:34:32.99
+cmp1hacm0000hh23sk8hjqvan,cmowyd0wn0000h2sg5so2qm74,,cmoxj2999001ph2jcga8te4dh,ORDER_STATUS_UPDATED,Order Shipped,Your Outfitters item has been shipped.,2026-05-11 17:34:32.988,DASHBOARD,QUEUED,0,,,2026-05-11 17:31:11.064,2026-05-11 17:34:32.99
+cmp1hajmr000xh23snxqnw9cw,cmowyd0wn0000h2sg5so2qm74,,cmoxj2999001ph2jcga8te4dh,ORDER_STATUS_UPDATED,Out For Delivery,Your Outfitters item is out for delivery.,2026-05-11 17:34:32.988,DASHBOARD,QUEUED,0,,,2026-05-11 17:31:20.163,2026-05-11 17:34:32.99
+cmp1hb03x001dh23s67d6mmfv,cmowyd0wn0000h2sg5so2qm74,,cmoxj2999001ph2jcga8te4dh,ORDER_STATUS_UPDATED,Delivery Failed,"Delivery unsuccessful for order cmox...e4dh.
+Delivery failed (Incorrect address). Please update the address before the order can be reattempted. Delivery failed (Incorrect address). Hold reattempts until the customer updates their address.",2026-05-11 17:34:32.988,DASHBOARD,QUEUED,0,,,2026-05-11 17:31:41.518,2026-05-11 17:34:32.99
+cmp1htn3y0007h2d88h3u9jin,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmoxj2999001ph2jcga8te4dh,ORDER_STATUS_UPDATED,Address Updated,Customer has updated the delivery address for Order cmoxj2999001ph2jcga8te4dh. New address: Gabeen jabba ok,2026-05-11 17:46:47.577,DASHBOARD,QUEUED,0,,,2026-05-11 17:46:11.134,2026-05-11 17:46:47.582
+cmp1hux5a000nh2d837k2exb9,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmoxipjo4000jh2jcwn4cofjj,ORDER_STATUS_UPDATED,Order Processing,Order cmox...ofjj is being processed.,2026-05-11 17:47:33.171,DASHBOARD,QUEUED,0,,,2026-05-11 17:47:10.797,2026-05-11 17:47:33.172
+cmp1hv3o0001bh2d83e2lldxk,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmoxipjo4000jh2jcwn4cofjj,ORDER_STATUS_UPDATED,Out For Delivery,Order cmox...ofjj is out for delivery.,2026-05-11 17:47:33.171,DASHBOARD,QUEUED,0,,,2026-05-11 17:47:19.249,2026-05-11 17:47:33.172
+cmp1huul9000fh2d8yajqfeht,cmowyd0wn0000h2sg5so2qm74,,cmoxipjo4000jh2jcwn4cofjj,ORDER_STATUS_UPDATED,Order Processing,Order cmox...ofjj is being processed.,2026-05-11 17:48:18.577,DASHBOARD,QUEUED,0,,,2026-05-11 17:47:07.481,2026-05-11 17:48:18.579
+cmp1huyu4000vh2d8k09lfyvm,cmowyd0wn0000h2sg5so2qm74,,cmoxipjo4000jh2jcwn4cofjj,ORDER_STATUS_UPDATED,Order Shipped,Order cmox...ofjj has been shipped.,2026-05-11 17:48:18.577,DASHBOARD,QUEUED,0,,,2026-05-11 17:47:12.988,2026-05-11 17:48:18.579
+cmp1hv1n60013h2d8bljx96y1,cmowyd0wn0000h2sg5so2qm74,,cmoxipjo4000jh2jcwn4cofjj,ORDER_STATUS_UPDATED,Out For Delivery,Order cmox...ofjj is out for delivery.,2026-05-11 17:48:18.577,DASHBOARD,QUEUED,0,,,2026-05-11 17:47:16.626,2026-05-11 17:48:18.579
+cmp1iksxm0002h2nwog196wzq,cmowyd0wn0000h2sg5so2qm74,,cmp1i1555002nh21w1rw8c1pd,ORDER_STATUS_UPDATED,Order Cancelled,Order cmp1...c1pd has been cancelled. Changed my mind,2026-05-11 18:07:20.755,DASHBOARD,QUEUED,0,,,2026-05-11 18:07:18.391,2026-05-11 18:07:20.758
+cmp1iksxm0003h2nwgvyh19nc,cmowyd0wn0000h2sg5so2qm74,,cmp1i1555002nh21w1rw8c1pd,ORDER_STATUS_UPDATED,Order Cancelled,Sub-order cmp1...48og has been cancelled. Changed my mind,2026-05-11 18:07:20.755,DASHBOARD,QUEUED,0,,,2026-05-11 18:07:18.392,2026-05-11 18:07:20.758
+cmp1ilg3t0002h26gw9sjci0j,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmp1i1555002nh21w1rw8c1pd,ORDER_STATUS_UPDATED,Order Cancelled,Order cmp1...c1pd for Outfitters has been cancelled. Changed my mind,2026-05-11 18:28:49.913,DASHBOARD,QUEUED,0,,,2026-05-11 18:07:48.423,2026-05-11 18:28:49.927
+cmp1ilj4h000hh2nwiod31vo4,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmp1i1555002nh21w1rw8c1pd,ORDER_STATUS_UPDATED,Order Cancelled,Sub-order cmp1...48og for Outfitters has been cancelled. Changed my mind,2026-05-11 18:28:49.913,DASHBOARD,QUEUED,0,,,2026-05-11 18:07:52.338,2026-05-11 18:28:49.927
+cmp1knele001mh20s7j7an5jv,cmp1knebq001ih20sjqrvvums,,,ORDER_STATUS_UPDATED,Verify Your Account,Welcome to Broady. Verify your account using this link: http://localhost:3000/account/verify-email?token=fcc31669ca5be04513dcfd19e9aed5b85c8e59c0a9df940b603ac71bff8e6185,2026-05-11 19:05:58.569,DASHBOARD,QUEUED,0,,,2026-05-11 19:05:19.007,2026-05-11 19:05:58.572
+cmp89r40r001lh2ecqskin1od,cmp89nrx8000dh2ecmsog1kfo,,cmp89r3qd0014h2ecxv0ixufs,ORDER_PLACED,Order Placed,Your Outfitters order cmp8...xufs has been placed.,,DASHBOARD,QUEUED,0,,,2026-05-16 11:34:39.387,2026-05-16 11:34:39.387
+cmp89r5o1001zh2eck7sais08,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmp89r3qd0014h2ecxv0ixufs,ORDER_STATUS_UPDATED,Order Confirmed,Order cmp8...xufs has been confirmed.,,DASHBOARD,QUEUED,0,,,2026-05-16 11:34:41.52,2026-05-16 11:34:41.52
+cmp4fvpam001fh26w443mx6u9,cmp1knebq001ih20sjqrvvums,,cmp4fvech000ch26wylzjkup3,ORDER_PLACED,Order Placed,New order cmp4...kup3 placed for Outfitters.,,DASHBOARD,QUEUED,0,,,2026-05-13 19:15:06.574,2026-05-13 19:15:06.574
+cmp4fvpm4001lh26w5tye0dzb,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmp4fvech000ch26wylzjkup3,ORDER_STATUS_UPDATED,Order Confirmed,Order cmp4...kup3 has been confirmed.,,DASHBOARD,QUEUED,0,,,2026-05-13 19:15:06.988,2026-05-13 19:15:06.988
+cmp4fvqli001rh26whliasnqq,cmosz5bg00059h2780xm2gaaa,cmoa452op0000h2gsqmku8ghv,cmp4fvech000ch26wylzjkup3,ORDER_PLACED,Order Placed,New order cmp4...kup3 received for Outfitters. Confirmation is handled by Broady automatically.,,DASHBOARD,QUEUED,0,,,2026-05-13 19:15:08.262,2026-05-13 19:15:08.262
+cmp4fvell000th26wflxvh3lm,cmowyd0wn0000h2sg5so2qm74,,cmp4fvech000ch26wylzjkup3,ORDER_PLACED,Order Placed,Your Outfitters order cmp4...kup3 has been placed.,2026-05-13 19:19:13.603,DASHBOARD,QUEUED,0,,,2026-05-13 19:14:52.713,2026-05-13 19:19:13.608
+cmp4fvil70015h26whmg1umhu,cmowyd0wn0000h2sg5so2qm74,,cmp4fvech000ch26wylzjkup3,ORDER_STATUS_UPDATED,Order Confirmed,Order cmp4...kup3 has been confirmed.,2026-05-13 19:19:13.603,DASHBOARD,QUEUED,0,,,2026-05-13 19:14:57.884,2026-05-13 19:19:13.608
