@@ -1,51 +1,51 @@
 id,review_id,reported_by_user_id,reason,description,status,resolution_note,resolved_by_id,resolved_at,created_at
-rr_002,rev_002,usr_017,SPAM,Example report description for review 2.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_004,rev_004,usr_019,SPAM,Example report description for review 4.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_006,rev_006,usr_021,SPAM,Example report description for review 6.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_008,rev_008,usr_023,SPAM,Example report description for review 8.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_010,rev_010,usr_025,SPAM,Example report description for review 10.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_012,rev_012,usr_027,SPAM,Example report description for review 12.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_014,rev_014,usr_029,SPAM,Example report description for review 14.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_016,rev_016,usr_031,SPAM,Example report description for review 16.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_018,rev_018,usr_033,SPAM,Example report description for review 18.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_020,rev_020,usr_035,SPAM,Example report description for review 20.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_022,rev_022,usr_037,SPAM,Example report description for review 22.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_024,rev_024,usr_039,SPAM,Example report description for review 24.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_026,rev_026,usr_041,SPAM,Example report description for review 26.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_028,rev_028,usr_043,SPAM,Example report description for review 28.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_030,rev_030,usr_045,SPAM,Example report description for review 30.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_032,rev_032,usr_047,SPAM,Example report description for review 32.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_034,rev_034,usr_049,SPAM,Example report description for review 34.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_036,rev_036,usr_051,SPAM,Example report description for review 36.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_038,rev_038,usr_053,SPAM,Example report description for review 38.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_040,rev_040,usr_055,SPAM,Example report description for review 40.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_042,rev_042,usr_001,SPAM,Example report description for review 42.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_044,rev_044,usr_003,SPAM,Example report description for review 44.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_046,rev_046,usr_005,SPAM,Example report description for review 46.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_048,rev_048,usr_007,SPAM,Example report description for review 48.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_050,rev_050,usr_009,SPAM,Example report description for review 50.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_052,rev_052,usr_011,SPAM,Example report description for review 52.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_054,rev_054,usr_013,SPAM,Example report description for review 54.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_056,rev_056,usr_015,SPAM,Example report description for review 56.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_058,rev_058,usr_017,SPAM,Example report description for review 58.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_060,rev_060,usr_019,SPAM,Example report description for review 60.,RESOLVED,Looks valid.,usr_admin,2026-05-15T00:00:00Z
-rr_081,rev_031,usr_036,OTHER,Additional moderation note for rev_031.,IN_REVIEW,Pending review.,usr_admin,2026-05-15T00:00:00Z
-rr_082,rev_032,usr_037,OTHER,Additional moderation note for rev_032.,IN_REVIEW,Pending review.,usr_admin,2026-05-15T00:00:00Z
-rr_083,rev_033,usr_038,OTHER,Additional moderation note for rev_033.,IN_REVIEW,Pending review.,usr_admin,2026-05-15T00:00:00Z
-rr_084,rev_034,usr_039,OTHER,Additional moderation note for rev_034.,IN_REVIEW,Pending review.,usr_admin,2026-05-15T00:00:00Z
-rr_085,rev_035,usr_040,OTHER,Additional moderation note for rev_035.,IN_REVIEW,Pending review.,usr_admin,2026-05-15T00:00:00Z
-rr_086,rev_036,usr_041,OTHER,Additional moderation note for rev_036.,IN_REVIEW,Pending review.,usr_admin,2026-05-15T00:00:00Z
-rr_087,rev_037,usr_042,OTHER,Additional moderation note for rev_037.,IN_REVIEW,Pending review.,usr_admin,2026-05-15T00:00:00Z
-rr_088,rev_038,usr_043,OTHER,Additional moderation note for rev_038.,IN_REVIEW,Pending review.,usr_admin,2026-05-15T00:00:00Z
-rr_089,rev_039,usr_044,OTHER,Additional moderation note for rev_039.,IN_REVIEW,Pending review.,usr_admin,2026-05-15T00:00:00Z
-rr_090,rev_040,usr_045,OTHER,Additional moderation note for rev_040.,IN_REVIEW,Pending review.,usr_admin,2026-05-15T00:00:00Z
-rr_091,rev_041,usr_046,OTHER,Additional moderation note for rev_041.,IN_REVIEW,Pending review.,usr_admin,2026-05-15T00:00:00Z
-rr_092,rev_042,usr_047,OTHER,Additional moderation note for rev_042.,IN_REVIEW,Pending review.,usr_admin,2026-05-15T00:00:00Z
-rr_093,rev_043,usr_048,OTHER,Additional moderation note for rev_043.,IN_REVIEW,Pending review.,usr_admin,2026-05-15T00:00:00Z
-rr_094,rev_044,usr_049,OTHER,Additional moderation note for rev_044.,IN_REVIEW,Pending review.,usr_admin,2026-05-15T00:00:00Z
-rr_095,rev_045,usr_050,OTHER,Additional moderation note for rev_045.,IN_REVIEW,Pending review.,usr_admin,2026-05-15T00:00:00Z
-rr_096,rev_046,usr_051,OTHER,Additional moderation note for rev_046.,IN_REVIEW,Pending review.,usr_admin,2026-05-15T00:00:00Z
-rr_097,rev_047,usr_052,OTHER,Additional moderation note for rev_047.,IN_REVIEW,Pending review.,usr_admin,2026-05-15T00:00:00Z
-rr_098,rev_048,usr_053,OTHER,Additional moderation note for rev_048.,IN_REVIEW,Pending review.,usr_admin,2026-05-15T00:00:00Z
-rr_099,rev_049,usr_054,OTHER,Additional moderation note for rev_049.,IN_REVIEW,Pending review.,usr_admin,2026-05-15T00:00:00Z
-rr_100,rev_050,usr_055,OTHER,Additional moderation note for rev_050.,IN_REVIEW,Pending review.,usr_admin,2026-05-15T00:00:00Z
+rr_002,rev_002,usr_004,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_004,rev_004,usr_006,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_006,rev_006,usr_008,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_008,rev_008,usr_010,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_010,rev_010,usr_012,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_012,rev_012,usr_014,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_014,rev_014,usr_016,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_016,rev_016,usr_018,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_018,rev_018,usr_020,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_020,rev_020,usr_022,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_022,rev_022,usr_024,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_024,rev_024,usr_026,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_026,rev_026,usr_028,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_028,rev_028,usr_030,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_030,rev_030,usr_032,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_032,rev_032,usr_034,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_034,rev_034,usr_036,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_036,rev_036,usr_038,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_038,rev_038,usr_040,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_040,rev_040,usr_042,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_042,rev_042,usr_044,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_044,rev_044,usr_046,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_046,rev_046,usr_048,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_048,rev_048,usr_050,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_050,rev_050,usr_052,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_052,rev_052,usr_054,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_054,rev_054,usr_056,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_056,rev_056,usr_058,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_058,rev_058,usr_060,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_060,rev_060,usr_062,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_062,rev_062,usr_064,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_064,rev_064,usr_066,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_066,rev_066,usr_068,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_068,rev_068,usr_070,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_070,rev_070,usr_072,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_072,rev_072,usr_074,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_074,rev_074,usr_076,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_076,rev_076,usr_078,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_078,rev_078,usr_080,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_080,rev_080,usr_082,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_082,rev_082,usr_084,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_084,rev_084,usr_086,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_086,rev_086,usr_088,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_088,rev_088,usr_090,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_090,rev_090,usr_092,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_092,rev_092,usr_094,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_094,rev_094,usr_096,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_096,rev_096,usr_098,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_098,rev_098,usr_100,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z
+rr_100,rev_100,usr_002,SPAM,Bot review,RESOLVED,Fixed,usr_admin,2026-05-15T00:00:00Z

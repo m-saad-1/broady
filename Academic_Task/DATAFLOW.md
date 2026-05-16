@@ -30,15 +30,29 @@ For the academic submission, the data is treated as synthetic marketplace data b
 5. Keep variant data such as size and color in dedicated columns rather than repeating groups.
 6. Preserve referential order so parent tables are loaded before child tables.
 
-## Dataflow
+## Dataflow Description
 
-1. Source values are curated from the Broady schema and academic ERD.
-2. Repeated labels are deduplicated into shared lookup-style records.
-3. Product categories are separated from product rows and represented as a conceptual categories dataset.
-4. Parent tables are prepared first: categories, brands, and users.
-5. Dependent tables are prepared next: brand members, products, templates, carts, and preferences.
-6. Transaction tables are prepared after the parents: orders, sub-orders, order items, reviews, and reports.
-7. Optional supporting tables are prepared last: notifications, payment methods, activities, and aggregates.
+### 1. Data Entrance (Input)
+Data enters the Broady marketplace through three primary channels:
+- **User Actions**: Customers register accounts (`users`), manage their profiles (`notification_preferences`, `user_payment_methods`), and browse products (`user_activities`).
+- **Brand Management**: Brand owners onboard their brands (`brands`) and manage team members (`brand_members`). They upload product listings (`products`) and define content styles (`product_content_templates`).
+- **Transactional Events**: Customers add items to their shopping experience (`carts`, `cart_items`, `wishlist_items`) and finalize purchases (`orders`).
+
+### 2. Data Movement (Processing)
+Once entered, data flows through the system following relational dependencies:
+- **Normalization**: Reference data like `categories` and `brands` provide the foundation for `products`.
+- **Order Orchestration**: When an `order` is placed, the system splits it into `sub_orders` based on the brand of each product. This allows brands to manage their own fulfillment independently.
+- **Line Item Tracking**: Each `order_item` links back to its parent `order`, `sub_order`, and the specific `product`, ensuring granular tracking of sales.
+- **Feedback Loop**: After a successful purchase, customers can submit `reviews`. This triggers `review_images` uploads, `review_helpfulness_votes`, and potential `brand_review_replies`.
+- **System Automation**: Transactions and updates trigger `notifications` which are delivered based on `notification_preferences`.
+
+### 3. Data Output (Results)
+The processed data results in several key outputs:
+- **Marketplace Analytics**: `product_review_aggregates` provide real-time rating summaries for customers.
+- **Business Intelligence**: Querying `orders` and `sub_orders` generates revenue reports and sales trends for brand managers.
+- **Operational Logs**: `user_activities` provide insights for personalized recommendations and search optimization.
+- **Customer Communication**: Delivered `notifications` (Email/Push) keep users informed about order status and account security.
+- **Exports**: The entire state can be exported as structured CSV files (as seen in this milestone) for external auditing or data migration.
 
 ## Dataset Generation
 

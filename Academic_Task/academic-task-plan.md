@@ -153,12 +153,30 @@ Push the cleaned or synthetic CSV files and the dataflow description.
 Suggested commit message:
 - `M3: Synthetic data generated; dataflow documented`
 
-### Milestone 3 Deliverables
+### Milestone 3 — Dataset Preprocessing
+- Step 1 — Prepare Your Dataset
+If your project uses a real dataset (CSV, API, or otherwise), clean it. Remove duplicates, fix formatting
+inconsistencies, handle null or missing values, and ensure data types are consistent throughout.
+If your project uses dummy data, you are required to generate structured synthetic data. It must be
+realistic and meaningful enough to properly populate your database. Tools you may use include Python
+with the Faker library, Mockaroo, or Excel. In either case, the data must be
 
-- cleaned or synthetic CSV files
-- dataflow documentation
-- GitHub commit for Milestone 3
+sufficient to populate all core tables with a minimum of 50 to 100 rows per table.
 
+- Step 2 — Define Your Dataflow
+Every group must include a Dataflow section in their documentation. This should clearly explain where
+data enters your system, how it moves through the database (which tables receive data, which tables
+depend on others), and what comes out — whether that is query results, reports, exports, or AI model
+inputs, depending on your project. This description must be written specifically for your project. A
+generic or copy-pasted description will not be accepted.
+
+- Step 3 — Export Clean CSV Files
+Once your data is ready, export it as CSV files, one file per table. These files will be used in Milestone 5
+to load data into your database.
+
+- Step 4 — Commit to GitHub
+Push all cleaned or synthetic CSV files and your dataflow description to the repository.
+• M3: Synthetic data generated; dataflow documented
 ## Milestone 4 - Database Setup (DDL)
 
 ### Step 1: Write CREATE TABLE Statements

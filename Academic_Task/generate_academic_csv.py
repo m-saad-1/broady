@@ -2,6 +2,7 @@ import csv
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
+import random
 
 OUTPUT_DIR = Path(__file__).resolve().parent / "csv"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -16,34 +17,66 @@ def write_csv(name, headers, rows):
 
 now = datetime(2026, 5, 15, 0, 0)
 
+# 1. Categories (Increase to 50+)
 categories = [
     ("cat_women", "Women", ""),
-    ("cat_tops", "Tops", "cat_women"),
-    ("cat_dresses", "Dresses", "cat_women"),
-    ("cat_knitwear", "Knitwear", "cat_women"),
-    ("cat_accessories", "Accessories", "cat_women"),
-    ("cat_loungewear", "Loungewear", "cat_women"),
-    ("cat_active", "Activewear", "cat_women"),
+    ("cat_men", "Men", ""),
+    ("cat_kids", "Kids", ""),
+    ("cat_home", "Home & Living", ""),
+    ("cat_accessories", "Accessories", ""),
 ]
+# Generate subcategories to reach 50+
+for i in range(1, 10):
+    categories.append((f"cat_women_{i}", f"Women Sub {i}", "cat_women"))
+    categories.append((f"cat_men_{i}", f"Men Sub {i}", "cat_men"))
+    categories.append((f"cat_kids_{i}", f"Kids Sub {i}", "cat_kids"))
+    categories.append((f"cat_home_{i}", f"Home Sub {i}", "cat_home"))
+    categories.append((f"cat_acc_{i}", f"Acc Sub {i}", "cat_accessories"))
 
-brands = [
-    ("br_heritage", "Heritage Loom", "heritage-loom", "https://cdn.example.com/brands/heritage.png", "Contemporary womenswear brand.", "true", "12.00", "false", "hello@heritageloom.test", "+923001111111", now.isoformat() + "Z", now.isoformat() + "Z"),
-    ("br_nova", "Nova Stitch", "nova-stitch", "https://cdn.example.com/brands/nova.png", "Minimal essentials and occasion wear.", "true", "10.50", "false", "support@novastitch.test", "+923002222222", now.isoformat() + "Z", now.isoformat() + "Z"),
-    ("br_verve", "Verve Atelier", "verve-atelier", "https://cdn.example.com/brands/verve.png", "Elegant ready-to-wear with a modern edge.", "true", "11.00", "false", "hello@verveatelier.test", "+923003333333", now.isoformat() + "Z", now.isoformat() + "Z"),
-    ("br_mira", "Mira Mode", "mira-mode", "https://cdn.example.com/brands/mira.png", "Premium day-to-night clothing.", "true", "13.00", "false", "contact@miramode.test", "+923004444444", now.isoformat() + "Z", now.isoformat() + "Z"),
-    ("br_rise", "Rise Studio", "rise-studio", "https://cdn.example.com/brands/rise.png", "Bold sustainable fashion essentials.", "true", "9.50", "false", "support@risestudio.test", "+923005555555", now.isoformat() + "Z", now.isoformat() + "Z"),
-    ("br_luna", "Luna Threads", "luna-threads", "https://cdn.example.com/brands/luna.png", "Comfortable feminine silhouettes.", "true", "10.75", "false", "hello@lunathreads.test", "+923006666666", now.isoformat() + "Z", now.isoformat() + "Z"),
-]
+# 2. Brands (Increase to 50+)
+brands = []
+for i in range(1, 51):
+    brand_id = f"br_{i:03d}"
+    name = f"Brand {i} Atelier"
+    slug = f"brand-{i}-atelier"
+    brands.append((
+        brand_id, name, slug, 
+        f"https://cdn.example.com/brands/br_{i:03d}.png",
+        f"Description for {name}.", 
+        "true", 
+        f"{10.0 + (i % 5):.2f}", 
+        "false", 
+        f"contact@brand{i}.test", 
+        f"+92300{i:07d}", 
+        now.isoformat() + "Z", 
+        now.isoformat() + "Z"
+    ))
 
+# 3. Users (Increase to 100+)
 users = [
-    ("usr_admin", "admin@broady.test", "Broady Admin", "", "", "LOCAL", "ADMIN", "", now.isoformat() + "Z", now.isoformat() + "Z"),
+    ("usr_admin", "admin@broady.test", "Broady Admin", "hashed_pwd", "", "LOCAL", "ADMIN", "", now.isoformat() + "Z", now.isoformat() + "Z"),
 ]
-for i in range(1, 56):
+# Add brand managers
+for i in range(1, 51):
+    users.append((
+        f"usr_mgr_{i:03d}", 
+        f"manager{i}@brand{i}.test", 
+        f"Manager {i}", 
+        "hashed_pwd", 
+        "", 
+        "LOCAL", 
+        "BRAND", 
+        f"br_{i:03d}", 
+        now.isoformat() + "Z", 
+        now.isoformat() + "Z"
+    ))
+# Add regular users
+for i in range(1, 101):
     users.append((
         f"usr_{i:03d}",
         f"user{i}@example.test",
         f"User {i}",
-        "hashed-password",
+        "hashed_pwd",
         "",
         "LOCAL",
         "USER",
@@ -51,176 +84,138 @@ for i in range(1, 56):
         now.isoformat() + "Z",
         now.isoformat() + "Z",
     ))
-users.append(("usr_heritage_mgr", "manager@heritageloom.test", "Hira Manager", "", "", "LOCAL", "BRAND", "br_heritage", now.isoformat() + "Z", now.isoformat() + "Z"))
-users.append(("usr_nova_mgr", "manager@novastitch.test", "Nadia Manager", "", "", "LOCAL", "BRAND", "br_nova", now.isoformat() + "Z", now.isoformat() + "Z"))
-users.append(("usr_verve_mgr", "manager@verveatelier.test", "Mina Verve", "", "", "LOCAL", "BRAND", "br_verve", now.isoformat() + "Z", now.isoformat() + "Z"))
-users.append(("usr_mira_mgr", "manager@miramode.test", "Ayesha Mira", "", "", "LOCAL", "BRAND", "br_mira", now.isoformat() + "Z", now.isoformat() + "Z"))
-users.append(("usr_rise_mgr", "manager@risestudio.test", "Zara Rise", "", "", "LOCAL", "BRAND", "br_rise", now.isoformat() + "Z", now.isoformat() + "Z"))
-users.append(("usr_luna_mgr", "manager@lunathreads.test", "Luna Khan", "", "", "LOCAL", "BRAND", "br_luna", now.isoformat() + "Z", now.isoformat() + "Z"))
 
+# 4. Brand Members (Increase to 50+)
 brand_members = []
-member_user_ids = [u[0] for u in users if u[6] == "BRAND"]
-for idx, user_id in enumerate(member_user_ids, start=1):
-    brand_members.append((f"bm_{idx:03d}", user_id, brands[(idx - 1) % len(brands)][0], "true", now.isoformat() + "Z"))
-for idx in range(len(brand_members) + 1, 31):
-    brand_members.append((f"bm_{idx:03d}", f"usr_{idx:03d}", brands[(idx - 1) % len(brands)][0], "false", now.isoformat() + "Z"))
+for i in range(1, 51):
+    brand_members.append((
+        f"bm_{i:03d}", 
+        f"usr_mgr_{i:03d}", 
+        f"br_{i:03d}", 
+        "true", 
+        now.isoformat() + "Z"
+    ))
 
+# 5. Product Content Templates (Increase to 100+)
 templates = []
-for j, (brand_id, brand_name, slug, logo_url, description, verified, rate, api_enabled, email, phone, created_at, updated_at) in enumerate(brands, start=1):
-    for k in range(1, 6):
-        templates.append((
-            f"pct_{(j - 1) * 6 + k:03d}",
-            "DESCRIPTION" if k % 2 == 1 else "SIZE_GUIDE",
-            f"{brand_name} Template {k}",
-            json.dumps({"tone": "premium", "length": "short"} if k % 2 == 1 else {"sizes": ["S", "M", "L"]}),
-            brand_id,
-            member_user_ids[(j - 1) % len(member_user_ids)],
-            now.isoformat() + "Z",
-            now.isoformat() + "Z",
-        ))
-
-for idx in range(len(brands) * 6 + 1, 51):
-    brand_id = brands[(idx - 1) % len(brands)][0]
+for i in range(1, 101):
+    brand_id = f"br_{(i % 50) or 50:03d}"
     templates.append((
-        f"pct_{idx:03d}",
-        "DESCRIPTION",
-        f"Additional Template {idx}",
-        json.dumps({"tone": "standard", "length": "medium"}),
+        f"pct_{i:03d}",
+        "DESCRIPTION" if i % 2 == 1 else "SIZE_GUIDE",
+        f"Template {i}",
+        json.dumps({"tone": "premium", "length": "short"} if i % 2 == 1 else {"sizes": ["S", "M", "L"]}),
         brand_id,
-        member_user_ids[(idx - 1) % len(member_user_ids)],
+        "usr_admin",
         now.isoformat() + "Z",
         now.isoformat() + "Z",
     ))
 
+# 6. Products (Increase to 100+)
 product_rows = []
-for idx in range(1, 61):
-    brand = brands[(idx - 1) % len(brands)][0]
-    cat = categories[(idx - 1) % len(categories)][0]
-    subcat = categories[((idx - 1) + 1) % len(categories)][0]
-    if subcat == "cat_women":
-        subcat = "cat_tops"
-    name = f"Product {idx}"
+for i in range(1, 101):
+    brand_id = f"br_{(i % 50) or 50:03d}"
+    cat = categories[i % 5][0] # Top cat
+    subcat = categories[5 + (i % 45)][0] # Sub cat
+    name = f"Product {i}"
     product_rows.append((
-        f"prd_{idx:03d}",
-        brand,
+        f"prd_{i:03d}",
+        brand_id,
         "APPROVED",
         name,
         name.lower().replace(" ", "-"),
-        f"Description for {name}.",
-        "WOMEN",
-        ["Black", "White", "Red", "Navy", "Rose"][idx % 5],
-        ["Top", "Dress", "Knitwear", "Accessory", "Loungewear", "Activewear"][idx % 6],
-        4200.00 + idx * 10,
-        3690.00 + idx * 10,
-        12.0 if idx % 2 == 0 else 10.0,
-        3690 + idx * 5,
+        f"Detailed description for {name}.",
+        "WOMEN" if i % 2 == 0 else "MEN",
+        ["Black", "White", "Red", "Navy", "Green"][i % 5],
+        ["Top", "Dress", "Knitwear", "Accessory", "Bottom"][i % 5],
+        5000.00 + i * 20,
+        4500.00 + i * 20,
+        10.0,
+        4500 + i * 20,
         cat,
         subcat,
-        json.dumps(["S", "M", "L"] if idx % 3 == 0 else ["M", "L"]),
-        json.dumps(["new", "season"] if idx % 2 == 0 else ["classic", "everyday"]),
-        f"https://cdn.example.com/products/prd_{idx:03d}.jpg",
-        20 + idx,
+        json.dumps(["S", "M", "L"]),
+        json.dumps(["new", "featured"]),
+        f"https://cdn.example.com/products/prd_{i:03d}.jpg",
+        50 + i,
         "true",
         now.isoformat() + "Z",
         now.isoformat() + "Z",
     ))
 
+# 7. Carts & Cart Items (Increase to 100+)
 carts = []
 cart_items = []
 wishlist = []
-for i in range(1, 51):
-    carts.append((f"cart_{i:03d}", f"usr_{i:03d}", now.isoformat() + "Z", now.isoformat() + "Z"))
+for i in range(1, 101):
+    user_id = f"usr_{i:03d}"
+    carts.append((f"cart_{i:03d}", user_id, now.isoformat() + "Z", now.isoformat() + "Z"))
     for j in range(1, 3):
-        product_id = f"prd_{(i * j) % 60 or 60:03d}"
-        cart_items.append((f"ci_{i:03d}_{j}", f"cart_{i:03d}", product_id, j, "Black" if j % 2 == 0 else "White", "M", now.isoformat() + "Z", now.isoformat() + "Z"))
-    if i <= 50:
-        wishlist.append((f"wl_{i:03d}", f"usr_{i:03d}", f"prd_{(i % 60) or 60:03d}", now.isoformat() + "Z"))
+        product_id = f"prd_{( (i*j) % 100) or 100:03d}"
+        cart_items.append((f"ci_{i:03d}_{j}", f"cart_{i:03d}", product_id, j, "Black", "M", now.isoformat() + "Z", now.isoformat() + "Z"))
+    wishlist.append((f"wl_{i:03d}", user_id, f"prd_{(i % 100) or 100:03d}", now.isoformat() + "Z"))
 
+# 8. Orders & SubOrders & OrderItems (Increase to 100+)
 orders = []
 sub_orders = []
 order_items = []
-for i in range(1, 51):
+for i in range(1, 101):
     user_id = f"usr_{i:03d}"
-    orders.append((f"ord_{i:03d}", user_id, "CONFIRMED" if i % 3 != 0 else "PENDING", "COD" if i % 2 == 0 else "CARD", "PAID" if i % 2 == 1 else "PENDING", 5000 + i * 50, f"Address {i}, City", f"TRK-{1000+i}", now.isoformat() + "Z", now.isoformat() + "Z"))
-    brands_for_order = [brands[i % len(brands)][0], brands[(i + 1) % len(brands)][0]]
-    subtotal = 0
-    for bidx, brand_id in enumerate(brands_for_order, start=1):
+    order_id = f"ord_{i:03d}"
+    orders.append((order_id, user_id, "CONFIRMED", "COD", "PENDING", 8000 + i * 10, f"Street {i}, City", f"TRK-{2000+i}", now.isoformat() + "Z", now.isoformat() + "Z"))
+    
+    # 2 brands per order
+    brand_ids = [f"br_{(i % 50) or 50:03d}", f"br_{((i+1) % 50) or 50:03d}"]
+    for bidx, brand_id in enumerate(brand_ids, start=1):
         sub_id = f"sub_{i:03d}_{bidx}"
-        amount = 3000 + i * 20 + bidx * 100
-        sub_orders.append((sub_id, f"ord_{i:03d}", brand_id, "CONFIRMED", amount, f"SUB-{1000 + i * 10 + bidx}", now.isoformat() + "Z", now.isoformat() + "Z"))
-        for item_count in range(1, 3):
-            prod_index = ((i * bidx * item_count) % 60) or 60
-            product_id = f"prd_{prod_index:03d}"
-            order_items.append((f"oi_{i:03d}_{bidx}_{item_count}", f"ord_{i:03d}", sub_id, product_id, brand_id, item_count, 2500 + prod_index * 5, "Black", "M"))
-            subtotal += 2500 + prod_index * 5
+        sub_orders.append((sub_id, order_id, brand_id, "CONFIRMED", 4000 + i * 5, f"SUB-{2000 + i * 10 + bidx}", now.isoformat() + "Z", now.isoformat() + "Z"))
+        
+        # 2 items per sub-order
+        for item_idx in range(1, 3):
+            prod_id = f"prd_{((i+bidx+item_idx) % 100) or 100:03d}"
+            order_items.append((f"oi_{i:03d}_{bidx}_{item_idx}", order_id, sub_id, prod_id, brand_id, 1, 2000 + i, "Black", "M"))
 
+# 9. Reviews & related (Increase to 100+)
 reviews = []
 review_images = []
 review_votes = []
 review_reports = []
 brand_replies = []
 review_aggregates = []
-for i in range(1, 61):
-    product_id = f"prd_{(i % 60) or 60:03d}"
-    user_id = f"usr_{((i + 5) % 56) or 56:03d}"
-    brand_id = brands[i % len(brands)][0]
-    order_item_id = f"oi_{((i % 50) or 50):03d}_1_1"
-    reviews.append((f"rev_{i:03d}", product_id, user_id, brand_id, order_item_id, (i % 5) + 1, f"Review title {i}", f"This is a sample review for product {product_id}.", "VISIBLE", "true", "usr_admin", "", "", now.isoformat() + "Z", now.isoformat() + "Z"))
-    for j in range(1, 3):
-        review_images.append((f"ri_{i:03d}_{j}", f"rev_{i:03d}", f"https://cdn.example.com/reviews/rev_{i:03d}_{j}.jpg", j-1, now.isoformat() + "Z"))
-    for j in range(1, 4):
-        review_votes.append((f"rhv_{i:03d}_{j}", f"rev_{i:03d}", f"usr_{((i+5*j) % 56) or 56:03d}", "true" if j % 2 == 0 else "false", now.isoformat() + "Z", now.isoformat() + "Z"))
+for i in range(1, 101):
+    product_id = f"prd_{i:03d}"
+    user_id = f"usr_{((i + 10) % 100) or 100:03d}"
+    brand_id = f"br_{(i % 50) or 50:03d}"
+    order_item_id = f"oi_{( (i%100) or 100):03d}_1_1"
+    review_id = f"rev_{i:03d}"
+    reviews.append((review_id, product_id, user_id, brand_id, order_item_id, (i % 5) + 1, f"Review {i}", f"Excellent quality product {i}.", "VISIBLE", "true", "usr_admin", "", "", now.isoformat() + "Z", now.isoformat() + "Z"))
+    review_images.append((f"ri_{i:03d}", review_id, f"https://cdn.example.com/reviews/img_{i:03d}.jpg", 0, now.isoformat() + "Z"))
+    review_votes.append((f"rv_{i:03d}", review_id, f"usr_{((i+1) % 100) or 100:03d}", "true", now.isoformat() + "Z", now.isoformat() + "Z"))
     if i % 2 == 0:
-        review_reports.append((f"rr_{i:03d}", f"rev_{i:03d}", f"usr_{((i+15) % 56) or 56:03d}", "SPAM", f"Example report description for review {i}.", "RESOLVED", "Looks valid.", "usr_admin", now.isoformat() + "Z"))
-    if i % 3 == 0:
-        brand_replies.append((f"brr_{i:03d}", f"rev_{i:03d}", brand_id, f"usr_{((i+20) % 56) or 56:03d}", "Thank you for the review.", now.isoformat() + "Z", now.isoformat() + "Z"))
+        review_reports.append((f"rr_{i:03d}", review_id, f"usr_{((i+2) % 100) or 100:03d}", "SPAM", "Bot review", "RESOLVED", "Fixed", "usr_admin", now.isoformat() + "Z"))
+    if i % 2 == 0:
+        brand_replies.append((f"brr_{i:03d}", review_id, brand_id, f"usr_mgr_{(i%50) or 50:03d}", "Thanks for your feedback!", now.isoformat() + "Z", now.isoformat() + "Z"))
+    review_aggregates.append((f"pra_{i:03d}", product_id, 4.5, 10, 0, 0, 1, 2, 7, now.isoformat() + "Z"))
 
-for i in range(1, 61):
-    review_aggregates.append((f"pra_{i:03d}", f"prd_{i:03d}", float(((i % 5) + 1) * 1.0), i % 10, i % 3, i % 4, i % 5, i % 6, i % 7, now.isoformat() + "Z"))
-
-# Ensure a richer support dataset for reports and replies
-for i in range(len(review_reports) + 1, 51):
-    review_id = f"rev_{((i - 1) % 60) + 1:03d}"
-    review_reports.append((f"rr_{50 + i:03d}", review_id, f"usr_{((i+5) % 56) or 56:03d}", "OTHER", f"Additional moderation note for {review_id}.", "IN_REVIEW", "Pending review.", "usr_admin", now.isoformat() + "Z"))
-
-for i in range(len(brand_replies) + 1, 51):
-    review_id = f"rev_{((i - 1) % 60) + 1:03d}"
-    brand_replies.append((f"brr_{50 + i:03d}", review_id, brands[i % len(brands)][0], f"usr_{((i+20) % 56) or 56:03d}", "Thank you for your detailed review.", now.isoformat() + "Z", now.isoformat() + "Z"))
-
+# 10. Notifications, Payment Methods, Preferences, Activities (Increase to 100+)
 notifications = []
-for i in range(1, 91):
-    user_id = f"usr_{((i % 56) or 56):03d}"
-    brand_id = brands[i % len(brands)][0] if i % 3 == 0 else ""
-    order_id = f"ord_{((i % 50) or 50):03d}"
-    notifications.append((f"ntf_{i:03d}", user_id, brand_id or "", order_id, "ORDER_PLACED" if i % 2 == 0 else "ACCOUNT_UPDATE", f"Notification {i}", f"Message content for notification {i}.", "", "DASHBOARD", "DELIVERED" if i % 2 == 0 else "QUEUED", i % 3, "", "", now.isoformat() + "Z", now.isoformat() + "Z"))
-
 payment_methods = []
-for i in range(1, 71):
-    user_id = f"usr_{((i % 56) or 56):03d}"
-    payment_methods.append((f"upm_{i:03d}", user_id, "CARD" if i % 2 == 0 else "JAZZCASH", f"Card {i}", f"{1000+i:04d}", 6 + (i % 6), 2026 + (i % 4), "true" if i % 5 == 0 else "false", now.isoformat() + "Z", now.isoformat() + "Z"))
-
 notification_preferences = []
-for i in range(1, 57):
-    notification_preferences.append((f"np_{i:03d}", f"usr_{i:03d}", "true", "false" if i % 2 == 0 else "true", "true", "true" if i % 3 != 0 else "false", now.isoformat() + "Z"))
-
 user_activities = []
 for i in range(1, 101):
-    user_id = f"usr_{((i % 56) or 56):03d}"
-    product_id = f"prd_{((i % 60) or 60):03d}" if i % 4 != 0 else ""
-    event_type = ["VIEW_PRODUCT", "SEARCH", "ADD_TO_WISHLIST", "PURCHASE"][i % 4]
-    user_activities.append((
-        f"ua_{i:03d}",
-        user_id,
-        product_id,
-        event_type,
-        "cotton top" if event_type == "SEARCH" else "",
-        "cat_women",
-        "cat_tops",
-        "1.00" if event_type == "VIEW_PRODUCT" else "0.75",
-        json.dumps({"source": "homepage" if event_type == "VIEW_PRODUCT" else "search" if event_type == "SEARCH" else "wishlist"}),
-        now.isoformat() + "Z",
-    ))
+    user_id = f"usr_{i:03d}"
+    notifications.append((f"ntf_{i:03d}", user_id, "", "", "ACCOUNT_UPDATE", "Welcome", "Hello user", "", "DASHBOARD", "DELIVERED", 1, "", "", now.isoformat() + "Z", now.isoformat() + "Z"))
+    payment_methods.append((f"upm_{i:03d}", user_id, "CARD", "Primary Card", "4242", 12, 2028, "true", now.isoformat() + "Z", now.isoformat() + "Z"))
 
+# Update preferences for all users
+for idx, u in enumerate(users):
+    notification_preferences.append((f"np_{idx:03d}", u[0], "true", "true", "true", "true", now.isoformat() + "Z"))
+
+for i in range(1, 151):
+    user_id = users[i % len(users)][0]
+    user_activities.append((f"ua_{i:03d}", user_id, f"prd_{(i % 100) or 100:03d}", "VIEW_PRODUCT", "", "cat_women", "cat_women_1", 1.0, "{}", now.isoformat() + "Z"))
+
+# Write all CSVs
 write_csv("categories.csv", ["category_id", "category_name", "parent_category_id"], categories)
 write_csv("brands.csv", ["id", "name", "slug", "logo_url", "description", "verified", "commission_rate", "api_enabled", "contact_email", "whatsapp_number", "created_at", "updated_at"], brands)
 write_csv("users.csv", ["id", "email", "full_name", "password", "google_id", "auth_provider", "role", "brand_id", "created_at", "updated_at"], users)

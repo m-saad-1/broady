@@ -1,8 +1,51 @@
 category_id,category_name,parent_category_id
 cat_women,Women,
-cat_tops,Tops,cat_women
-cat_dresses,Dresses,cat_women
-cat_knitwear,Knitwear,cat_women
-cat_accessories,Accessories,cat_women
-cat_loungewear,Loungewear,cat_women
-cat_active,Activewear,cat_women
+cat_men,Men,
+cat_kids,Kids,
+cat_home,Home & Living,
+cat_accessories,Accessories,
+cat_women_1,Women Sub 1,cat_women
+cat_men_1,Men Sub 1,cat_men
+cat_kids_1,Kids Sub 1,cat_kids
+cat_home_1,Home Sub 1,cat_home
+cat_acc_1,Acc Sub 1,cat_accessories
+cat_women_2,Women Sub 2,cat_women
+cat_men_2,Men Sub 2,cat_men
+cat_kids_2,Kids Sub 2,cat_kids
+cat_home_2,Home Sub 2,cat_home
+cat_acc_2,Acc Sub 2,cat_accessories
+cat_women_3,Women Sub 3,cat_women
+cat_men_3,Men Sub 3,cat_men
+cat_kids_3,Kids Sub 3,cat_kids
+cat_home_3,Home Sub 3,cat_home
+cat_acc_3,Acc Sub 3,cat_accessories
+cat_women_4,Women Sub 4,cat_women
+cat_men_4,Men Sub 4,cat_men
+cat_kids_4,Kids Sub 4,cat_kids
+cat_home_4,Home Sub 4,cat_home
+cat_acc_4,Acc Sub 4,cat_accessories
+cat_women_5,Women Sub 5,cat_women
+cat_men_5,Men Sub 5,cat_men
+cat_kids_5,Kids Sub 5,cat_kids
+cat_home_5,Home Sub 5,cat_home
+cat_acc_5,Acc Sub 5,cat_accessories
+cat_women_6,Women Sub 6,cat_women
+cat_men_6,Men Sub 6,cat_men
+cat_kids_6,Kids Sub 6,cat_kids
+cat_home_6,Home Sub 6,cat_home
+cat_acc_6,Acc Sub 6,cat_accessories
+cat_women_7,Women Sub 7,cat_women
+cat_men_7,Men Sub 7,cat_men
+cat_kids_7,Kids Sub 7,cat_kids
+cat_home_7,Home Sub 7,cat_home
+cat_acc_7,Acc Sub 7,cat_accessories
+cat_women_8,Women Sub 8,cat_women
+cat_men_8,Men Sub 8,cat_men
+cat_kids_8,Kids Sub 8,cat_kids
+cat_home_8,Home Sub 8,cat_home
+cat_acc_8,Acc Sub 8,cat_accessories
+cat_women_9,Women Sub 9,cat_women
+cat_men_9,Men Sub 9,cat_men
+cat_kids_9,Kids Sub 9,cat_kids
+cat_home_9,Home Sub 9,cat_home
+cat_acc_9,Acc Sub 9,cat_accessories
