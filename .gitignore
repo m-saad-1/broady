@@ -29,3 +29,6 @@ vendor/meilisearch/
 # Local documentation and credential exports
 docs/
 Broady_credentials.csv
+
+# Git worktrees
+.worktrees/
