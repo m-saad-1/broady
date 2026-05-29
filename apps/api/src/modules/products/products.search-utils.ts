@@ -1,5 +1,7 @@
 type CatalogTopCategory = "Men" | "Women" | "Toddler Boys" | "Toddler Girls" | "Junior Boys" | "Junior Girls";
 
+type ProductType = "Top" | "Bottom" | "Footwear" | "Accessories";
+
 const adultCategoryTokenMap: Record<string, CatalogTopCategory> = {
   men: "Men",
   mens: "Men",
@@ -48,15 +50,63 @@ export function expandCatalogTopCategory(
 }
 
 export const subCategoryHintMap: Record<string, string[]> = {
-  shirt: ["T-Shirts", "Polo Shirts", "V-Neck", "Formal Shirts"],
+  shirt: ["Shirts", "Polo Shirts", "T-Shirts"],
   tshirt: ["T-Shirts"],
   tee: ["T-Shirts"],
   polo: ["Polo Shirts"],
-  vneck: ["V-Neck"],
-  pant: ["Trousers", "Jeans", "Joggers", "Cargo Pants"],
-  trouser: ["Trousers"],
+  hoodie: ["Hoodies"],
+  jacket: ["Jackets"],
   jean: ["Jeans"],
+  pant: ["Pants", "Trousers"],
+  trouser: ["Trousers"],
+  skirt: ["Skirts"],
+  sneaker: ["Sneakers"],
+  trainer: ["Trainers"],
+  shoe: ["Shoes"],
+  pump: ["Pumps"],
+  sandal: ["Sandals"],
+  cap: ["Caps"],
+  bag: ["Bags"],
+  belt: ["Belts"],
+  watch: ["Watches"],
 };
+
+const subCategoryToType: Record<string, ProductType> = {
+  Shirts: "Top",
+  "Polo Shirts": "Top",
+  "T-Shirts": "Top",
+  Hoodies: "Top",
+  Jackets: "Top",
+  Jeans: "Bottom",
+  Pants: "Bottom",
+  Trousers: "Bottom",
+  Skirts: "Bottom",
+  Sneakers: "Footwear",
+  Trainers: "Footwear",
+  Shoes: "Footwear",
+  Pumps: "Footwear",
+  Sandals: "Footwear",
+  Caps: "Accessories",
+  Bags: "Accessories",
+  Belts: "Accessories",
+  Watches: "Accessories",
+};
+
+const typeTokenMap: Record<string, ProductType> = {
+  top: "Top",
+  bottom: "Bottom",
+  footwear: "Footwear",
+  shoes: "Footwear",
+  shoe: "Footwear",
+  sneakers: "Footwear",
+  sneaker: "Footwear",
+  trainers: "Footwear",
+  trainer: "Footwear",
+  accessories: "Accessories",
+  accessory: "Accessories",
+};
+
+const sizeTokens = new Set(["xs", "s", "m", "l", "xl", "xxl", "xxxl"]);
 
 export const colorWords = [
   "black",
@@ -135,6 +185,72 @@ export function inferSubCategoryHints(query: string) {
   }
 
   return Array.from(bestHints);
+}
+
+function isJuniorGroup(value: string | undefined): value is CatalogTopCategory {
+  return value === "Junior Boys" || value === "Junior Girls" || value === "Toddler Boys" || value === "Toddler Girls";
+}
+
+function inferSizeToken(tokens: string[]) {
+  for (const token of tokens) {
+    if (sizeTokens.has(token)) return token.toUpperCase();
+    if (/^\d{2}$/.test(token)) return token;
+  }
+  return undefined;
+}
+
+function stripFilterTokens(tokens: string[], filters: Set<string>) {
+  return tokens.filter((token) => !filters.has(token));
+}
+
+export function inferSearchFilters(query: string) {
+  const tokens = tokenizeSearchQuery(query);
+
+  const inferredTopCategory = detectTopCategoryToken(tokens);
+  const hasJuniorsToken = tokens.includes("juniors") || tokens.includes("kids") || tokens.includes("kid");
+  const gender = isJuniorGroup(inferredTopCategory)
+    ? "Juniors"
+    : inferredTopCategory || (hasJuniorsToken ? "Juniors" : undefined);
+  const juniorCategory = isJuniorGroup(inferredTopCategory) ? inferredTopCategory : undefined;
+
+  const subCategoryHints = inferSubCategoryHints(query);
+  const subCategory = subCategoryHints[0];
+  const productType =
+    subCategory ? subCategoryToType[subCategory] : tokens.map((t) => typeTokenMap[t]).find(Boolean);
+
+  const color = tokens.find((token) => colorWords.includes(token));
+  const size = inferSizeToken(tokens);
+
+  const filterTokens = new Set<string>();
+  if (gender) {
+    filterTokens.add(gender.toLowerCase());
+  }
+  if (juniorCategory) {
+    juniorCategory
+      .toLowerCase()
+      .split(/\s+/)
+      .forEach((token) => filterTokens.add(token));
+  }
+  if (productType) filterTokens.add(productType.toLowerCase());
+  if (subCategory) {
+    subCategory.toLowerCase().split(/\s+/).forEach((token) => filterTokens.add(token));
+  }
+  if (color) filterTokens.add(color);
+  if (size) filterTokens.add(size.toLowerCase());
+
+  const normalizedQuery = stripFilterTokens(tokens, filterTokens).join(" ").trim() || query;
+
+  return {
+    normalizedQuery,
+    inferredTopCategory,
+    gender,
+    juniorCategory,
+    productType,
+    subCategory,
+    subCategoryHints,
+    size,
+    color,
+  };
 }
 
 export function inferQueryCategory(query: string) {

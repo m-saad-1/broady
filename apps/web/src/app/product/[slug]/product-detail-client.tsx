@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ProductImage } from "@/components/ui/product-image";
 import { addWishlistProduct, removeWishlistProduct, trackUserBehaviorEvent } from "@/lib/api";
 import { getProductPricing } from "@/lib/pricing";
@@ -20,9 +20,26 @@ type Props = {
 export function ProductDetailClient({ product }: Props) {
   const [hasHydrated, setHasHydrated] = useState(false);
   const [selectedSize, setSelectedSize] = useState(product.sizes[0] || "");
-  const [selectedColor, setSelectedColor] = useState(product.color || "Black");
-  const [openPanel, setOpenPanel] = useState<"sizeGuide" | "deliveriesReturns" | "shippingDelivery" | "fabricCare" | null>(null);
+  const [selectedColor, setSelectedColor] = useState(product.color || "");
+  const [openPanel, setOpenPanel] = useState<string | null>(null);
   const [zoomOpen, setZoomOpen] = useState(false);
+  const galleryImages = useMemo(() => {
+    const urls = (product.images || [])
+      .slice()
+      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+      .map((image) => image.cdnUrl || image.url || image.sourceUrl || "")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    const all = [product.imageUrl, ...urls].map((entry) => (entry || "").trim()).filter(Boolean);
+    const unique: string[] = [];
+    for (const image of all) {
+      if (!unique.some((existing) => existing.toLowerCase() === image.toLowerCase())) {
+        unique.push(image);
+      }
+    }
+    return unique;
+  }, [product.imageUrl, product.images]);
+  const [activeImage, setActiveImage] = useState(galleryImages[0] || product.imageUrl);
 
   const user = useAuthStore((state) => state.user);
   const addToCart = useCartStore((state) => state.addToCart);
@@ -34,10 +51,176 @@ export function ProductDetailClient({ product }: Props) {
   const wishlistActive = hasHydrated ? isInWishlist : false;
   const renderNow = useStableNow();
   const pricing = useMemo(() => getProductPricing(product, renderNow), [product, renderNow]);
+  const availableColors = useMemo(() => {
+    const fromArray = Array.isArray(product.colors) ? product.colors : [];
+    const fromColor = product.color
+      ? product.color
+          .split(/,|\/|\|/)
+          .map((entry) => entry.trim())
+          .filter(Boolean)
+      : [];
+    return Array.from(new Set([...fromArray, ...fromColor].map((entry) => entry.toLowerCase())))
+      .map((normalized) => [...fromArray, ...fromColor].find((entry) => entry.toLowerCase() === normalized) || normalized)
+      .filter(Boolean);
+  }, [product.color, product.colors]);
+
+  const detailPanels = useMemo(() => {
+    const panels: Array<{ key: string; title: string; content: ReactNode }> = [];
+
+    const sizeGuideImageUrl = product.sizeGuide?.imageUrl || product.detail?.sizeGuideImageUrl || undefined;
+    const sizeGuideTextDetails = product.detail?.sizeGuideText ? [product.detail.sizeGuideText] : [];
+    const hasSizeGuideEntries = Boolean(product.sizeGuide?.entries?.length);
+    const hasSizeGuideImage = Boolean(sizeGuideImageUrl);
+    const hasSizeGuideDetails = Boolean(product.sizeGuide?.details?.length || sizeGuideTextDetails.length);
+    if (hasSizeGuideEntries || hasSizeGuideImage || hasSizeGuideDetails) {
+      panels.push({
+        key: "sizeGuide",
+        title: "Size Guide",
+        content: (
+          <div className="space-y-3">
+            {sizeGuideImageUrl ? (
+              <div className="relative h-48 overflow-hidden border border-zinc-200">
+                <ProductImage src={sizeGuideImageUrl} alt={`${product.name} size chart`} fill className="object-contain" sizes="(max-width: 768px) 100vw, 40vw" />
+              </div>
+            ) : null}
+            {product.sizeGuide?.entries?.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse border border-zinc-200 text-xs">
+                  <thead>
+                    <tr className="bg-zinc-50 text-left uppercase tracking-[0.12em] text-zinc-600">
+                      <th className="border border-zinc-200 px-2 py-2">Size</th>
+                      <th className="border border-zinc-200 px-2 py-2">CM</th>
+                      <th className="border border-zinc-200 px-2 py-2">Inches</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {product.sizeGuide.entries.map((entry) => (
+                      <tr key={`size-guide-${entry.size}-${entry.cm}-${entry.inches}`}>
+                        <td className="border border-zinc-200 px-2 py-2">{entry.size}</td>
+                        <td className="border border-zinc-200 px-2 py-2">{entry.cm}</td>
+                        <td className="border border-zinc-200 px-2 py-2">{entry.inches}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+            {product.sizeGuide?.details?.length || sizeGuideTextDetails.length ? (
+              <ul className="list-disc space-y-1 pl-5 text-sm text-zinc-700">
+                {[...(product.sizeGuide?.details || []), ...sizeGuideTextDetails].map((detail) => (
+                  <li key={`size-guide-detail-${detail}`}>{detail}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ),
+      });
+    }
+
+    if (product.deliveriesReturns && (product.deliveriesReturns.deliveryTime || product.deliveriesReturns.returnPolicy || product.deliveriesReturns.refundConditions)) {
+      panels.push({
+        key: "deliveriesReturns",
+        title: "Deliveries & Returns",
+        content: (
+          <div className="space-y-2 text-sm text-zinc-700">
+            {product.deliveriesReturns.deliveryTime ? <p><span className="font-semibold">Delivery Time:</span> {product.deliveriesReturns.deliveryTime}</p> : null}
+            {product.deliveriesReturns.returnPolicy ? <p><span className="font-semibold">Return Policy:</span> {product.deliveriesReturns.returnPolicy}</p> : null}
+            {product.deliveriesReturns.refundConditions ? <p><span className="font-semibold">Refund Conditions:</span> {product.deliveriesReturns.refundConditions}</p> : null}
+          </div>
+        ),
+      });
+    }
+
+    if (
+      (product.shippingDelivery && (product.shippingDelivery.estimatedDeliveryTime || product.shippingDelivery.regions?.length || product.shippingDelivery.charges)) ||
+      (product.shipping && (product.shipping.deliveryText || product.shipping.shippingFee != null || product.shipping.returnWindowDays != null || product.shipping.exchangeWindowDays != null))
+    ) {
+      panels.push({
+        key: "shippingDelivery",
+        title: "Shipping & Delivery",
+        content: (
+          <div className="space-y-2 text-sm text-zinc-700">
+            {product.shippingDelivery?.estimatedDeliveryTime ? <p><span className="font-semibold">Estimated Delivery:</span> {product.shippingDelivery.estimatedDeliveryTime}</p> : null}
+            {product.shippingDelivery?.regions?.length ? <p><span className="font-semibold">Regions:</span> {product.shippingDelivery.regions.join(", ")}</p> : null}
+            {product.shippingDelivery?.charges ? <p><span className="font-semibold">Charges:</span> {product.shippingDelivery.charges}</p> : null}
+            {product.shipping?.deliveryText ? <p><span className="font-semibold">Delivery:</span> {product.shipping.deliveryText}</p> : null}
+            {product.shipping?.shippingFee != null ? <p><span className="font-semibold">Shipping Fee:</span> {formatPkr(product.shipping.shippingFee)}</p> : null}
+            {product.shipping?.returnWindowDays != null ? <p><span className="font-semibold">Return Window:</span> {product.shipping.returnWindowDays} days</p> : null}
+            {product.shipping?.exchangeWindowDays != null ? <p><span className="font-semibold">Exchange Window:</span> {product.shipping.exchangeWindowDays} days</p> : null}
+          </div>
+        ),
+      });
+    }
+
+    if (product.fabricCare && (product.fabricCare.fabricType || product.fabricCare.careInstructions?.length)) {
+      panels.push({
+        key: "fabricCare",
+        title: "Fabric & Care",
+        content: (
+          <div className="space-y-2 text-sm text-zinc-700">
+            {product.fabricCare.fabricType ? <p><span className="font-semibold">Fabric:</span> {product.fabricCare.fabricType}</p> : null}
+            {product.fabricCare.careInstructions?.length ? (
+              <div>
+                <p className="font-semibold">Care Instructions:</p>
+                <ul className="list-disc space-y-1 pl-5">
+                  {product.fabricCare.careInstructions.map((instruction) => (
+                    <li key={`care-${instruction}`}>{instruction}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        ),
+      });
+    }
+
+    const structuredDetails = [
+      ["Fabric Composition", product.detail?.fabricComposition],
+      ["Care Guide", product.detail?.careGuide],
+      ["Fit Details", product.detail?.fitDetails],
+      ["Model Details", product.detail?.modelDetails],
+      ["Material Details", product.detail?.materialDetails],
+      ["Origin", product.detail?.origin],
+      ["Package Includes", product.detail?.packageIncludes],
+      ["Return / Exchange", product.detail?.returnExchangePolicy],
+      ["Disclaimer", product.detail?.disclaimer],
+    ].filter(([, value]) => typeof value === "string" && value.trim());
+
+    if (structuredDetails.length) {
+      panels.push({
+        key: "productDetails",
+        title: "Product Details",
+        content: (
+          <div className="space-y-2 text-sm text-zinc-700">
+            {structuredDetails.map(([label, value]) => (
+              <p key={`${label}-${value}`}><span className="font-semibold">{label}:</span> {value}</p>
+            ))}
+          </div>
+        ),
+      });
+    }
+
+    return panels;
+  }, [product.deliveriesReturns, product.detail, product.fabricCare, product.name, product.shipping, product.shippingDelivery, product.sizeGuide]);
+
+  const additionalInfo = useMemo(
+    () =>
+      Array.isArray(product.additionalInfo)
+        ? product.additionalInfo.filter((item) => item?.label?.trim() && item?.value?.trim())
+        : [],
+    [product.additionalInfo],
+  );
 
   useEffect(() => {
     setHasHydrated(true);
   }, []);
+
+  useEffect(() => {
+    if (!availableColors.length) return;
+    if (!selectedColor || !availableColors.some((color) => color.toLowerCase() === selectedColor.toLowerCase())) {
+      setSelectedColor(availableColors[0] || "");
+    }
+  }, [availableColors, selectedColor]);
 
   useEffect(() => {
     if (!user) return;
@@ -52,8 +235,17 @@ export function ProductDetailClient({ product }: Props) {
     });
   }, [product.id, product.subCategory, product.topCategory, user]);
 
+  useEffect(() => {
+    const nextImage = galleryImages[0] || product.imageUrl;
+    if (!nextImage) return;
+    if (!activeImage || !galleryImages.some((image) => image.toLowerCase() === activeImage.toLowerCase())) {
+      setActiveImage(nextImage);
+    }
+  }, [activeImage, galleryImages, product.imageUrl]);
+
   const badge = useMemo(() => {
     if (pricing.hasDiscount) return `-${pricing.discountPercentage}%`;
+    if (product.label) return product.label;
     if (product.badge) return product.badge;
     if (product.stock <= 0) return "Out of Stock";
     if (product.pricePkr < 3000) return "Sale";
@@ -94,11 +286,29 @@ export function ProductDetailClient({ product }: Props) {
           title="Click to zoom"
           aria-label="Zoom product image"
         >
-          <ProductImage src={product.imageUrl} alt={displayTitle} fill className="object-cover" sizes="(max-width: 768px) 100vw, 60vw" priority />
+          <ProductImage src={activeImage || product.imageUrl} alt={displayTitle} fill className="object-cover" sizes="(max-width: 768px) 100vw, 60vw" priority />
           <span className="absolute bottom-3 right-3 border border-black bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]">
             Zoom
           </span>
         </button>
+        {galleryImages.length > 1 ? (
+          <div className="grid grid-cols-5 gap-2 sm:grid-cols-6">
+            {galleryImages.map((image, index) => {
+              const isActive = (activeImage || "").toLowerCase() === image.toLowerCase();
+              return (
+                <button
+                  key={`${image}-${index}`}
+                  type="button"
+                  onClick={() => setActiveImage(image)}
+                  className={`relative aspect-square overflow-hidden border ${isActive ? "border-black" : "border-zinc-300"}`}
+                  aria-label={`View image ${index + 1}`}
+                >
+                  <ProductImage src={image} alt={`${displayTitle} image ${index + 1}`} fill className="object-cover" sizes="20vw" />
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
 
       <div className="space-y-5 border border-zinc-300 p-6 md:col-span-5">
@@ -130,6 +340,7 @@ export function ProductDetailClient({ product }: Props) {
             Stock: {product.stock > 0 ? `${product.stock} available` : "Out of stock"}
           </p>
           <p className="text-zinc-500">{product.topCategory} / {product.subCategory}</p>
+          {product.fit ? <p className="text-zinc-500">Fit: {product.fit}</p> : null}
         </div>
 
         <div className="space-y-2">
@@ -151,7 +362,7 @@ export function ProductDetailClient({ product }: Props) {
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">Color</p>
           <div className="flex flex-wrap gap-2">
-            {(product.color ? [product.color] : ["Black", "White"]).map((color) => (
+            {(availableColors.length ? availableColors : [product.color || "Default"]).map((color) => (
               <button
                 key={color}
                 type="button"
@@ -238,89 +449,9 @@ export function ProductDetailClient({ product }: Props) {
           </button>
         </div>
 
-        <section className="space-y-3 p-0">
-          {[
-            {
-              key: "sizeGuide" as const,
-              title: "Size Guide",
-              content: product.sizeGuide?.entries?.length ? (
-                <div className="space-y-3">
-                  {product.sizeGuide.imageUrl ? (
-                    <div className="relative h-48 overflow-hidden border border-zinc-200">
-                      <ProductImage src={product.sizeGuide.imageUrl} alt={`${product.name} size chart`} fill className="object-contain" sizes="(max-width: 768px) 100vw, 40vw" />
-                    </div>
-                  ) : null}
-                  <div className="overflow-x-auto">
-                    <table className="w-full border-collapse border border-zinc-200 text-xs">
-                      <thead>
-                        <tr className="bg-zinc-50 text-left uppercase tracking-[0.12em] text-zinc-600">
-                          <th className="border border-zinc-200 px-2 py-2">Size</th>
-                          <th className="border border-zinc-200 px-2 py-2">CM</th>
-                          <th className="border border-zinc-200 px-2 py-2">Inches</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {product.sizeGuide.entries.map((entry) => (
-                          <tr key={`size-guide-${entry.size}-${entry.cm}-${entry.inches}`}>
-                            <td className="border border-zinc-200 px-2 py-2">{entry.size}</td>
-                            <td className="border border-zinc-200 px-2 py-2">{entry.cm}</td>
-                            <td className="border border-zinc-200 px-2 py-2">{entry.inches}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-zinc-600">Size guide will be updated soon.</p>
-              ),
-            },
-            {
-              key: "deliveriesReturns" as const,
-              title: "Deliveries & Returns",
-              content: product.deliveriesReturns ? (
-                <div className="space-y-2 text-sm text-zinc-700">
-                  <p><span className="font-semibold">Delivery Time:</span> {product.deliveriesReturns.deliveryTime}</p>
-                  <p><span className="font-semibold">Return Policy:</span> {product.deliveriesReturns.returnPolicy}</p>
-                  <p><span className="font-semibold">Refund Conditions:</span> {product.deliveriesReturns.refundConditions}</p>
-                </div>
-              ) : (
-                <p className="text-sm text-zinc-600">Delivery and return policy will be updated soon.</p>
-              ),
-            },
-            {
-              key: "shippingDelivery" as const,
-              title: "Shipping & Delivery",
-              content: product.shippingDelivery ? (
-                <div className="space-y-2 text-sm text-zinc-700">
-                  <p><span className="font-semibold">Estimated Delivery:</span> {product.shippingDelivery.estimatedDeliveryTime}</p>
-                  <p><span className="font-semibold">Regions:</span> {product.shippingDelivery.regions.join(", ")}</p>
-                  {product.shippingDelivery.charges ? <p><span className="font-semibold">Charges:</span> {product.shippingDelivery.charges}</p> : null}
-                </div>
-              ) : (
-                <p className="text-sm text-zinc-600">Shipping details will be updated soon.</p>
-              ),
-            },
-            {
-              key: "fabricCare" as const,
-              title: "Fabric & Care",
-              content: product.fabricCare ? (
-                <div className="space-y-2 text-sm text-zinc-700">
-                  <p><span className="font-semibold">Fabric:</span> {product.fabricCare.fabricType}</p>
-                  <div>
-                    <p className="font-semibold">Care Instructions:</p>
-                    <ul className="list-disc space-y-1 pl-5">
-                      {product.fabricCare.careInstructions.map((instruction) => (
-                        <li key={`care-${instruction}`}>{instruction}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-zinc-600">Fabric and care details will be updated soon.</p>
-              ),
-            },
-          ].map((panel) => {
+        {detailPanels.length ? (
+          <section className="space-y-3 p-0">
+            {detailPanels.map((panel) => {
             const isOpen = openPanel === panel.key;
 
             return (
@@ -336,8 +467,22 @@ export function ProductDetailClient({ product }: Props) {
                 {isOpen ? <div className="w-full px-4 py-3">{panel.content}</div> : null}
               </article>
             );
-          })}
-        </section>
+            })}
+          </section>
+        ) : null}
+
+        {additionalInfo.length ? (
+          <section className="space-y-3 border border-zinc-300 p-4">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-600">Additional Details</h2>
+            <div className="space-y-2 text-sm text-zinc-700">
+              {additionalInfo.map((entry) => (
+                <p key={`${entry.label}-${entry.value}`}>
+                  <span className="font-semibold">{entry.label}:</span> {entry.value}
+                </p>
+              ))}
+            </div>
+          </section>
+        ) : null}
       </div>
 
       {zoomOpen ? (
@@ -350,7 +495,7 @@ export function ProductDetailClient({ product }: Props) {
             >
               Close
             </button>
-            <ProductImage src={product.imageUrl} alt={`${product.name} zoomed`} fill className="object-contain" sizes="100vw" />
+            <ProductImage src={activeImage || product.imageUrl} alt={`${product.name} zoomed`} fill className="object-contain" sizes="100vw" />
           </div>
         </div>
       ) : null}

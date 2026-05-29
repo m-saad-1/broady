@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { ProductImage } from "@/components/ui/product-image";
-import { getBrandDashboardOrder, updateBrandOrderStatus } from "@/lib/api";
+import { cancelBrandOrder, getBrandDashboardOrder, updateBrandOrderStatus } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/media-url";
+import { getCancelledOrderItemIds } from "@/lib/order-cancellation";
 import { getOrderStatusLabel, getOrderStatusOptions, getOrderStatusTone } from "@/lib/order-status";
 import { formatPkr } from "@/lib/utils";
 import { useToastStore } from "@/stores/toast-store";
@@ -47,11 +48,16 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState(false);
+  const [openCancelModal, setOpenCancelModal] = useState(false);
+  const [cancelReasonCode, setCancelReasonCode] = useState<"OUT_OF_STOCK" | "ITEM_DAMAGED">("OUT_OF_STOCK");
+  const [cancelNote, setCancelNote] = useState("");
+  const [selectedCancelItemIds, setSelectedCancelItemIds] = useState<string[]>([]);
   const [draft, setDraft] = useState<{
     status: OrderStatus;
     trackingId: string;
+    courierName: string;
+    estimatedDelivery: string;
     note: string;
-    customerNote: string;
     failureReason: string;
     failureReasonMessage: string;
     nextAttemptDate: string;
@@ -65,8 +71,9 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
       setDraft({
         status: nextOrder.status,
         trackingId: nextOrder.trackingId || "",
+        courierName: nextOrder.courierName || "",
+        estimatedDelivery: nextOrder.estimatedDelivery || "",
         note: "",
-        customerNote: "",
         failureReason: "",
         failureReasonMessage: "",
         nextAttemptDate: "",
@@ -113,8 +120,9 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
       await updateBrandOrderStatus(order.id, {
         status: draft.status,
         trackingId: draft.trackingId.trim() || undefined,
+        courierName: draft.courierName.trim() || undefined,
+        estimatedDelivery: draft.estimatedDelivery.trim() || undefined,
         note: draft.note.trim() || undefined,
-        customerNote: draft.customerNote.trim() || undefined,
         failureReason: draft.failureReason.trim() || undefined,
         failureReasonMessage: draft.failureReasonMessage.trim() || undefined,
         nextAttemptDate: draft.nextAttemptDate ? new Date(draft.nextAttemptDate) : undefined,
@@ -134,6 +142,33 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
     return `Order ${order.id} will be updated to ${draft.status}${draft.trackingId ? ` with tracking ${draft.trackingId}` : ""}.`;
   }, [draft, order]);
 
+  const canCancelBeforeShipment = order ? ["PENDING", "CONFIRMED", "PROCESSING"].includes(order.status) : false;
+
+  const applyCancel = async () => {
+    if (!order) return;
+    if (!selectedCancelItemIds.length) {
+      pushToast("Select at least one item to cancel.", "error");
+      return;
+    }
+    setSaving(true);
+    try {
+      await cancelBrandOrder(order.id, {
+        reasonCode: cancelReasonCode,
+        note: cancelNote.trim() || undefined,
+        orderItemIds: selectedCancelItemIds,
+      });
+      pushToast("Order canceled successfully.", "success");
+      setCancelNote("");
+      setOpenCancelModal(false);
+      await loadOrder();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to cancel order";
+      pushToast(message, "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) {
     return <p className="text-sm text-zinc-600">Loading order details...</p>;
   }
@@ -152,6 +187,7 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
 
   const customerName = order.user?.fullName || "Customer";
   const customerEmail = order.user?.email || "Email unavailable";
+  const cancelledItemIds = getCancelledOrderItemIds(order.statusLogs);
 
   return (
     <div className="space-y-8">
@@ -173,6 +209,8 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
         <div>
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Tracking</p>
           <p className="mt-2 text-sm font-semibold">{order.trackingId || "Not assigned"}</p>
+          {order.courierName && <p className="mt-2 text-sm text-zinc-600">Courier: {order.courierName}</p>}
+          {order.estimatedDelivery && <p className="mt-2 text-sm text-zinc-600">Estimated: {formatDateTime(order.estimatedDelivery)}</p>}
           <p className="mt-2 text-sm text-zinc-600">Delivery attempts: {order.deliveryAttempts || 0}</p>
           {order.failureReason ? <p className="mt-2 text-sm text-orange-800">Failure reason: {order.failureReason}</p> : null}
           {order.nextAttemptDate ? <p className="mt-2 text-sm text-blue-800">Next attempt: {formatDateTime(order.nextAttemptDate)}</p> : null}
@@ -201,7 +239,25 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
                     : "border-zinc-300 bg-white"
             }`}
             value={draft.status}
-            onChange={(event) => setDraft((current) => current ? { ...current, status: event.target.value as OrderStatus } : current)}
+            onChange={(event) =>
+              setDraft((current) => {
+                if (!current) return current;
+                const nextStatus = event.target.value as OrderStatus;
+                const hasEstimated = Boolean(current.estimatedDelivery?.trim());
+                if (hasEstimated || (nextStatus !== "SHIPPED" && nextStatus !== "OUT_FOR_DELIVERY")) {
+                  return { ...current, status: nextStatus };
+                }
+
+                const now = new Date();
+                const autoDate = new Date(now.getTime() + (nextStatus === "OUT_FOR_DELIVERY" ? 24 : 72) * 60 * 60 * 1000);
+                const yyyy = autoDate.getFullYear();
+                const mm = String(autoDate.getMonth() + 1).padStart(2, "0");
+                const dd = String(autoDate.getDate()).padStart(2, "0");
+                const hh = String(autoDate.getHours()).padStart(2, "0");
+                const min = String(autoDate.getMinutes()).padStart(2, "0");
+                return { ...current, status: nextStatus, estimatedDelivery: `${yyyy}-${mm}-${dd}T${hh}:${min}` };
+              })
+            }
           >
             <option value={order.status} disabled>
               Current: {getOrderStatusLabel(order.status)}
@@ -210,14 +266,29 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
               <option key={status} value={status}>{status}</option>
             ))}
           </select>
-          <button
-            type="button"
-            onClick={() => setPendingConfirm(true)}
-            disabled={saving}
-            className="h-10 border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-50"
-          >
-            {saving ? "Saving" : "Apply Update"}
-          </button>
+          <div className="flex items-center gap-2">
+            {canCancelBeforeShipment ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedCancelItemIds(order.items.map((item) => item.id));
+                  setOpenCancelModal(true);
+                }}
+                disabled={saving}
+                className="h-10 border border-red-300 bg-red-50 px-4 text-xs font-semibold uppercase tracking-[0.12em] text-red-700 disabled:opacity-50"
+              >
+                Cancel Order
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setPendingConfirm(true)}
+              disabled={saving}
+              className="h-10 border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-50"
+            >
+              {saving ? "Saving" : "Apply Update"}
+            </button>
+          </div>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <input
@@ -226,17 +297,30 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
             value={draft.trackingId}
             onChange={(event) => setDraft((current) => current ? { ...current, trackingId: event.target.value } : current)}
           />
-          <input
+          <select
             className="h-10 border border-zinc-300 px-3 text-sm"
-            placeholder="Internal note"
-            value={draft.note}
-            onChange={(event) => setDraft((current) => current ? { ...current, note: event.target.value } : current)}
+            value={draft.courierName}
+            onChange={(event) => setDraft((current) => current ? { ...current, courierName: event.target.value } : current)}
+          >
+            <option value="">-- Select Courier (Optional) --</option>
+            <option value="Leopards">Leopards</option>
+            <option value="TCS">TCS</option>
+            <option value="Call Courier">Call Courier</option>
+            <option value="Trax">Trax</option>
+            <option value="Other">Other</option>
+          </select>
+          <input
+            type="datetime-local"
+            className="h-10 border border-zinc-300 px-3 text-sm"
+            placeholder="Estimated Delivery (optional)"
+            value={draft.estimatedDelivery}
+            onChange={(event) => setDraft((current) => current ? { ...current, estimatedDelivery: event.target.value } : current)}
           />
           <input
-            className="h-10 border border-zinc-300 px-3 text-sm md:col-span-2"
-            placeholder="Customer-visible note"
-            value={draft.customerNote}
-            onChange={(event) => setDraft((current) => current ? { ...current, customerNote: event.target.value } : current)}
+            className="h-10 border border-zinc-300 px-3 text-sm"
+            placeholder="Internal note (for ops/admin logs)"
+            value={draft.note}
+            onChange={(event) => setDraft((current) => current ? { ...current, note: event.target.value } : current)}
           />
 
           {draft.status === "DELIVERY_FAILED" && (
@@ -278,8 +362,10 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
       <section className="space-y-3 border border-zinc-300 p-5">
         <h2 className="font-heading text-3xl uppercase">Items</h2>
         <div className="space-y-3">
-          {order.items.map((item) => (
-            <article key={item.id} className="grid gap-4 border-b border-zinc-200 py-3 md:grid-cols-[80px_1fr_auto] md:items-center">
+          {order.items.map((item) => {
+            const isCancelled = order.status === "CANCELED" || cancelledItemIds.has(item.id);
+            return (
+            <article key={item.id} className={`grid gap-4 border-b py-3 md:grid-cols-[80px_1fr_auto] md:items-center ${isCancelled ? "border-red-100 bg-red-50 px-2" : "border-zinc-200"}`}>
               <div className="relative h-20 w-20 overflow-hidden border border-zinc-200 bg-zinc-50">
                 <ProductImage
                   src={resolveProductImageSrc(item.product.imageUrl)}
@@ -298,13 +384,21 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
                   <p className="font-semibold">Color: {item.selectedColor || "Not specified"}</p>
                   <p className="font-semibold">Quantity: {item.quantity}</p>
                   <p className="font-semibold">Price: {formatPkr(item.unitPricePkr)}</p>
+                  {isCancelled ? <p className="font-semibold uppercase tracking-[0.12em] text-red-700">Cancelled</p> : null}
                 </div>
               </div>
-              <Link href={`/product/${item.product.slug}`} className="inline-flex h-9 items-center border border-zinc-300 px-3 text-xs font-semibold uppercase tracking-[0.12em] leading-9 text-center">
-                Product
-              </Link>
+              {isCancelled ? (
+                <span className="inline-flex h-9 items-center border border-red-200 px-3 text-xs font-semibold uppercase tracking-[0.12em] text-red-700">
+                  Cancelled
+                </span>
+              ) : (
+                <Link href={`/product/${item.product.slug}`} className="inline-flex h-9 items-center border border-zinc-300 px-3 text-xs font-semibold uppercase tracking-[0.12em] leading-9 text-center">
+                  Product
+                </Link>
+              )}
             </article>
-          ))}
+            );
+          })}
         </div>
       </section>
 
@@ -333,6 +427,65 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
           void applyUpdate();
         }}
       />
+      {openCancelModal ? (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/40 p-4" onClick={() => setOpenCancelModal(false)}>
+          <div className="w-full max-w-xl space-y-5 border border-zinc-300 bg-white p-6 shadow-xl" onClick={(event) => event.stopPropagation()}>
+            <div className="space-y-1">
+              <h3 className="font-heading text-2xl uppercase">Cancel Order</h3>
+              <p className="text-sm text-zinc-600">Select items and cancellation reason. This is only allowed before shipment.</p>
+            </div>
+
+            <div className="space-y-3">
+              {order.items.filter((item) => order.status !== "CANCELED" && !cancelledItemIds.has(item.id)).map((item) => (
+                <label key={item.id} className="flex items-center gap-3 border border-zinc-200 p-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={selectedCancelItemIds.includes(item.id)}
+                    onChange={(event) =>
+                      setSelectedCancelItemIds((current) =>
+                        event.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id),
+                      )
+                    }
+                  />
+                  <span className="font-semibold">{item.product.name}</span>
+                  <span className="text-zinc-600">x{item.quantity}</span>
+                </label>
+              ))}
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <select
+                className="h-10 border border-zinc-300 bg-white px-3 text-sm"
+                value={cancelReasonCode}
+                onChange={(event) => setCancelReasonCode(event.target.value as "OUT_OF_STOCK" | "ITEM_DAMAGED")}
+              >
+                <option value="OUT_OF_STOCK">Out of stock</option>
+                <option value="ITEM_DAMAGED">Item damaged</option>
+              </select>
+              <input
+                className="h-10 border border-zinc-300 bg-white px-3 text-sm"
+                placeholder="Optional note"
+                value={cancelNote}
+                onChange={(event) => setCancelNote(event.target.value)}
+              />
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-3">
+              <button type="button" className="h-10 px-4 text-xs font-bold uppercase tracking-[0.12em] text-zinc-600 hover:text-black" onClick={() => setOpenCancelModal(false)}>
+                Close
+              </button>
+              <button
+                type="button"
+                className="h-10 border-2 border-black bg-black px-6 text-xs font-bold uppercase tracking-[0.12em] text-white hover:bg-zinc-800 hover:border-zinc-800 disabled:opacity-50"
+                disabled={saving || selectedCancelItemIds.length === 0}
+                onClick={() => void applyCancel()}
+              >
+                {saving ? "Canceling..." : "Confirm Cancel"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -64,6 +64,8 @@ function mapEventToNotificationType(event: NotificationEvent): NotificationType 
     case "payment_success":
     case "payment_failed":
     case "refund_processed":
+    case "refund_state_updated":
+    case "return_state_updated":
     case "brand_approved":
       return NotificationType.ORDER_STATUS_UPDATED;
     case "product_submitted":
@@ -143,7 +145,9 @@ function isOrderOrPaymentEvent(event: NotificationEvent) {
     event.name === "payment_initiated" ||
     event.name === "payment_success" ||
     event.name === "payment_failed" ||
-    event.name === "refund_processed"
+    event.name === "refund_processed" ||
+    event.name === "refund_state_updated" ||
+    event.name === "return_state_updated"
   );
 }
 
@@ -153,6 +157,23 @@ async function shouldSendEmailForRecipient(input: {
   event: NotificationEvent;
 }) {
   if (!input.recipient.email) return false;
+
+  // Brand email policy:
+  // - Keep email for new order assignment only.
+  // - Suppress brand emails for shipment/delivery/failure/cancellation/status lifecycle updates.
+  if (input.recipient.audience === "BRAND_MEMBERS") {
+    return input.event.name === "order_placed";
+  }
+
+  // Admin should always receive operational email updates for order/payment flows.
+  if (input.recipient.audience === "ADMIN") {
+    return true;
+  }
+
+  // Customer order/payment notifications are transactional; always allow email when channel is enabled.
+  if (input.recipient.audience === "USER" && isOrderOrPaymentEvent(input.event)) {
+    return true;
+  }
 
   if (!input.recipient.userId || !isOrderOrPaymentEvent(input.event)) {
     return true;
@@ -622,6 +643,7 @@ export async function emitNotificationEvent(
     const targetPath = resolveNotificationTargetPath({
       type,
       orderId: event.orderId,
+      subOrderId: "subOrderId" in event ? event.subOrderId : undefined,
       title: template.title,
       message: template.message,
       role:

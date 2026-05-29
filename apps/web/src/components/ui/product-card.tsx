@@ -40,7 +40,7 @@ export function ProductCard({ product }: { product: Product }) {
       ? reviewCountRaw
       : (product as Product & { reviewCount?: number; totalReviews?: number }).totalReviews || 0;
   const defaultSize = product.sizes[0] || "One Size";
-  const defaultColor = product.color || "Black";
+  const defaultColor = (Array.isArray(product.colors) && product.colors[0]) || product.color || "Default";
   const badgeClass =
     pricing.hasDiscount
       ? "border-rose-700 bg-rose-600 text-white"

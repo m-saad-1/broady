@@ -7,10 +7,9 @@ import { ProductCard } from "@/components/ui/product-card";
 import { getProductPricing } from "@/lib/pricing";
 import { useStableNow } from "@/hooks/use-stable-now";
 import {
-  filterProductsBySubCategoryContains,
-  isEligibleSearchQuery,
-  normalizeSearchQuery,
+  filterProductsBySearchQuery,
 } from "@/lib/search-fallback";
+import { inferCatalogFiltersFromQuery, SUBCATEGORY_BY_TYPE } from "@/lib/catalog-search";
 import { fallbackProducts } from "../../lib/mock-data";
 import { getTopCategoryLabel, inferProductType, normalizeProduct } from "@/lib/taxonomy";
 import type { Product } from "@/types/marketplace";
@@ -32,12 +31,12 @@ type CatalogClientProps = {
 
 const SORT_OPTIONS = [
   { value: "latest", label: "Latest" },
-  { value: "price-asc", label: "Price Low" },
-  { value: "price-desc", label: "Price High" },
-  { value: "name", label: "Name A-Z" },
   { value: "featured", label: "Featured" },
-  { value: "in-stock", label: "In Stock" },
+  { value: "name", label: "A-Z" },
+  { value: "price-asc", label: "Price Low to High" },
+  { value: "price-desc", label: "Price High to Low" },
 ] as const;
+
 
 function isFeaturedProduct(product: Product) {
   return (
@@ -89,11 +88,9 @@ async function fetchProducts(params: Record<string, string>) {
       normalized = normalized.filter((product) => normalizedTopValues.includes(product.topCategory.toLowerCase()));
     }
     if (params.q) {
-      normalized = normalized
-        .map((product) => ({ product, score: scoreProductMatch(product, params.q || "") }))
-        .filter((item) => item.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .map((item) => item.product);
+      normalized = filterProductsBySearchQuery(normalized, params.q).map((product) => ({
+        ...product,
+      }));
     }
     if (params.productType)
       normalized = normalized.filter(
@@ -123,6 +120,7 @@ export function CatalogClient({ initialProducts, allProducts, params }: CatalogC
   const now = useStableNow();
 
   const [query, setQuery] = useState(params.q || "");
+  const [correctedFrom, setCorrectedFrom] = useState(params.correctedFrom || "");
   const [topCategory, setTopCategory] = useState(params.topCategory || "");
   const [juniorCategory, setJuniorCategory] = useState(params.juniorCategory || "");
   const [productType, setProductType] = useState(params.productType || "");
@@ -141,6 +139,7 @@ export function CatalogClient({ initialProducts, allProducts, params }: CatalogC
   const activeParams = useMemo(() => {
     const p: Record<string, string> = {};
     if (query) p.q = query;
+    if (correctedFrom) p.correctedFrom = correctedFrom;
     if (topCategory) p.topCategory = topCategory;
     if (juniorCategory) p.juniorCategory = juniorCategory;
     if (productType) p.productType = productType;
@@ -186,6 +185,26 @@ export function CatalogClient({ initialProducts, allProducts, params }: CatalogC
   }, [catalogOptions]);
 
   useEffect(() => {
+    if (!query) return;
+    const inferred = inferCatalogFiltersFromQuery(query);
+    if (inferred.topCategory && inferred.topCategory !== topCategory) {
+      setTopCategory(inferred.topCategory);
+    }
+    if (inferred.juniorCategory && inferred.juniorCategory !== juniorCategory) {
+      setJuniorCategory(inferred.juniorCategory);
+    }
+    if (inferred.productType && inferred.productType !== productType) {
+      setProductType(inferred.productType);
+    }
+    if (inferred.subCategory && inferred.subCategory !== subCategory) {
+      setSubCategory(inferred.subCategory);
+    }
+    if (inferred.size && inferred.size !== size) {
+      setSize(inferred.size);
+    }
+  }, [query]);
+
+  useEffect(() => {
     // Update the browser URL without triggering a server navigation so
     // the client component state is preserved and queries can refetch
     // in-place when filters change.
@@ -222,13 +241,6 @@ export function CatalogClient({ initialProducts, allProducts, params }: CatalogC
 
       return true;
     });
-    const normalizedQuery = normalizeSearchQuery(query);
-
-    if (isEligibleSearchQuery(normalizedQuery)) {
-      items = filterProductsBySubCategoryContains(items, normalizedQuery).sort(
-        (a, b) => scoreProductMatch(b, normalizedQuery) - scoreProductMatch(a, normalizedQuery),
-      );
-    }
 
     if (sort === "price-asc") {
       items.sort((a, b) => getProductPricing(a, now).finalPrice - getProductPricing(b, now).finalPrice);
@@ -238,8 +250,6 @@ export function CatalogClient({ initialProducts, allProducts, params }: CatalogC
       items.sort((a, b) => a.name.localeCompare(b.name));
     } else if (sort === "featured") {
       items.sort((a, b) => (isFeaturedProduct(b) ? 1 : 0) - (isFeaturedProduct(a) ? 1 : 0));
-    } else if (sort === "in-stock") {
-      items.sort((a, b) => (b.stock > 0 ? 1 : 0) - (a.stock > 0 ? 1 : 0));
     }
 
     return items;
@@ -282,8 +292,15 @@ export function CatalogClient({ initialProducts, allProducts, params }: CatalogC
     });
 
     const subCats = [...new Set(matching.map((p) => p.subCategory))];
-    return subCats.sort();
+    const allowed = productType ? SUBCATEGORY_BY_TYPE[productType] || [] : Object.values(SUBCATEGORY_BY_TYPE).flat();
+    return subCats.filter((sub) => allowed.includes(sub)).sort();
   }, [optionSource, selectedTopCategoryValues, productType]);
+
+  useEffect(() => {
+    if (subCategory && !availableSubCategories.includes(subCategory)) {
+      setSubCategory("");
+    }
+  }, [availableSubCategories, subCategory]);
 
   // Get available sizes based on current filters
   const availableSizes = useMemo(() => {
@@ -306,6 +323,7 @@ export function CatalogClient({ initialProducts, allProducts, params }: CatalogC
 
   const clearFilters = () => {
     setQuery("");
+    setCorrectedFrom("");
     setTopCategory("");
     setJuniorCategory("");
     setProductType("");
@@ -447,9 +465,16 @@ export function CatalogClient({ initialProducts, allProducts, params }: CatalogC
       {/* Products Section */}
       <section>
         <div className="flex items-center justify-between border-b border-zinc-300 pb-4">
-          <p className="text-sm text-zinc-600">
-            Showing {filteredProducts.length} of {products.length} products
-          </p>
+          <div className="space-y-1">
+            <p className="text-sm text-zinc-600">
+              Showing {filteredProducts.length} of {products.length} products
+            </p>
+            {correctedFrom && query ? (
+              <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">
+                Showing results for {query}
+              </p>
+            ) : null}
+          </div>
         </div>
 
         {isLoading ? (

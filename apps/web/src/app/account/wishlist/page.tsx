@@ -63,7 +63,7 @@ export default function AccountWishlistPage() {
               </button>
               <Link href={`/product/${product.slug}`} className="block aspect-[3/4] relative overflow-hidden bg-zinc-100 mb-4">
                 <ProductImage
-                  src={resolveMediaUrl(product.images?.[0]?.url || product.imageUrl)}
+                  src={resolveMediaUrl(product.imageUrl)}
                   alt={product.name}
                   fill
                   sizes="(max-width: 768px) 50vw, 25vw"

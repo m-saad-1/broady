@@ -11,10 +11,15 @@ export default async function AdminPage() {
   const token = (await cookies()).get("broady_token")?.value;
   if (!token) redirect("/login?next=/admin");
 
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api"}/auth/me`, {
-    headers: { Cookie: `broady_token=${token}` },
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api"}/auth/me`, {
+      headers: { Cookie: `broady_token=${token}` },
+      cache: "no-store",
+    });
+  } catch {
+    redirect("/login?next=/admin");
+  }
 
   if (!response.ok) redirect("/login?next=/admin");
   const session = (await response.json()) as { user?: { role?: string } };
@@ -28,7 +33,7 @@ export default async function AdminPage() {
         <p className="max-w-3xl text-sm text-zinc-600">Use dedicated pages for brand and product management, and open read-only dashboard views for brand operations.</p>
       </header>
 
-      <section className="grid gap-4 md:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-5">
         <Link href="/admin/brands" className="border border-zinc-300 p-5 transition hover:border-black hover:bg-zinc-50">
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Manage</p>
           <p className="mt-3 font-heading text-3xl uppercase">Brands</p>
@@ -38,6 +43,11 @@ export default async function AdminPage() {
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Manage</p>
           <p className="mt-3 font-heading text-3xl uppercase">Products</p>
           <p className="mt-2 text-sm text-zinc-600">Catalog data, approvals, stock, and product detail routing.</p>
+        </Link>
+        <Link href="/admin/ingestion" className="border border-zinc-300 p-5 transition hover:border-black hover:bg-zinc-50">
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Ingestion</p>
+          <p className="mt-3 font-heading text-3xl uppercase">Imports</p>
+          <p className="mt-2 text-sm text-zinc-600">Review import jobs, failures, queue health, and pending approval fixes.</p>
         </Link>
         <Link href="/admin/brand-dashboard" className="border border-zinc-300 p-5 transition hover:border-black hover:bg-zinc-50">
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Monitor</p>

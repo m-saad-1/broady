@@ -421,7 +421,19 @@ router.get("/notifications", requireAuth, async (req, res) => {
     where: { userId: req.auth!.userId },
     include: {
       channelLogs: true,
-      order: { select: { id: true, status: true, trackingId: true } },
+      order: {
+        select: {
+          id: true,
+          status: true,
+          trackingId: true,
+          subOrders: {
+            select: {
+              id: true,
+              items: { select: { product: { select: { name: true } } } },
+            },
+          },
+        },
+      },
     },
     orderBy: { createdAt: "desc" },
     take: 100,
@@ -432,6 +444,15 @@ router.get("/notifications", requireAuth, async (req, res) => {
       : req.auth?.role === "BRAND" || req.auth?.role === "BRAND_ADMIN" || req.auth?.role === "BRAND_STAFF"
         ? "BRAND"
         : "USER";
+
+  function resolveSubOrderIdForNotification(item: (typeof notifications)[number]) {
+    if (!item.order || !item.message.startsWith("Item(s) ")) return undefined;
+    const itemText = item.message.match(/^Item\(s\)\s+(.+?)\s+have been cancelled/i)?.[1]?.toLowerCase();
+    if (!itemText) return undefined;
+    return item.order.subOrders.find((subOrder) =>
+      subOrder.items.some((orderItem) => itemText.includes(orderItem.product.name.toLowerCase())),
+    )?.id;
+  }
 
   return res.json({
     data: notifications.map((item) => ({
@@ -445,6 +466,7 @@ router.get("/notifications", requireAuth, async (req, res) => {
       targetPath: resolveNotificationTargetPath({
         type: item.type,
         orderId: item.order?.id,
+        subOrderId: resolveSubOrderIdForNotification(item),
         title: item.title,
         message: item.message,
         role: req.auth?.role,

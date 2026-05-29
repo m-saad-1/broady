@@ -17,12 +17,14 @@ export type ProductSearchDocument = {
   salePrice: number | null;
   discountPercentage: number | null;
   gender: string;
+  juniorsGroup?: string;
   color: string;
   productType: string;
   topCategory: string;
   subCategory: string;
   sizes: string[];
   tags: string[];
+  featured?: boolean;
   imageUrl: string;
   stock: number;
   isActive: boolean;

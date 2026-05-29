@@ -4,13 +4,11 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { completeBrandInvite } from "@/lib/auth-client";
-import { useAuthStore } from "@/stores/auth-store";
 
 function BrandInviteContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token") || "";
-  const setUser = useAuthStore((state) => state.setUser);
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -28,9 +26,9 @@ function BrandInviteContent() {
 
     try {
       setIsLoading(true);
-      const user = await completeBrandInvite({ token, password });
-      setUser(user);
-      router.push("/brand/dashboard");
+      const result = await completeBrandInvite({ token, password });
+      setMessage(result.message);
+      router.push(`/verify-reminder?email=${encodeURIComponent(result.user.email)}`);
       router.refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to activate invite.");

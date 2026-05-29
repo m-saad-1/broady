@@ -7,7 +7,7 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "search:fallback:smoke": "node --experimental-strip-types scripts/search-fallback-smoke.mjs"
+    "search:fallback:smoke": "tsx scripts/search-fallback-smoke.ts"
   },
   "dependencies": {
     "@broady/shared": "*",
@@ -34,6 +34,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.0",
     "tailwindcss": "^4",
+    "tsx": "^4.19.3",
     "typescript": "^5"
   }
 }

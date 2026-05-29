@@ -41,7 +41,7 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [creatingProduct, setCreatingProduct] = useState(false);
   const [showAddProductForm, setShowAddProductForm] = useState(false);
-  const [orderDrafts, setOrderDrafts] = useState<Record<string, { status: string; trackingId: string; note: string; customerNote: string; failureReason: string; failureReasonMessage: string }>>({});
+  const [orderDrafts, setOrderDrafts] = useState<Record<string, { status: string; trackingId: string; note: string; failureReason: string; failureReasonMessage: string }>>({});
   const [pendingStatusOrderId, setPendingStatusOrderId] = useState<string | null>(null);
   const [productDrafts, setProductDrafts] = useState<Record<string, Omit<ProductFormValues, "brandId">>>({});
   const [newProduct, setNewProduct] = useState<Omit<ProductFormValues, "brandId">>(createEmptyBrandProductForm());
@@ -79,13 +79,12 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
   }, [loadAll]);
 
   useEffect(() => {
-    const drafts: Record<string, { status: string; trackingId: string; note: string; customerNote: string; failureReason: string; failureReasonMessage: string }> = {};
+    const drafts: Record<string, { status: string; trackingId: string; note: string; failureReason: string; failureReasonMessage: string }> = {};
     for (const order of orders) {
       drafts[order.id] = {
         status: order.status,
         trackingId: order.trackingId || "",
         note: "",
-        customerNote: "",
         failureReason: order.failureReason || "",
         failureReasonMessage: "",
       };
@@ -117,7 +116,6 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
         status: draft.status,
         trackingId: draft.trackingId.trim() || undefined,
         note: draft.note.trim() || undefined,
-        customerNote: draft.customerNote.trim() || undefined,
         failureReason: draft.failureReason.trim() || undefined,
         failureReasonMessage: draft.failureReasonMessage.trim() || undefined,
       });
@@ -294,21 +292,6 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
                     [order.id]: {
                       ...current[order.id],
                       note: value,
-                    },
-                  }));
-                }}
-              />
-              <input
-                className="h-9 border border-zinc-300 px-3 text-xs md:col-span-2"
-                placeholder="Customer-visible note"
-                value={orderDrafts[order.id]?.customerNote || ""}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setOrderDrafts((current) => ({
-                    ...current,
-                    [order.id]: {
-                      ...current[order.id],
-                      customerNote: value,
                     },
                   }));
                 }}

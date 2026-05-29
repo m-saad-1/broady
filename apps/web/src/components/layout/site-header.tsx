@@ -30,8 +30,9 @@ import {
   syncUserCartItems,
 } from "@/lib/api";
 import { fallbackProducts } from "@/lib/mock-data";
-import { filterProductsBySubCategoryContains, isEligibleSearchQuery } from "@/lib/search-fallback";
+import { filterProductsBySearchQuery, filterProductsBySubCategoryContains, isEligibleSearchQuery } from "@/lib/search-fallback";
 import { inferProductType, normalizeProduct, resolveTopCategoryFilter } from "@/lib/taxonomy";
+import { buildCatalogFiltersFromSuggestion, inferCatalogFiltersFromQuery } from "@/lib/catalog-search";
 import { getNotificationHref } from "@/lib/notification-routing";
 import { useAuthStore } from "@/stores/auth-store";
 import { useCartStore } from "@/stores/cart-store";
@@ -55,8 +56,11 @@ const dropdownCardLabelClass = "mt-3 inline-flex text-sm font-medium uppercase t
 type CatalogFilters = {
   q?: string;
   topCategory?: string;
+  juniorCategory?: string;
   productType?: string;
   subCategory?: string;
+  size?: string;
+  correctedFrom?: string;
 };
 
 type CatalogCard = {
@@ -105,8 +109,11 @@ function buildCatalogHref(filters: CatalogFilters) {
   const params = new URLSearchParams();
   if (filters.q) params.set("q", filters.q);
   if (filters.topCategory) params.set("topCategory", filters.topCategory);
+  if (filters.juniorCategory) params.set("juniorCategory", filters.juniorCategory);
   if (filters.productType) params.set("productType", filters.productType);
   if (filters.subCategory) params.set("subCategory", filters.subCategory);
+  if (filters.size) params.set("size", filters.size);
+  if (filters.correctedFrom) params.set("correctedFrom", filters.correctedFrom);
 
   const query = params.toString();
   return query ? `/catalog?${query}` : "/catalog";
@@ -246,7 +253,7 @@ export function SiteHeader() {
     if (activeSuggestionIndex >= 0 && suggestions[activeSuggestionIndex]) {
       applySuggestion(suggestions[activeSuggestionIndex] as SearchSuggestion);
     } else {
-      void runCatalogSearch(searchTerm, topCategoryContext);
+      void navigateToCatalogFromQuery(searchTerm);
     }
   };
 
@@ -265,8 +272,43 @@ export function SiteHeader() {
   };
 
   const applySuggestion = (item: SearchSuggestion) => {
-    const scopedTopCategory = item.topCategory || topCategoryContext;
-    void runCatalogSearch(item.query, scopedTopCategory);
+    const baseFilters = buildCatalogFiltersFromSuggestion(item);
+    const scopedTopCategory = baseFilters.topCategory || topCategoryContext;
+    navigateToCatalog({
+      q: baseFilters.q || item.query,
+      topCategory: scopedTopCategory,
+      juniorCategory: baseFilters.juniorCategory,
+      productType: baseFilters.productType,
+      subCategory: baseFilters.subCategory,
+      size: baseFilters.size,
+    });
+    closeSearch();
+  };
+
+  const navigateToCatalogFromQuery = async (query: string) => {
+    let targetQuery = query;
+    let correctedFrom: string | undefined;
+    try {
+      const suggestionResult = await getProductSearchSuggestions(query, { topCategory: topCategoryContext });
+      if (suggestionResult.correctedQuery) {
+        targetQuery = suggestionResult.correctedQuery;
+        correctedFrom = query;
+      }
+    } catch {
+      // Ignore suggestion fetch errors and fall back to raw query.
+    }
+
+    const inferred = inferCatalogFiltersFromQuery(targetQuery);
+    navigateToCatalog({
+      q: targetQuery,
+      topCategory: inferred.topCategory || topCategoryContext,
+      juniorCategory: inferred.juniorCategory,
+      productType: inferred.productType,
+      subCategory: inferred.subCategory,
+      size: inferred.size,
+      correctedFrom,
+    });
+    closeSearch();
   };
 
   const runCatalogSearch = async (query: string, topCategory?: string) => {
@@ -585,10 +627,7 @@ export function SiteHeader() {
         if (apiLiveResults.length) {
           setLiveResults(apiLiveResults);
         } else if (isEligibleSearchQuery(q)) {
-          const fallbackLive = filterProductsBySubCategoryContains(
-            fallbackProducts.map(normalizeProduct),
-            q,
-          ).slice(0, 6);
+          const fallbackLive = filterProductsBySearchQuery(fallbackProducts.map(normalizeProduct), q).slice(0, 6);
           setLiveResults(fallbackLive);
         } else {
           setLiveResults([]);
@@ -935,7 +974,7 @@ export function SiteHeader() {
                     <button
                       type="button"
                       className="w-full border-t border-zinc-200 px-4 py-3 text-left text-xs uppercase tracking-[0.12em] text-zinc-600 hover:bg-zinc-50"
-                      onClick={() => runCatalogSearch(suggestionsCorrection, topCategoryContext)}
+                      onClick={() => navigateToCatalogFromQuery(suggestionsCorrection)}
                     >
                       Did you mean: {suggestionsCorrection}
                     </button>

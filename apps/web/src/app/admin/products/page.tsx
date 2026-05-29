@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ProductsAdminClient } from "./products-admin-client";
+import { ProductsAdminListClient } from "./products-admin-list-client";
 
 export const metadata = {
   title: "Admin Products | BROADY",
@@ -30,6 +30,9 @@ export default async function AdminProductsPage() {
           <Link href="/admin/products/new" className="inline-flex h-10 items-center border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white">
             Add Product
           </Link>
+          <Link href="/admin/ingestion" className="inline-flex h-10 items-center border border-zinc-300 px-4 text-xs font-semibold uppercase tracking-[0.12em]">
+            Ingestion Control
+          </Link>
           <Link href="/admin/brands" className="inline-flex h-10 items-center border border-zinc-300 px-4 text-xs font-semibold uppercase tracking-[0.12em]">
             Go to Brands
           </Link>
@@ -39,7 +42,7 @@ export default async function AdminProductsPage() {
         </div>
       </header>
 
-      <ProductsAdminClient />
+      <ProductsAdminListClient />
     </main>
   );
 }

@@ -6,24 +6,43 @@ import { expandCatalogTopCategory } from "./products.search-utils.js";
 
 /** Mirrors `productTypeMap` in `products.routes.ts` for filter parity. */
 const productTypeSubcategories: Record<string, string[]> = {
-  Top: ["T-Shirts", "Polo Shirts", "Shirts", "V-Neck", "Formal Shirts", "Hoodies", "Sweatshirts", "Jackets", "Outerwear", "Dresses", "Skirts", "Shorts"],
-  Bottom: ["Jeans", "Trousers", "Joggers", "Cargo Pants", "Skirts", "Shorts"],
-  Footwear: ["Sneakers", "Boots", "Sandals", "Slip Ons", "Loafers", "Derby", "Oxfords", "Ankle Boots"],
-  Accessories: ["Bags", "Belts", "Caps", "Jewelry", "Socks", "Scarves"],
+  Top: ["Shirts", "Polo Shirts", "T-Shirts", "Hoodies", "Jackets"],
+  Bottom: ["Jeans", "Pants", "Trousers", "Skirts"],
+  Footwear: ["Sneakers", "Trainers", "Shoes", "Pumps", "Sandals"],
+  Accessories: ["Caps", "Bags", "Belts", "Watches"],
 };
 
 export type MeilisearchProductSearchFilters = {
-  brand?: string;
+  brandId?: string;
+  brandSlug?: string;
+  gender?: string;
   topCategory?: string;
   juniorCategory?: string;
   productType?: string;
   subCategory?: string;
   subCategoryHints?: string[];
   size?: string;
+  color?: string;
+  featured?: boolean;
   minPrice?: number;
   maxPrice?: number;
   shouldEnforceNameMatch?: boolean;
   nameMatchTokens?: string[];
+};
+
+export type ProductSearchSuggestion = {
+  id: string;
+  label: string;
+  query: string;
+  kind: "query" | "product";
+  topCategory?: string;
+  gender?: string;
+  juniorCategory?: string;
+  productType?: string;
+  subCategory?: string;
+  brand?: string;
+  color?: string;
+  size?: string;
 };
 
 function meiliQuote(value: string): string {
@@ -59,12 +78,19 @@ export function isMeilisearchProductSearchEnabled(): boolean {
 function buildMeilisearchFilters(filters: MeilisearchProductSearchFilters): string[] {
   const parts: string[] = [`isActive = true`, `approvalStatus = "APPROVED"`];
 
-  if (filters.brand) {
-    parts.push(`brandSlug = "${meiliQuote(filters.brand)}"`);
+  if (filters.brandId) {
+    parts.push(`brandId = "${meiliQuote(filters.brandId)}"`);
+  } else if (filters.brandSlug) {
+    parts.push(`brandSlug = "${meiliQuote(filters.brandSlug)}"`);
   }
 
   const topVals = expandCatalogTopCategory(filters.topCategory, filters.juniorCategory);
-  if (topVals.length === 1) {
+  if (filters.gender) {
+    parts.push(`gender = "${meiliQuote(filters.gender)}"`);
+  }
+  if (filters.juniorCategory) {
+    parts.push(`juniorsGroup = "${meiliQuote(filters.juniorCategory)}"`);
+  } else if (topVals.length === 1) {
     parts.push(`topCategory = "${meiliQuote(topVals[0]!)}"`);
   } else if (topVals.length > 1) {
     parts.push(`(${topVals.map((t) => `topCategory = "${meiliQuote(t)}"`).join(" OR ")})`);
@@ -83,6 +109,14 @@ function buildMeilisearchFilters(filters: MeilisearchProductSearchFilters): stri
 
   if (filters.size) {
     parts.push(`sizes = "${meiliQuote(filters.size)}"`);
+  }
+
+  if (filters.color) {
+    parts.push(`color = "${meiliQuote(filters.color)}"`);
+  }
+
+  if (typeof filters.featured === "boolean") {
+    parts.push(`featured = ${filters.featured ? "true" : "false"}`);
   }
 
   if (typeof filters.minPrice === "number") {
@@ -108,4 +142,84 @@ export async function runMeilisearchProductSearch(q: string, filters: Meilisearc
 
   const ids = res.hits.map((hit) => (hit as { id?: string }).id).filter((id): id is string => Boolean(id));
   return ids;
+}
+
+export async function runMeilisearchProductSuggest(
+  q: string,
+  filters: MeilisearchProductSearchFilters,
+): Promise<ProductSearchSuggestion[]> {
+  const client = createSearchClient();
+  const index = client.index(PRODUCTS_INDEX_UID);
+  const filterParts = buildMeilisearchFilters(filters);
+
+  const res = await index.search(q, {
+    limit: 12,
+    filter: filterParts.length ? filterParts : undefined,
+    attributesToRetrieve: [
+      "id",
+      "name",
+      "brandName",
+      "gender",
+      "juniorsGroup",
+      "productType",
+      "subCategory",
+      "topCategory",
+      "color",
+      "sizes",
+    ],
+  });
+
+  const suggestions: ProductSearchSuggestion[] = [];
+  const seen = new Set<string>();
+
+  const addSuggestion = (suggestion: ProductSearchSuggestion) => {
+    const key = `${suggestion.kind}:${suggestion.label.toLowerCase()}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    suggestions.push(suggestion);
+  };
+
+  for (const hit of res.hits as Array<Record<string, any>>) {
+    if (hit?.name) {
+      addSuggestion({
+        id: `product:${hit.id || hit.name}`,
+        label: hit.name,
+        query: hit.name,
+        kind: "product",
+        topCategory: hit.topCategory,
+        gender: hit.gender,
+        juniorCategory: hit.juniorsGroup,
+        productType: hit.productType,
+        subCategory: hit.subCategory,
+        brand: hit.brandName,
+        color: hit.color,
+      });
+    }
+
+    if (hit?.subCategory) {
+      addSuggestion({
+        id: `sub:${hit.subCategory}`,
+        label: hit.subCategory,
+        query: hit.subCategory,
+        kind: "query",
+        topCategory: hit.topCategory,
+        gender: hit.gender,
+        juniorCategory: hit.juniorsGroup,
+        productType: hit.productType,
+        subCategory: hit.subCategory,
+      });
+    }
+
+    if (hit?.brandName) {
+      addSuggestion({
+        id: `brand:${hit.brandName}`,
+        label: hit.brandName,
+        query: hit.brandName,
+        kind: "query",
+        brand: hit.brandName,
+      });
+    }
+  }
+
+  return suggestions.slice(0, 10);
 }

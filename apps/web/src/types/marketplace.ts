@@ -12,11 +12,12 @@ export type Product = SharedProduct;
 
 export type ProductSizeGuide = {
   imageUrl?: string;
-  entries: Array<{
+  entries?: Array<{
     size: string;
     cm: string;
     inches: string;
   }>;
+  details?: string[];
 };
 
 export type ProductDeliveriesReturns = {
@@ -37,6 +38,59 @@ export type ProductFabricCare = {
 };
 
 export type ProductTemplateType = "SIZE_GUIDE" | "DELIVERIES_RETURNS" | "SHIPPING_DELIVERY" | "FABRIC_CARE";
+
+export type ImportSourceType =
+  | "SHOPIFY_JSON"
+  | "WOOCOMMERCE_JSON"
+  | "CUSTOM_JSON"
+  | "CSV"
+  | "REST_API"
+  | "MANUAL_UPLOAD";
+
+export type ImportJobStatus = "PENDING" | "PROCESSING" | "PARTIAL_SUCCESS" | "SUCCESS" | "FAILED" | "CANCELLED";
+export type ImportLogLevel = "INFO" | "WARN" | "ERROR";
+
+export type ImportLogRecord = {
+  id: string;
+  importJobId: string;
+  productId?: string | null;
+  level: ImportLogLevel;
+  code?: string | null;
+  message: string;
+  details?: Record<string, unknown> | null;
+  createdAt: string;
+};
+
+export type ImportJobRecord = {
+  id: string;
+  brandId: string;
+  sourceType: ImportSourceType;
+  sourceLabel?: string | null;
+  sourceLocation?: string | null;
+  status: ImportJobStatus;
+  totalRecords: number;
+  processedRecords: number;
+  successfulRecords: number;
+  failedRecords: number;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+  logs?: ImportLogRecord[];
+  brand?: Brand;
+};
+
+export type IngestionQueueStats = {
+  wait?: number;
+  active?: number;
+  completed?: number;
+  failed?: number;
+  delayed?: number;
+  paused?: number;
+};
+
+export type IngestionQueueMetrics = Record<string, IngestionQueueStats>;
 
 export type ProductContentTemplate = {
   id: string;
@@ -124,6 +178,8 @@ export type BrandDashboardOrder = {
   totalPkr: number;
   deliveryAddress: string;
   trackingId?: string | null;
+  courierName?: string | null;
+  estimatedDelivery?: string | null;
   deliveryAttempts?: number;
   failureReason?: string | null;
   nextAttemptDate?: string | null;
@@ -171,6 +227,8 @@ export type UserOrder = {
     status: OrderStatus;
     subtotalPkr: number;
     trackingId?: string | null;
+    courierName?: string | null;
+    estimatedDelivery?: string | null;
     deliveryAttempts?: number;
     failureReason?: string | null;
     nextAttemptDate?: string | null;
@@ -246,6 +304,13 @@ export type SearchSuggestion = {
   label: string;
   query: string;
   topCategory?: "Men" | "Women" | "Toddler Boys" | "Toddler Girls" | "Junior Boys" | "Junior Girls";
+  gender?: "Men" | "Women" | "Juniors";
+  juniorCategory?: "Toddler Boys" | "Toddler Girls" | "Junior Boys" | "Junior Girls";
+  productType?: "Top" | "Bottom" | "Footwear" | "Accessories";
+  subCategory?: string;
+  size?: string;
+  color?: string;
+  brand?: string;
   kind: "query" | "product";
 };
 

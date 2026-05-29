@@ -2,9 +2,31 @@
 
 import { useEffect, useState } from "react";
 import { getUserNotifications, markNotificationAsRead, markAllNotificationsAsRead } from "@/lib/api";
-import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
 import type { NotificationItem } from "@/types/marketplace";
+
+function formatRelativeTime(date: Date) {
+  const diffInSeconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  const relativeTimeFormat = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+
+  const timeUnits: Array<[Intl.RelativeTimeFormatUnit, number]> = [
+    ["year", 60 * 60 * 24 * 365],
+    ["month", 60 * 60 * 24 * 30],
+    ["week", 60 * 60 * 24 * 7],
+    ["day", 60 * 60 * 24],
+    ["hour", 60 * 60],
+    ["minute", 60],
+    ["second", 1],
+  ];
+
+  for (const [unit, unitInSeconds] of timeUnits) {
+    if (Math.abs(diffInSeconds) >= unitInSeconds || unit === "second") {
+      return relativeTimeFormat.format(Math.round(diffInSeconds / unitInSeconds) * -1, unit);
+    }
+  }
+
+  return relativeTimeFormat.format(0, "second");
+}
 
 export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -77,7 +99,7 @@ export default function NotificationsPage() {
                 <p className="text-sm text-zinc-600 line-clamp-2">{item.message}</p>
                 <div className="flex items-center gap-3 pt-1">
                   <p className="text-[10px] uppercase tracking-widest text-zinc-400">
-                    {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}
+                    {formatRelativeTime(new Date(item.createdAt))}
                   </p>
                   {item.targetPath && (
                     <Link href={item.targetPath} className="text-[10px] font-bold uppercase tracking-widest underline underline-offset-4">

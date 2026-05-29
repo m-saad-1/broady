@@ -15,6 +15,7 @@
     "prisma:verify-crud": "node prisma/verify-crud.js",
     "search:smoke": "node prisma/search-subcategory-smoke.js",
     "search:meili:sync": "tsx src/scripts/meilisearch-sync.ts",
+    "worker:ingestion": "tsx src/modules/ingestion/workers/ingestion.worker.ts --run",
     "products:normalize-taxonomy": "tsx src/scripts/normalize-product-taxonomy.ts",
     "products:export": "tsx src/scripts/export-products.ts",
     "products:import-export": "tsx src/scripts/import-products-from-export.ts"

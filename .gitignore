@@ -30,5 +30,13 @@ vendor/meilisearch/
 docs/
 Broady_credentials.csv
 
+# Local artifacts and generated outputs
+build-log.txt
+build-result.txt
+women_artisanal_products_20.json
+Academic_Task/
+apps/web/public/fallback-*.js
+tools/redis/
+
 # Git worktrees
 .worktrees/

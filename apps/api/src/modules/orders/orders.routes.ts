@@ -32,6 +32,15 @@ const cancelReasonCodeSchema = z.enum([
   "OTHER",
 ]);
 
+const returnReasonCodeSchema = z.enum([
+  "DAMAGED_ITEM",
+  "WRONG_ITEM",
+  "SIZE_ISSUE",
+  "QUALITY_ISSUE",
+  "CHANGED_MIND",
+  "OTHER",
+]);
+
 const cancelReasonLabelByCode: Record<z.infer<typeof cancelReasonCodeSchema>, string> = {
   CHANGED_MIND: "Changed my mind",
   ORDERED_BY_MISTAKE: "Ordered by mistake",
@@ -134,6 +143,16 @@ function buildStatusLogNote(params: { internalNote?: string; trackingId?: string
   }
 
   return `${base} | CUSTOMER_NOTE: ${params.customerNote}`;
+}
+
+function getAutoEstimatedDelivery(status: OrderStatus, now: Date): Date | null {
+  if (status === OrderStatus.SHIPPED) {
+    return new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+  }
+  if (status === OrderStatus.OUT_FOR_DELIVERY) {
+    return new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  }
+  return null;
 }
 
 
@@ -738,6 +757,8 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
       subOrderId: z.string().trim().min(3).optional(),
       vendorGroupId: z.string().trim().min(3).optional(),
       trackingId: z.string().trim().min(4).max(120).optional(),
+      courierName: z.string().trim().max(50).optional(),
+      estimatedDelivery: z.coerce.date().optional(),
       note: z.string().trim().max(240).optional(),
       customerNote: z.string().trim().max(240).optional(),
       failureReason: z.string().trim().max(240).optional(),
@@ -864,12 +885,17 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
     }
   }
 
-  if (!statusChanged && !trackingChanged && !parsed.data.note && !parsed.data.customerNote && !parsed.data.failureReason && !parsed.data.failureReasonMessage && !parsed.data.nextAttemptDate) {
+  const courierChanged = parsed.data.courierName !== undefined && parsed.data.courierName !== targetSubOrder.courierName;
+  const estimatedDeliveryChanged = parsed.data.estimatedDelivery !== undefined;
+
+  if (!statusChanged && !trackingChanged && !courierChanged && !estimatedDeliveryChanged && !parsed.data.note && !parsed.data.customerNote && !parsed.data.failureReason && !parsed.data.failureReasonMessage && !parsed.data.nextAttemptDate) {
     return res.json({ data: order });
   }
 
   const updated = await prisma.$transaction(async (tx) => {
     const now = new Date();
+    const estimatedDelivery =
+      parsed.data.estimatedDelivery ?? targetSubOrder.estimatedDelivery ?? getAutoEstimatedDelivery(status, now);
     const nextAttemptDate =
       status === OrderStatus.DELIVERY_FAILED && failurePolicy?.retryable && !isFinalDeliveryFailure
         ? calculateNextAttemptDate(failureReasonKey, now)
@@ -880,6 +906,8 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
       data: {
         status: effectiveStatus,
         trackingId,
+        courierName: parsed.data.courierName ?? targetSubOrder.courierName,
+        estimatedDelivery,
         deliveryAttempts: status === OrderStatus.OUT_FOR_DELIVERY ? { increment: 1 } : undefined,
         lastAttemptAt: status === OrderStatus.OUT_FOR_DELIVERY ? now : undefined,
         failureReason:
@@ -1374,6 +1402,93 @@ router.post("/me/:orderId/sub-orders/:subOrderId/cancel", requireAuth, async (re
   });
 
   return res.json({ data: canceled });
+});
+
+router.post("/me/:orderId/sub-orders/:subOrderId/return", requireAuth, async (req, res) => {
+  const payload = z
+    .object({
+      reasonCode: returnReasonCodeSchema,
+      reasonText: z.string().trim().max(500).optional(),
+    })
+    .safeParse(req.body || {});
+
+  if (!payload.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: payload.error.flatten() });
+  }
+
+  if (payload.data.reasonCode === "OTHER" && !payload.data.reasonText?.trim()) {
+    return res.status(400).json({ message: "reasonText is required when reasonCode is OTHER." });
+  }
+
+  const order = await prisma.order.findFirst({
+    where: { id: String(req.params.orderId), userId: req.auth!.userId },
+    include: {
+      subOrders: { include: { brand: true } },
+    },
+  });
+
+  if (!order) return res.status(404).json({ message: "Order not found" });
+  const targetSubOrder = order.subOrders.find((entry) => entry.id === String(req.params.subOrderId));
+  if (!targetSubOrder) return res.status(404).json({ message: "Vendor group not found" });
+  if (targetSubOrder.status !== OrderStatus.DELIVERED) {
+    return res.status(409).json({ message: "Return is only available after delivery." });
+  }
+
+  const db = prisma as any;
+  const existingOpenReturn = await db.returnRequest.findFirst({
+    where: {
+      orderId: order.id,
+      subOrderId: targetSubOrder.id,
+      status: { notIn: ["REJECTED", "COMPLETED"] },
+    },
+    select: { id: true, status: true },
+  });
+  if (existingOpenReturn) {
+    return res.status(409).json({ message: "A return request is already active for this vendor group." });
+  }
+
+  const created = await prisma.$transaction(async (tx) => {
+    const dbTx = tx as any;
+    const returnRequest = await dbTx.returnRequest.create({
+      data: {
+        orderId: order.id,
+        subOrderId: targetSubOrder.id,
+        userId: req.auth!.userId,
+        reasonCode: payload.data.reasonCode,
+        reasonText: payload.data.reasonText?.trim() || null,
+        status: "REQUESTED",
+      },
+    });
+
+    await dbTx.returnStatusLog.create({
+      data: {
+        returnRequestId: returnRequest.id,
+        status: "REQUESTED",
+        updatedBy: "SYSTEM",
+        updatedById: req.auth!.userId,
+        note: payload.data.reasonText?.trim() || payload.data.reasonCode,
+      },
+    });
+
+    return dbTx.returnRequest.findUniqueOrThrow({
+      where: { id: returnRequest.id },
+      include: { statusLogs: { orderBy: { createdAt: "desc" } } },
+    });
+  });
+
+  queueNotificationEvent({
+    name: notificationEventNames.returnStateUpdated,
+    orderId: order.id,
+    subOrderId: targetSubOrder.id,
+    userId: order.userId,
+    brandId: targetSubOrder.brandId,
+    brandName: targetSubOrder.brand.name,
+    changedByRole: "USER",
+    note: `Return requested (${payload.data.reasonCode})${payload.data.reasonText ? `: ${payload.data.reasonText}` : ""}`,
+    notifyAdmin: true,
+  });
+
+  return res.status(201).json({ data: created });
 });
 
 router.post("/me/:orderId/reorder", requireAuth, async (req, res) => {

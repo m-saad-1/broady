@@ -17,8 +17,10 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   }
 
   return {
-    title: `${product.name} | BROADY`,
-    description: product.description,
+    title: product.seo?.metaTitle || `${product.name} | BROADY`,
+    description: product.seo?.metaDescription || product.shortDescription || product.description,
+    alternates: product.seo?.canonicalUrl ? { canonical: product.seo.canonicalUrl } : undefined,
+    openGraph: product.seo?.ogImageUrl ? { images: [product.seo.ogImageUrl] } : undefined,
   };
 }
 

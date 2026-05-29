@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  brandInviteDetailsController,
   completeBrandInviteController,
   completePasswordResetController,
   googleAuthController,
@@ -21,6 +22,7 @@ router.post("/register", authBurstLimiter, authCredentialLimiter, registerContro
 router.post("/login", authBurstLimiter, authCredentialLimiter, loginController);
 router.post("/google", authBurstLimiter, googleAuthController);
 router.post("/brand-invite/complete", authBurstLimiter, authCredentialLimiter, completeBrandInviteController);
+router.post("/brand-invite/details", authBurstLimiter, brandInviteDetailsController);
 router.post("/password-reset/request", authBurstLimiter, requestPasswordResetController);
 router.post("/password-reset/complete", authBurstLimiter, authCredentialLimiter, completePasswordResetController);
 router.post("/verify-account", authBurstLimiter, verifyAccountController);

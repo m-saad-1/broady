@@ -51,6 +51,28 @@ function queueAuthNotification(event: Parameters<typeof queueNotificationEvent>[
   void queueNotificationEvent(event);
 }
 
+async function issueAndSendVerificationEmail(userId: string, email: string) {
+  const verificationToken = randomBytes(32).toString("hex");
+  const verificationUrl = buildVerificationUrl(verificationToken);
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      emailVerificationTokenHash: hashToken(verificationToken),
+      emailVerificationTokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      emailVerifiedAt: null,
+    },
+  });
+
+  void sendEmail({
+    to: email,
+    subject: "Verify your Broady account",
+    text: `Welcome to Broady. Verify your account using this link: ${verificationUrl}`,
+  }).catch((err) => {
+    console.error("[auth.service] Failed to send verification email", err);
+  });
+}
+
 function toSafeUser(user: { id: string; email: string; fullName: string; role: SafeUser["role"]; brandId?: string | null }): SafeUser {
   return {
     id: user.id,
@@ -301,19 +323,17 @@ export async function completeBrandInvite(input: { token: string; password: stri
       brandInviteTokenExpiresAt: null,
       brandInviteAcceptedAt: new Date(),
       authProvider: "LOCAL",
+      emailVerifiedAt: null,
     } as any,
     select: { id: true, email: true, fullName: true, role: true, brandId: true } as any,
   });
 
   const updatedData = updated as any;
+  await prisma.session.deleteMany({ where: { userId: updatedData.id } });
+  await issueAndSendVerificationEmail(updatedData.id, updatedData.email);
 
-  const { token } = await createSessionAndToken({
-    id: updatedData.id,
-    role: updatedData.role,
-    brandId: updatedData.brandId,
-  });
   return {
-    token,
+    message: "Password set successfully. Please verify your email before logging in.",
     user: {
       id: updatedData.id,
       email: updatedData.email,

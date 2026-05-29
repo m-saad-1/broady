@@ -120,7 +120,7 @@ export function BrandProductsClient() {
           ...current,
           sizeGuideTemplateId: template.id,
           sizeGuideImageUrl: content.imageUrl || "",
-          sizeGuideRows: content.entries.length ? content.entries : current.sizeGuideRows,
+          sizeGuideRows: content.entries?.length ? content.entries : current.sizeGuideRows,
         };
       }
 

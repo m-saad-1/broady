@@ -16,10 +16,6 @@ function toUnixSeconds(d: Date): number {
 export function mapProductToMeiliDocument(product: ProductWithBrandAndReviews): ProductSearchDocument {
   const agg = product.reviewAggregate;
   const normalized = normalizeProductTaxonomy(product);
-  const rawProductType =
-    (product as ProductWithBrandAndReviews & { type?: string; productType?: string }).type ??
-    (product as ProductWithBrandAndReviews & { productType?: string }).productType ??
-    "";
 
   return {
     id: product.id,
@@ -33,9 +29,10 @@ export function mapProductToMeiliDocument(product: ProductWithBrandAndReviews): 
     actualPrice: product.actualPrice,
     salePrice: product.salePrice,
     discountPercentage: product.discountPercentage,
-    gender: product.gender,
+    gender: normalized.gender,
+    juniorsGroup: normalized.juniorsGroup,
     color: product.color,
-    productType: rawProductType,
+    productType: normalized.productType,
     topCategory: normalized.topCategory,
     subCategory: normalized.subCategory,
     sizes: product.sizes ?? [],
@@ -44,6 +41,7 @@ export function mapProductToMeiliDocument(product: ProductWithBrandAndReviews): 
     stock: product.stock,
     isActive: product.isActive,
     approvalStatus: product.approvalStatus,
+    featured: Boolean(product.discountPercentage || product.salePrice),
     createdAt: toUnixSeconds(product.createdAt),
     updatedAt: toUnixSeconds(product.updatedAt),
     averageRating: agg?.averageRating ?? 0,
@@ -96,9 +94,63 @@ function normalizeTopCategoryValue(value: string | undefined) {
   return value || '';
 }
 
+function normalizeGenderValue(value: string | undefined, topCategory: string | undefined) {
+  const normalized = (value || "").trim().toLowerCase();
+  if (["men", "man", "male"].includes(normalized)) return "Men";
+  if (["women", "woman", "female"].includes(normalized)) return "Women";
+  if (normalized === "juniors" || normalized === "kids") return "Juniors";
+
+  if (topCategory && ["Junior Boys", "Junior Girls", "Toddler Boys", "Toddler Girls"].includes(topCategory)) {
+    return "Juniors";
+  }
+
+  if (topCategory === "Men" || topCategory === "Women") return topCategory;
+  return "Women";
+}
+
+function normalizeProductTypeValue(value: string | undefined) {
+  const normalized = (value || "").trim().toLowerCase();
+  if (normalized === "top") return "Top";
+  if (normalized === "bottom") return "Bottom";
+  if (normalized === "footwear") return "Footwear";
+  if (normalized === "accessories") return "Accessories";
+  return undefined;
+}
+
+function inferProductTypeFromSubCategory(value: string) {
+  const map: Record<string, string> = {
+    Shirts: "Top",
+    "Polo Shirts": "Top",
+    "T-Shirts": "Top",
+    Hoodies: "Top",
+    Jackets: "Top",
+    Jeans: "Bottom",
+    Pants: "Bottom",
+    Trousers: "Bottom",
+    Skirts: "Bottom",
+    Sneakers: "Footwear",
+    Trainers: "Footwear",
+    Shoes: "Footwear",
+    Pumps: "Footwear",
+    Sandals: "Footwear",
+    Caps: "Accessories",
+    Bags: "Accessories",
+    Belts: "Accessories",
+    Watches: "Accessories",
+  };
+
+  return map[value] || "Top";
+}
+
 export function normalizeProductTaxonomy(product: ProductWithBrandAndReviews) {
   const origTop = (product.topCategory || '').trim();
   const origSub = (product.subCategory || '').trim();
+  const rawProductType =
+    (product as ProductWithBrandAndReviews & { type?: string; productType?: string }).type ??
+    (product as ProductWithBrandAndReviews & { productType?: string }).productType ??
+    "";
+  const inferredSubCategory = inferSubCategoryFromName(product.name, origSub);
+  const inferredProductType = normalizeProductTypeValue(rawProductType) || inferProductTypeFromSubCategory(inferredSubCategory);
   let needsReview = false;
 
   // Normalize top categories for Kids -> more specific groups
@@ -109,49 +161,130 @@ export function normalizeProductTaxonomy(product: ProductWithBrandAndReviews) {
     // Infer gender by name tokens or sizes
     if (/\bboy\b|\bboys\b/.test(name) || sizes.some(s => /\d+y|y$/.test(s) || /^\d+$/.test(s))) {
       if (sizes.some(s => /t$/.test(s) || /0|1|2|3t/.test(s))) {
-        return { topCategory: 'Toddler Boys', subCategory: inferSubCategoryFromName(product.name, origSub), needsReview };
+        return {
+          topCategory: "Toddler Boys",
+          subCategory: inferredSubCategory,
+          gender: "Juniors",
+          juniorsGroup: "Toddler Boys",
+          productType: inferredProductType,
+          needsReview,
+        };
       }
       if (sizes.some(s => /2y|4y|6y|8y|10y|12y/.test(s) || /y$/.test(s))) {
-        return { topCategory: 'Junior Boys', subCategory: inferSubCategoryFromName(product.name, origSub), needsReview };
+        return {
+          topCategory: "Junior Boys",
+          subCategory: inferredSubCategory,
+          gender: "Juniors",
+          juniorsGroup: "Junior Boys",
+          productType: inferredProductType,
+          needsReview,
+        };
       }
       needsReview = true;
-      return { topCategory: 'Junior Boys', subCategory: inferSubCategoryFromName(product.name, origSub), needsReview };
+      return {
+        topCategory: "Junior Boys",
+        subCategory: inferredSubCategory,
+        gender: "Juniors",
+        juniorsGroup: "Junior Boys",
+        productType: inferredProductType,
+        needsReview,
+      };
     }
 
     if (/\bgirl\b|\bgirls\b/.test(name) || sizes.some(s => /girls|girl/.test(s))) {
       if (sizes.some(s => /t$/.test(s) || /0|1|2|3t/.test(s))) {
-        return { topCategory: 'Toddler Girls', subCategory: inferSubCategoryFromName(product.name, origSub), needsReview };
+        return {
+          topCategory: "Toddler Girls",
+          subCategory: inferredSubCategory,
+          gender: "Juniors",
+          juniorsGroup: "Toddler Girls",
+          productType: inferredProductType,
+          needsReview,
+        };
       }
       if (sizes.some(s => /2y|4y|6y|8y|10y|12y/.test(s) || /y$/.test(s))) {
-        return { topCategory: 'Junior Girls', subCategory: inferSubCategoryFromName(product.name, origSub), needsReview };
+        return {
+          topCategory: "Junior Girls",
+          subCategory: inferredSubCategory,
+          gender: "Juniors",
+          juniorsGroup: "Junior Girls",
+          productType: inferredProductType,
+          needsReview,
+        };
       }
       needsReview = true;
-      return { topCategory: 'Junior Girls', subCategory: inferSubCategoryFromName(product.name, origSub), needsReview };
+      return {
+        topCategory: "Junior Girls",
+        subCategory: inferredSubCategory,
+        gender: "Juniors",
+        juniorsGroup: "Junior Girls",
+        productType: inferredProductType,
+        needsReview,
+      };
     }
 
     // Footwear numeric sizes -> junior
     if (origSub && /footwear/i.test(origSub) && (product.sizes || []).some(s => /^\d+$/.test(String(s)))) {
-      return { topCategory: 'Junior Boys', subCategory: inferSubCategoryFromName(product.name, origSub), needsReview };
+      return {
+        topCategory: "Junior Boys",
+        subCategory: inferredSubCategory,
+        gender: "Juniors",
+        juniorsGroup: "Junior Boys",
+        productType: inferredProductType,
+        needsReview,
+      };
     }
 
     // Fallback
     needsReview = true;
-    return { topCategory: 'Junior Boys', subCategory: inferSubCategoryFromName(product.name, origSub), needsReview };
+    return {
+      topCategory: "Junior Boys",
+      subCategory: inferredSubCategory,
+      gender: "Juniors",
+      juniorsGroup: "Junior Boys",
+      productType: inferredProductType,
+      needsReview,
+    };
   }
 
   // For non-kids, ensure capitalization and refine generic subcategories
-  const topNorm = normalizeTopCategoryValue(origTop);
-  const subNorm = inferSubCategoryFromName(product.name, origSub);
-  return { topCategory: topNorm || origTop, subCategory: subNorm, needsReview };
+  const topNorm = normalizeTopCategoryValue(origTop) || origTop;
+  const subNorm = inferredSubCategory;
+  const inferredType = inferredProductType;
+  const juniorsGroup = ["Junior Boys", "Junior Girls", "Toddler Boys", "Toddler Girls"].includes(topNorm)
+    ? topNorm
+    : undefined;
+  const gender = normalizeGenderValue(product.gender, topNorm);
+  return {
+    topCategory: topNorm,
+    subCategory: subNorm,
+    gender,
+    juniorsGroup,
+    productType: inferredType,
+    needsReview,
+  };
 }
 
 /** Index settings applied after create / on each sync setup. */
 export function getProductsIndexSettings(): Settings {
   return {
-    searchableAttributes: ["name", "description", "brandName", "tags", "subCategory", "color", "productType"],
+    searchableAttributes: [
+      "name",
+      "subCategory",
+      "productType",
+      "description",
+      "tags",
+      "brandName",
+      "gender",
+      "juniorsGroup",
+      "color",
+      "sizes",
+    ],
     filterableAttributes: [
       "brandId",
+      "brandName",
       "gender",
+      "juniorsGroup",
       "color",
       "productType",
       "topCategory",
@@ -160,20 +293,20 @@ export function getProductsIndexSettings(): Settings {
       "tags",
       "pricePkr",
       "salePrice",
-      "rating",
-      "reviewCount",
-      "isAvailable",
+      "featured",
+      "isActive",
+      "approvalStatus",
     ],
-    sortableAttributes: ["pricePkr", "salePrice", "rating", "reviewCount", "createdAt", "updatedAt"],
+    sortableAttributes: ["pricePkr", "salePrice", "averageRating", "totalReviews", "createdAt", "updatedAt"],
     rankingRules: [
+      "exactness",
+      "attribute",
       "words",
       "typo",
       "proximity",
-      "attribute",
       "sort",
-      "exactness",
-      "sort:rating:desc",
-      "sort:reviewCount:desc",
+      "sort:averageRating:desc",
+      "sort:totalReviews:desc",
     ],
     synonyms: {
       shoe: ["footwear", "sneaker", "boot"],

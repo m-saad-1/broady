@@ -30,6 +30,11 @@ const brandAccountSchema = z.object({
   fullName: z.string().trim().min(2).max(120).optional(),
 });
 
+function hasServiceError(result: unknown): result is { error: { status: number; message: string } } {
+  if (!result || typeof result !== "object") return false;
+  return "error" in result;
+}
+
 router.get("/", async (_req, res) => {
   const brands = await prisma.brand.findMany({ orderBy: { name: "asc" } });
   res.json({ data: brands });
@@ -132,6 +137,9 @@ router.post("/:id/account", requireAuth, requireAdmin, async (req, res) => {
         fullName: parsed.data.fullName,
       }),
     );
+    if (hasServiceError(invite)) {
+      return res.status(invite.error.status).json({ message: invite.error.message });
+    }
 
     return res.status(201).json({
       data: {
@@ -156,12 +164,19 @@ router.post("/", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { brand, invite } = await prisma.$transaction(async (tx) => {
       const createdBrand = await tx.brand.create({ data: parsed.data });
+      if (!createdBrand.contactEmail) {
+        return { brand: createdBrand, invite: null };
+      }
+
       const createdInvite = await createBrandInviteAccount({
         prismaClient: tx,
         brandId: createdBrand.id,
         brandName: createdBrand.name,
         contactEmail: createdBrand.contactEmail,
       });
+      if (hasServiceError(createdInvite)) {
+        throw Object.assign(new Error(createdInvite.error.message), { status: createdInvite.error.status });
+      }
 
       return { brand: createdBrand, invite: createdInvite };
     });
@@ -169,12 +184,18 @@ router.post("/", requireAuth, requireAdmin, async (req, res) => {
     return res.status(201).json({
       data: {
         brand,
-        account: invite.user,
-        inviteUrl: invite.inviteUrl,
-        brandEmail: invite.brandEmail,
+        account: invite?.user ?? null,
+        inviteUrl: invite?.inviteUrl ?? null,
+        brandEmail: invite?.brandEmail ?? null,
+        inviteGenerated: Boolean(invite),
+        inviteMessage: invite ? undefined : "Brand created without invite. Add a valid contact email and generate an invite from the brand account action.",
       },
     });
   } catch (error) {
+    if (error && typeof error === "object" && "status" in error) {
+      const typedError = error as { status: number; message: string };
+      return res.status(typedError.status).json({ message: typedError.message });
+    }
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return res.status(409).json({ message: "Brand name or slug already exists" });
     }

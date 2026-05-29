@@ -65,6 +65,23 @@ function appendNote(note?: string) {
   return ` ${note}`;
 }
 
+function parsePartialCancellation(note?: string) {
+  if (!note || !note.startsWith("PARTIAL_ITEM_CANCEL|")) return null;
+  const raw = note.replace("PARTIAL_ITEM_CANCEL|", "");
+  const parts = raw.split("|");
+  const mapped = new Map<string, string>();
+  for (const part of parts) {
+    const [key, ...rest] = part.split("=");
+    if (!key) continue;
+    mapped.set(key, rest.join("="));
+  }
+  return {
+    items: mapped.get("items") || "Selected item(s)",
+    reason: mapped.get("reason") || "Not specified",
+    note: mapped.get("note") || "",
+  };
+}
+
 function resolveOrderBrandLabel(context?: NotificationTemplateContext) {
   const brands = (context?.orderBrandNames || []).filter(Boolean);
   if (!brands.length) return null;
@@ -178,6 +195,13 @@ export function buildNotificationTemplate(
       }
 
       if (normalizedOrderEventName === "suborder_cancelled") {
+        const partial = parsePartialCancellation(event.note);
+        if (partial) {
+          return {
+            title: "Item(s) Cancelled",
+            message: `Item(s) ${partial.items} have been cancelled. Reason: ${partial.reason}${partial.note ? `. ${partial.note}` : ""}`,
+          };
+        }
         const cancelledRef = event.subOrderId ? `Sub-order ${maskOrderId(event.subOrderId)}` : `Order ${maskOrderId(event.orderId)}`;
         return {
           title,
@@ -262,6 +286,13 @@ export function buildNotificationTemplate(
       }
 
       if (normalizedOrderEventName === "suborder_cancelled") {
+        const partial = parsePartialCancellation(event.note);
+        if (partial) {
+          return {
+            title: "Item(s) Cancelled",
+            message: `Item(s) ${partial.items} were cancelled for ${recipientBrand}. Reason: ${partial.reason}${partial.note ? `. ${partial.note}` : ""}`,
+          };
+        }
         const cancelledRef = event.subOrderId ? `Sub-order ${maskOrderId(event.subOrderId)}` : `Order ${maskOrderId(event.orderId)}`;
         return {
           title,
@@ -339,6 +370,13 @@ export function buildNotificationTemplate(
     }
 
     if (normalizedOrderEventName === "suborder_cancelled") {
+      const partial = parsePartialCancellation(event.note);
+      if (partial) {
+        return {
+          title: "Item(s) Cancelled",
+          message: `Item(s) ${partial.items} have been cancelled. Reason: ${partial.reason}${partial.note ? `. ${partial.note}` : ""}`,
+        };
+      }
       const cancelledRef = event.subOrderId ? `Sub-order ${maskOrderId(event.subOrderId)}` : `Order ${maskOrderId(event.orderId)}`;
       return {
         title,
@@ -410,6 +448,24 @@ export function buildNotificationTemplate(
     return {
       title: "Refund Processed",
       message: `Your refund for order ${maskOrderId(event.orderId)} has been processed.`,
+    };
+  }
+
+  if (event.name === "refund_state_updated") {
+    return {
+      title: "Refund Update",
+      message: event.reason
+        ? `Refund update for order ${maskOrderId(event.orderId)}: ${event.reason}`
+        : `Refund status updated for order ${maskOrderId(event.orderId)}.`,
+    };
+  }
+
+  if (event.name === "return_state_updated") {
+    return {
+      title: "Return Update",
+      message: event.note
+        ? `Return update for order ${maskOrderId(event.orderId)}: ${event.note}`
+        : `Return status updated for order ${maskOrderId(event.orderId)}.`,
     };
   }
 

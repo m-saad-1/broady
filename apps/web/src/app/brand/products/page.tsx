@@ -20,6 +20,9 @@ export default async function BrandProductsPage() {
           <Link href="/brand/dashboard" className="inline-flex h-10 items-center border border-zinc-300 px-4 text-xs font-semibold uppercase tracking-[0.12em]">
             Back to Dashboard
           </Link>
+          <Link href="/brand/ingestion" className="inline-flex h-10 items-center border border-zinc-300 px-4 text-xs font-semibold uppercase tracking-[0.12em]">
+            Ingestion Imports
+          </Link>
           <Link href="/brand/products/new" className="inline-flex h-10 items-center border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white">
             Add Product
           </Link>

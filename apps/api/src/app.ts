@@ -10,6 +10,8 @@ import brandsRoutes from "./modules/brands/brands.routes.js";
 import brandDashboardRoutes from "./modules/brands/brand-dashboard.routes.js";
 import cartRoutes from "./modules/carts/cart.routes.js";
 import ordersRoutes from "./modules/orders/orders.routes.js";
+import brandIngestionRoutes from "./modules/ingestion/brand-ingestion.routes.js";
+import ingestionRoutes from "./modules/ingestion/ingestion.routes.js";
 import productsRoutes from "./modules/products/products.routes.js";
 import recommendationRoutes from "./modules/recommendations/recommendation.routes.js";
 import reviewsRoutes from "./modules/reviews/reviews.routes.js";
@@ -69,6 +71,8 @@ app.use("/api/reviews", reviewsRoutes);
 app.use("/api/orders", ordersRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/admin/ingestion", ingestionRoutes);
+app.use("/api/brand-dashboard/ingestion", brandIngestionRoutes);
 
 app.use(errorHandler);
 

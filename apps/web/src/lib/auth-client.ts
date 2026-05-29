@@ -109,8 +109,10 @@ export async function completeBrandInvite(payload: { token: string; password: st
     throw new Error(json.message || "Brand invite activation failed");
   }
 
-  persistAuthToken(json.token);
-  return json.user!;
+  return {
+    user: json.user!,
+    message: json.message || "Password set successfully. Please verify your email before logging in.",
+  };
 }
 
 export async function requestPasswordReset(payload: { email: string }) {

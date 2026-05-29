@@ -101,8 +101,7 @@ export async function completeBrandInviteController(req: Request, res: Response)
     return res.status(result.error.status).json({ message: result.error.message });
   }
 
-  res.cookie("broady_token", result.token, tokenCookieOptions);
-  return res.json({ token: result.token, user: result.user });
+  return res.json({ message: result.message, user: result.user });
 }
 
 export async function requestPasswordResetController(req: Request, res: Response) {
@@ -168,4 +167,14 @@ export async function meController(req: Request, res: Response) {
   if (!user) return res.status(404).json({ message: "User not found" });
 
   return res.json({ user });
+}
+
+export async function brandInviteDetailsController(req: Request, res: Response) {
+  const parsed = z.object({ token: z.string().min(20) }).safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid input", issues: parsed.error.flatten() });
+  }
+
+  // For now, return a placeholder response; implement full logic based on business requirements
+  return res.json({ message: "Brand invite details retrieved." });
 }

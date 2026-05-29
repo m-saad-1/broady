@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { cancelUserSubOrder, reorderUserSubOrder, type CancelReasonCode } from "@/lib/api";
+import { cancelUserSubOrder, reorderUserSubOrder, updateUserOrderAddress, type CancelReasonCode } from "@/lib/api";
 import { useToastStore } from "@/stores/toast-store";
 
 type GroupActionsProps = {
@@ -11,6 +11,8 @@ type GroupActionsProps = {
   brandName: string;
   canCancel: boolean;
   canReorder: boolean;
+  canAddressCorrection: boolean;
+  currentDeliveryAddress: string;
 };
 
 const CANCEL_REASON_OPTIONS: Array<{ code: CancelReasonCode; label: string }> = [
@@ -22,13 +24,23 @@ const CANCEL_REASON_OPTIONS: Array<{ code: CancelReasonCode; label: string }> = 
   { code: "OTHER", label: "Other" },
 ];
 
-export function GroupActions({ orderId, subOrderId, brandName, canCancel, canReorder }: GroupActionsProps) {
+export function GroupActions({
+  orderId,
+  subOrderId,
+  brandName,
+  canCancel,
+  canReorder,
+  canAddressCorrection,
+  currentDeliveryAddress,
+}: GroupActionsProps) {
   const router = useRouter();
   const pushToast = useToastStore((state) => state.pushToast);
-  const [busy, setBusy] = useState<"cancel" | "reorder" | null>(null);
+  const [busy, setBusy] = useState<"cancel" | "reorder" | "address" | null>(null);
   const [openCancel, setOpenCancel] = useState(false);
+  const [openAddress, setOpenAddress] = useState(false);
   const [reasonCode, setReasonCode] = useState<CancelReasonCode>("CHANGED_MIND");
   const [customReason, setCustomReason] = useState("");
+  const [deliveryAddress, setDeliveryAddress] = useState(currentDeliveryAddress || "");
 
   const doReorder = async () => {
     setBusy("reorder");
@@ -66,7 +78,27 @@ export function GroupActions({ orderId, subOrderId, brandName, canCancel, canReo
     }
   };
 
-  if (!canCancel && !canReorder) {
+  const doAddressUpdate = async () => {
+    const nextAddress = deliveryAddress.trim();
+    if (!nextAddress) {
+      pushToast("Delivery address is required.", "error");
+      return;
+    }
+
+    setBusy("address");
+    try {
+      await updateUserOrderAddress(orderId, nextAddress);
+      setOpenAddress(false);
+      pushToast("Address updated. Delivery will be re-attempted.", "success");
+      router.refresh();
+    } catch (error: any) {
+      pushToast(error.message || "Failed to update address", "error");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (!canCancel && !canReorder && !canAddressCorrection) {
     return null;
   }
 
@@ -91,6 +123,19 @@ export function GroupActions({ orderId, subOrderId, brandName, canCancel, canReo
             className="inline-flex h-10 items-center justify-center border border-black bg-black px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-60 hover:bg-zinc-800"
           >
             {busy === "reorder" ? "Reordering..." : "Reorder"}
+          </button>
+        ) : null}
+        {canAddressCorrection ? (
+          <button
+            type="button"
+            onClick={() => {
+              setDeliveryAddress(currentDeliveryAddress || "");
+              setOpenAddress(true);
+            }}
+            disabled={busy !== null}
+            className="inline-flex h-10 items-center justify-center border border-black px-3 text-[11px] font-semibold uppercase tracking-[0.12em] disabled:opacity-60 hover:bg-zinc-100"
+          >
+            {busy === "address" ? "Updating..." : "Update Address"}
           </button>
         ) : null}
       </div>
@@ -147,6 +192,45 @@ export function GroupActions({ orderId, subOrderId, brandName, canCancel, canReo
                 onClick={() => void doCancel()}
               >
                 Confirm Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {openAddress ? (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/40 p-4" onClick={() => setOpenAddress(false)}>
+          <div className="w-full max-w-lg space-y-5 border border-zinc-300 bg-white p-6 shadow-xl" onClick={(event) => event.stopPropagation()}>
+            <div className="space-y-1">
+              <h3 className="font-heading text-2xl uppercase">Address Correction</h3>
+              <p className="text-sm text-zinc-600">Update your delivery address so this order can be re-attempted.</p>
+            </div>
+
+            <label className="block space-y-2 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
+              New Delivery Address
+              <textarea
+                className="min-h-28 w-full border border-zinc-300 p-3 text-sm font-normal text-zinc-900 focus:border-black focus:outline-none"
+                value={deliveryAddress}
+                onChange={(event) => setDeliveryAddress(event.target.value)}
+                placeholder="House/Flat, street, area, city"
+              />
+            </label>
+
+            <div className="pt-2 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                className="h-10 px-4 text-xs font-bold uppercase tracking-[0.12em] text-zinc-600 hover:text-black"
+                onClick={() => setOpenAddress(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="h-10 border-2 border-black bg-black px-6 text-xs font-bold uppercase tracking-[0.12em] text-white hover:bg-zinc-800 hover:border-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => void doAddressUpdate()}
+                disabled={!deliveryAddress.trim() || busy === "address"}
+              >
+                {busy === "address" ? "Saving..." : "Save Address"}
               </button>
             </div>
           </div>

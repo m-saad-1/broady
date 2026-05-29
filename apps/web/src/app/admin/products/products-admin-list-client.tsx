@@ -25,7 +25,7 @@ export function ProductsAdminListClient() {
         getAdminProducts(),
         getPendingProducts(),
       ]);
-      setProducts(nextProducts);
+      setProducts(nextProducts.filter((product) => product.approvalStatus !== "REJECTED"));
       setPendingProducts(nextPendingProducts);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to load products";
@@ -111,7 +111,9 @@ export function ProductsAdminListClient() {
           {pendingProducts.map((product) => (
             <div key={product.id} className="grid gap-3 border-b border-amber-200 py-3 md:grid-cols-[2fr_1fr_auto] md:items-center">
               <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.08em]">{product.name}</p>
+                <Link href={`/admin/products/${product.id}`} className="text-sm font-semibold uppercase tracking-[0.08em] underline decoration-zinc-400 underline-offset-2">
+                  {product.name}
+                </Link>
                 <p className="text-xs text-zinc-700">{product.brand?.name || "Brand"} / {product.topCategory} / {product.subCategory}</p>
               </div>
               <p className="text-sm">PKR {product.pricePkr.toLocaleString()}</p>
@@ -139,7 +141,7 @@ export function ProductsAdminListClient() {
             <article key={product.id} className="space-y-2 border border-zinc-200 p-3">
               <div className="grid gap-3 md:grid-cols-[2fr_1fr_auto] md:items-center">
                 <div>
-                  <Link href={`/product/${product.slug}`} className="text-sm font-semibold uppercase tracking-[0.08em] underline decoration-zinc-400 underline-offset-2">
+                  <Link href={`/admin/products/${product.id}`} className="text-sm font-semibold uppercase tracking-[0.08em] underline decoration-zinc-400 underline-offset-2">
                     {product.name}
                   </Link>
                   <p className="text-xs text-zinc-600">{product.brand?.name || "-"} / {product.topCategory} / {product.subCategory}</p>

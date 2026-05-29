@@ -44,7 +44,7 @@ export function AccountSidebar({ className = "" }: { className?: string }) {
           <Link
             key={link.href}
             href={link.href}
-            className={`px-4 py-3 text-sm tracking-wide transition-colors border-l-2 ${
+            className={`px-3 py-2.5 text-xs tracking-wide transition-colors border-l-2 ${
               isActive
                 ? "border-black bg-zinc-100 font-semibold text-black"
                 : "border-transparent text-zinc-600 hover:bg-zinc-50 hover:text-black"

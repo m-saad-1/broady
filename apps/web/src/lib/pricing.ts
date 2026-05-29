@@ -21,7 +21,11 @@ function toTimestamp(value?: string) {
 
 export function hasActiveOffer(product: Product) {
   if (typeof product.discountPercentage === "number" && product.discountPercentage > 0) return true;
-  if (typeof product.salePrice === "number") return true;
+  if (typeof product.salePrice === "number") {
+    const base = Math.max(0, Math.round(product.pricePkr));
+    const sale = Math.max(0, Math.round(product.salePrice));
+    return sale < base;
+  }
   return false;
 }
 

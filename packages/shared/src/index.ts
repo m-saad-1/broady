@@ -2,6 +2,9 @@ export type UserRole = "USER" | "ADMIN" | "BRAND" | "BRAND_ADMIN" | "BRAND_STAFF
 
 export type ProductTopCategory = "Men" | "Women" | "Toddler Boys" | "Toddler Girls" | "Junior Boys" | "Junior Girls";
 
+export type ProductGender = "Men" | "Women" | "Juniors";
+export const PRODUCT_GENDER_OPTIONS = ["Men", "Women", "Juniors"] as const;
+
 export const CATALOG_TOP_CATEGORY_OPTIONS = ["Men", "Women", "Juniors"] as const;
 
 export const JUNIOR_TOP_CATEGORIES = ["Toddler Boys", "Junior Boys", "Toddler Girls", "Junior Girls"] as const;
@@ -9,6 +12,7 @@ export const JUNIOR_TOP_CATEGORIES = ["Toddler Boys", "Junior Boys", "Toddler Gi
 export type CatalogTopCategory = (typeof CATALOG_TOP_CATEGORY_OPTIONS)[number];
 
 export type JuniorTopCategory = (typeof JUNIOR_TOP_CATEGORIES)[number];
+export type JuniorGroup = JuniorTopCategory;
 
 export function isJuniorTopCategory(value: string): value is JuniorTopCategory {
   return (JUNIOR_TOP_CATEGORIES as readonly string[]).includes(value);
@@ -34,7 +38,7 @@ export type ProductType = "Top" | "Bottom" | "Footwear" | "Accessories";
 
 export const PRODUCT_TYPE_OPTIONS = ["Top", "Bottom", "Footwear", "Accessories"] as const;
 
-export const GENDER_OPTIONS = ["Male", "Female", "Unisex"] as const;
+export const GENDER_OPTIONS = PRODUCT_GENDER_OPTIONS;
 
 export type ProductApprovalStatus = "DRAFT" | "PENDING" | "APPROVED" | "REJECTED";
 
@@ -76,11 +80,12 @@ export type Brand = {
 
 export type ProductSizeGuide = {
   imageUrl?: string;
-  entries: Array<{
+  entries?: Array<{
     size: string;
     cm: string;
     inches: string;
   }>;
+  details?: string[];
 };
 
 export type ProductDeliveriesReturns = {
@@ -100,6 +105,76 @@ export type ProductFabricCare = {
   careInstructions: string[];
 };
 
+export type ProductDetailBlock = {
+  fabricComposition?: string | null;
+  careGuide?: string | null;
+  fitDetails?: string | null;
+  modelDetails?: string | null;
+  sizeGuideText?: string | null;
+  sizeGuideImageUrl?: string | null;
+  shippingDelivery?: string | null;
+  returnExchangePolicy?: string | null;
+  disclaimer?: string | null;
+  materialDetails?: string | null;
+  origin?: string | null;
+  packageIncludes?: string | null;
+};
+
+export type ProductShippingBlock = {
+  estimatedDeliveryMinDays?: number | null;
+  estimatedDeliveryMaxDays?: number | null;
+  deliveryText?: string | null;
+  shippingFee?: number | null;
+  freeShippingAvailable?: boolean | null;
+  codAvailable?: boolean | null;
+  returnAvailable?: boolean | null;
+  exchangeAvailable?: boolean | null;
+  returnWindowDays?: number | null;
+  exchangeWindowDays?: number | null;
+};
+
+export type ProductSEOBlock = {
+  metaTitle?: string | null;
+  metaDescription?: string | null;
+  canonicalUrl?: string | null;
+  ogImageUrl?: string | null;
+};
+
+export type ProductVariant = {
+  id: string;
+  externalVariantId?: string | null;
+  sku: string;
+  barcode?: string | null;
+  color?: string | null;
+  colorHex?: string | null;
+  size?: string | null;
+  fit?: string | null;
+  season?: string | null;
+  style?: string | null;
+  pricePkr: number;
+  salePricePkr?: number | null;
+  compareAtPricePkr?: number | null;
+  stockStatus?: string | null;
+  lowStockThreshold?: number | null;
+  weight?: number | null;
+  isActive: boolean;
+  metadata?: Record<string, unknown> | null;
+};
+
+export type ProductMediaImage = {
+  id: string;
+  sourceUrl: string;
+  url: string;
+  cdnUrl?: string | null;
+  altText?: string | null;
+  imageType?: string | null;
+  isPrimary: boolean;
+  sortOrder: number;
+  width?: number | null;
+  height?: number | null;
+  metadata?: Record<string, unknown> | null;
+};
+
 export type Product = {
   id: string;
   brandId: string;
@@ -108,14 +183,31 @@ export type Product = {
   approvalStatus?: ProductApprovalStatus;
   name: string;
   slug: string;
+  shortDescription?: string | null;
   description: string;
   descriptionLong?: string;
   actualPrice: number;
   salePrice?: number;
   discountPercentage?: number;
   pricePkr: number;
-  gender: string;
+  currency?: string;
+  label?: string | null;
+  saleStartDate?: string | null;
+  saleEndDate?: string | null;
+  gender: ProductGender;
+  juniorsGroup?: JuniorGroup;
   color: string;
+  colors?: string[];
+  fit?: string;
+  season?: string | null;
+  collection?: string | null;
+  productUrl?: string | null;
+  visibility?: "visible" | "hidden" | string;
+  source?: string | null;
+  additionalInfo?: Array<{
+    label: string;
+    value: string;
+  }>;
   productType?: ProductType;
   topCategory: ProductTopCategory;
   subCategory: string;
@@ -135,6 +227,12 @@ export type Product = {
   isActive: boolean;
   brand?: Brand;
   soldCount?: number;
+  metadata?: Record<string, unknown>;
+  detail?: ProductDetailBlock | null;
+  shipping?: ProductShippingBlock | null;
+  seo?: ProductSEOBlock | null;
+  variants?: ProductVariant[];
+  images?: ProductMediaImage[];
 };
 
 export type AuthUser = {
@@ -158,3 +256,5 @@ export type ApiErrorResponse = {
     details?: unknown;
   };
 };
+
+export * from "./couriers";

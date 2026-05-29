@@ -12,12 +12,11 @@ import { Button } from "@/components/ui/button";
 import { TextField, TextareaField, SelectField } from "@/components/forms/form-controls";
 import { Product } from "@/types/marketplace";
 import {
-  CATALOG_TOP_CATEGORY_OPTIONS,
   GENDER_OPTIONS,
-  JUNIOR_TOP_CATEGORIES,
   PRODUCT_TYPE_OPTIONS,
 } from "@broady/shared";
 import { getTopCategoryLabel } from "@/lib/taxonomy";
+import { productTopCategories } from "@/lib/product-form";
 
 type ProductFormProps = {
   product?: Product;
@@ -36,8 +35,6 @@ export function ProductForm({ product, onSubmit, isSubmitting }: ProductFormProp
     resolver: zodResolver(productFormSchema) as any,
     defaultValues: product ? productToFormValues(product) : {},
   });
-
-  const topCategory = watch("topCategory");
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -64,12 +61,10 @@ export function ProductForm({ product, onSubmit, isSubmitting }: ProductFormProp
             register={register}
             errors={errors}
             disabled={false}
-            options={CATALOG_TOP_CATEGORY_OPTIONS.map((opt) => ({ label: getTopCategoryLabel(opt), value: opt }))}
+            options={productTopCategories.map((opt) => ({ label: getTopCategoryLabel(opt), value: opt }))}
           />
           {errors.topCategory && <p className="mt-1 text-sm text-red-600">{errors.topCategory.message}</p>}
         </div>
-
-        {topCategory && JUNIOR_TOP_CATEGORIES.includes(topCategory as any) && null}
 
         <div>
           <TextField name="subCategory" label="Sub Category" required register={register} errors={errors} disabled={false} />

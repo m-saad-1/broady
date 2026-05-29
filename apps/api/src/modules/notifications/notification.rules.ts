@@ -55,7 +55,7 @@ export const notificationRules: Record<NotificationEventName, NotificationEventR
     audienceRules: [
       {
         audience: notificationAudience.user,
-        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email],
+        channels: [notificationChannelPreference.dashboard],
       },
     ],
     priority: "HIGH",
@@ -236,6 +236,40 @@ export const notificationRules: Record<NotificationEventName, NotificationEventR
       },
       {
         audience: notificationAudience.admin,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+    ],
+    priority: "HIGH",
+  },
+  refund_state_updated: {
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+      {
+        audience: notificationAudience.admin,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+      {
+        audience: notificationAudience.brandMembers,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+    ],
+    priority: "HIGH",
+  },
+  return_state_updated: {
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+      {
+        audience: notificationAudience.admin,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+      {
+        audience: notificationAudience.brandMembers,
         channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
       },
     ],

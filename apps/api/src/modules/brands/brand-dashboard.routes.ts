@@ -12,6 +12,7 @@ import { normalizeOrderNotificationPresentation } from "../notifications/notific
 import { resolveNotificationTargetPath } from "../notifications/notification.targets.js";
 import { queueNotificationEvent } from "../notifications/notification.service.js";
 import { productBaseSchema } from "../products/product.validation.js";
+import { createProduct, productStructureInclude, updateProduct } from "../products/product.service.js";
 import {
   DELIVERY_FAILURE_REASONS,
   buildBrandFailureMessage,
@@ -24,6 +25,7 @@ import {
   detectSuspiciousFraudPatterns,
   type DeliveryFailureReasonKey,
 } from "../orders/deliveryFailure.service.js";
+import { runShippingAutomationSweep } from "../orders/shippingAutomation.service.js";
 
 const router = Router();
 
@@ -134,6 +136,16 @@ function buildStatusLogNote(params: { internalNote?: string; trackingId?: string
   }
 
   return `${base} | CUSTOMER_NOTE: ${params.customerNote}`;
+}
+
+function getAutoEstimatedDelivery(status: OrderStatus, now: Date): Date | null {
+  if (status === OrderStatus.SHIPPED) {
+    return new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+  }
+  if (status === OrderStatus.OUT_FOR_DELIVERY) {
+    return new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  }
+  return null;
 }
 
 function deriveParentOrderStatus(subOrderStatuses: OrderStatus[]): OrderStatus {
@@ -406,6 +418,8 @@ router.get("/orders", async (req, res) => {
     orderBy: { createdAt: "desc" },
   });
 
+  void runShippingAutomationSweep().catch(() => undefined);
+
   return res.json({ data: orders });
 });
 
@@ -452,8 +466,9 @@ router.patch("/orders/:orderId/status", async (req, res) => {
     .object({
       status: z.enum(["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "OUT_FOR_DELIVERY", "DELIVERY_FAILED", "ADDRESS_CORRECTION_REQUIRED", "READY_FOR_REDELIVERY", "DELIVERED", "RETURNED", "CANCELED"]),
       trackingId: z.string().trim().min(4).max(120).optional(),
+      courierName: z.string().trim().max(50).optional(),
+      estimatedDelivery: z.coerce.date().optional(),
       note: z.string().trim().max(240).optional(),
-      customerNote: z.string().trim().max(240).optional(),
       failureReason: z.string().trim().max(240).optional(),
       failureReasonMessage: z.string().trim().max(240).optional(),
       nextAttemptDate: z.coerce.date().optional(),
@@ -486,6 +501,8 @@ router.patch("/orders/:orderId/status", async (req, res) => {
   const trackingId = parsed.data.trackingId ?? order.trackingId;
   const statusChanged = status !== order.status;
   const trackingChanged = trackingId !== order.trackingId;
+  const courierChanged = parsed.data.courierName !== undefined && parsed.data.courierName !== order.courierName;
+  const estimatedDeliveryChanged = parsed.data.estimatedDelivery !== undefined;
 
   const brandAllowedStatuses = new Set<OrderStatus>([
     OrderStatus.PROCESSING,
@@ -494,6 +511,13 @@ router.patch("/orders/:orderId/status", async (req, res) => {
     OrderStatus.DELIVERY_FAILED,
     OrderStatus.DELIVERED,
   ]);
+
+  if (status === OrderStatus.CANCELED) {
+    return res.status(400).json({
+      message:
+        "Brand cancellation must use the dedicated cancel endpoint with a required reason (OUT_OF_STOCK or ITEM_DAMAGED).",
+    });
+  }
 
   if (!brandAllowedStatuses.has(status)) {
     return res.status(403).json({ message: "Brand users can only move vendor groups through fulfillment states." });
@@ -566,7 +590,7 @@ router.patch("/orders/:orderId/status", async (req, res) => {
   }
 
 
-  if (!statusChanged && !trackingChanged && !parsed.data.note && !parsed.data.customerNote) {
+  if (!statusChanged && !trackingChanged && !courierChanged && !estimatedDeliveryChanged && !parsed.data.note) {
     return res.json({ data: order });
   }
 
@@ -592,12 +616,17 @@ router.patch("/orders/:orderId/status", async (req, res) => {
       status === OrderStatus.DELIVERY_FAILED && failurePolicy?.retryable && !isFinalDeliveryFailure
         ? calculateNextAttemptDate(failureReasonKey, now)
         : null;
+    const estimatedDelivery = parsed.data.estimatedDelivery
+      ?? order.estimatedDelivery
+      ?? getAutoEstimatedDelivery(status, now);
 
     await tx.subOrder.update({
       where: { id: order.id },
       data: {
         status: effectiveStatus,
         trackingId,
+        courierName: parsed.data.courierName ?? order.courierName,
+        estimatedDelivery,
         deliveryAttempts: status === OrderStatus.OUT_FOR_DELIVERY ? { increment: 1 } : undefined,
         lastAttemptAt: status === OrderStatus.OUT_FOR_DELIVERY ? now : undefined,
         failureReason:
@@ -646,7 +675,7 @@ router.patch("/orders/:orderId/status", async (req, res) => {
                   nextAttemptDate,
                   isFinalFailure: isFinalDeliveryFailure,
                 })
-              : parsed.data.customerNote,
+              : undefined,
         }),
       },
     });
@@ -686,7 +715,7 @@ router.patch("/orders/:orderId/status", async (req, res) => {
           internalNote: parsed.data.note
             ? `Vendor group (${access.brand.name}) update: ${parsed.data.note}`
             : `Vendor group (${access.brand.name}) updated to ${effectiveStatus}`,
-          customerNote: parsed.data.customerNote,
+          customerNote: undefined,
         }),
       },
     });
@@ -715,7 +744,7 @@ router.patch("/orders/:orderId/status", async (req, res) => {
     effectiveStatus,
     access.brand.name,
     parentStatusAfterUpdate,
-    parsed.data.customerNote,
+    undefined,
   );
 
   if (statusChanged) {
@@ -802,12 +831,223 @@ router.patch("/orders/:orderId/status", async (req, res) => {
   return res.json({ data: updated });
 });
 
+router.post("/orders/:orderId/cancel", async (req, res) => {
+  try {
+    const access = await getBrandAccess(req.auth!.userId);
+    if (!access) return res.status(403).json({ message: "Brand access required" });
+
+    const payload = z
+      .object({
+        reasonCode: z.enum(["OUT_OF_STOCK", "ITEM_DAMAGED"]),
+        note: z.string().trim().max(240).optional(),
+        orderItemIds: z.array(z.string().trim().min(3)).min(1).optional(),
+        refundMethod: z.enum(["ORIGINAL_SOURCE", "BANK_TRANSFER", "WALLET_CREDIT"]).optional(),
+      })
+      .safeParse(req.body || {});
+
+    if (!payload.success) {
+      return res.status(400).json({ message: "Invalid payload", issues: payload.error.flatten() });
+    }
+
+    const subOrder = await prisma.subOrder.findFirst({
+      where: {
+        brandId: access.brandId,
+        OR: [{ id: String(req.params.orderId) }, { orderId: String(req.params.orderId) }],
+      },
+      include: {
+        order: true,
+        brand: true,
+        items: {
+          include: {
+            product: { select: { name: true } },
+          },
+        },
+      },
+    });
+    if (!subOrder) return res.status(404).json({ message: "Order not found" });
+    const preShipmentStatuses: OrderStatus[] = [OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.PROCESSING];
+    if (!preShipmentStatuses.includes(subOrder.status)) {
+      return res.status(409).json({ message: "Brand can cancel only before shipment." });
+    }
+
+    const selectedItems = payload.data.orderItemIds?.length
+      ? subOrder.items.filter((item) => payload.data.orderItemIds!.includes(item.id))
+      : subOrder.items;
+
+    if (!selectedItems.length) {
+      return res.status(400).json({ message: "No valid order items selected for cancellation." });
+    }
+
+    if (payload.data.orderItemIds?.length && selectedItems.length !== payload.data.orderItemIds.length) {
+      return res.status(400).json({ message: "Some selected items do not belong to this vendor group." });
+    }
+
+    const isPartialCancellation = selectedItems.length < subOrder.items.length;
+    const cancelledAmountPkr = selectedItems.reduce((sum, item) => sum + item.unitPricePkr * item.quantity, 0);
+    if (cancelledAmountPkr <= 0) {
+      return res.status(400).json({ message: "Selected items are invalid for cancellation." });
+    }
+    const reasonLabel = payload.data.reasonCode === "OUT_OF_STOCK" ? "Out of stock" : "Item damaged";
+    const cancelledItemNames = selectedItems.map((item) => item.product.name).filter(Boolean).join(", ");
+    const cancelledItemIds = selectedItems.map((item) => item.id);
+
+    const cancellationSummary = await prisma.$transaction(async (tx) => {
+    if (isPartialCancellation) {
+      await tx.subOrder.update({
+        where: { id: subOrder.id },
+        data: {
+          subtotalPkr: { decrement: cancelledAmountPkr },
+        },
+      });
+    } else {
+      await tx.subOrder.update({
+        where: { id: subOrder.id },
+        data: { status: OrderStatus.CANCELED },
+      });
+    }
+
+    await tx.subOrderStatusLog.create({
+      data: {
+        subOrderId: subOrder.id,
+        status: isPartialCancellation ? subOrder.status : OrderStatus.CANCELED,
+        updatedBy: "BRAND",
+        updatedById: req.auth!.userId,
+        note: isPartialCancellation
+          ? `CANCELLED_ITEMS:${cancelledItemIds.join(",")} | Partial item cancellation by brand: ${reasonLabel}${payload.data.note ? ` (${payload.data.note})` : ""}`
+          : `Brand cancellation: ${payload.data.reasonCode}${payload.data.note ? ` (${payload.data.note})` : ""}`,
+      },
+    });
+
+    for (const item of selectedItems) {
+      await tx.product.update({
+        where: { id: item.productId },
+        data: { stock: { increment: item.quantity } },
+      });
+    }
+
+    const refreshedSubOrders = await tx.subOrder.findMany({
+      where: { orderId: subOrder.orderId },
+      select: { status: true, trackingId: true },
+    });
+    const nextParentStatus = deriveParentOrderStatus(refreshedSubOrders.map((entry) => entry.status));
+    await tx.order.update({
+      where: { id: subOrder.orderId },
+      data: {
+        status: nextParentStatus,
+        totalPkr: { decrement: cancelledAmountPkr },
+      },
+    });
+    await tx.orderStatusLog.create({
+      data: {
+        orderId: subOrder.orderId,
+        status: nextParentStatus,
+        updatedBy: "BRAND",
+        updatedById: req.auth!.userId,
+        note: isPartialCancellation
+          ? `Vendor group (${access.brand.name}) partially canceled by brand: ${reasonLabel}`
+          : `Vendor group (${access.brand.name}) canceled by brand: ${payload.data.reasonCode}`,
+      },
+    });
+
+    return {
+      allVendorGroupsCanceled: refreshedSubOrders.every((entry) => entry.status === OrderStatus.CANCELED),
+    };
+  });
+
+    const shouldCreateRefund = subOrder.order.paymentMethod !== "COD";
+
+    // Best-effort refund workflow: cancellation must succeed even if refund tables/workflow fail.
+    if (shouldCreateRefund) {
+    try {
+      const existingRefund = await prisma.refundRequest.findFirst({
+        where: { subOrderId: subOrder.id, status: { in: ["PENDING", "APPROVED", "PROCESSING"] } },
+        select: { id: true },
+      });
+
+      if (!existingRefund) {
+        const method =
+          payload.data.refundMethod ||
+          (subOrder.order.paymentMethod === "COD" ? "BANK_TRANSFER" : "ORIGINAL_SOURCE");
+        const refundRequest = await prisma.refundRequest.create({
+          data: {
+            orderId: subOrder.orderId,
+            subOrderId: subOrder.id,
+            requestedByRole: "BRAND",
+            requestedById: req.auth!.userId,
+            reasonCode: "BRAND_CANCELLATION",
+            reasonText: payload.data.reasonCode,
+            method,
+            amountPkr: cancelledAmountPkr,
+            status: "PENDING",
+            reviewNote: payload.data.note?.trim() || null,
+          },
+        });
+        await prisma.refundStatusLog.create({
+          data: {
+            refundRequestId: refundRequest.id,
+            status: "PENDING",
+            updatedBy: "BRAND",
+            updatedById: req.auth!.userId,
+            note: payload.data.note?.trim() || payload.data.reasonCode,
+          },
+        });
+      }
+    } catch (refundError) {
+      console.error("[brand-dashboard] refund workflow failed after cancellation", {
+        orderId: subOrder.orderId,
+        subOrderId: subOrder.id,
+        error: refundError instanceof Error ? refundError.message : String(refundError),
+      });
+    }
+    }
+
+    const shouldNotifyCancellation = !(isPartialCancellation && subOrder.order.paymentMethod === "COD");
+
+    if (shouldNotifyCancellation) {
+      queueNotificationEvent({
+      name: notificationEventNames.orderCancelled,
+      orderId: subOrder.orderId,
+      subOrderId: cancellationSummary.allVendorGroupsCanceled ? undefined : subOrder.id,
+      userId: subOrder.order.userId,
+      brandId: subOrder.brandId,
+      brandName: subOrder.brand.name,
+      changedByRole: "BRAND",
+      note: isPartialCancellation
+        ? `PARTIAL_ITEM_CANCEL|items=${cancelledItemNames}|reason=${reasonLabel}${payload.data.note ? `|note=${payload.data.note}` : ""}`
+        : `Canceled by brand (${payload.data.reasonCode})${payload.data.note ? `: ${payload.data.note}` : ""}`,
+      notifyAdmin: true,
+    });
+    }
+
+    if (shouldCreateRefund) {
+      queueNotificationEvent({
+      name: notificationEventNames.refundStateUpdated,
+      orderId: subOrder.orderId,
+      userId: subOrder.order.userId,
+      brandId: subOrder.brandId,
+      paymentMethod: subOrder.order.paymentMethod,
+      reason: "Refund request created: pending admin validation.",
+    });
+    }
+
+    return res.status(201).json({ data: { success: true } });
+  } catch (error) {
+    console.error("[brand-dashboard] cancel order failed", {
+      orderId: req.params.orderId,
+      userId: req.auth?.userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return res.status(500).json({ message: "Unable to cancel order right now. Please try again." });
+  }
+});
+
 router.get("/products", async (req, res) => {
   const access = await getBrandAccess(req.auth!.userId);
   if (!access) return res.status(403).json({ message: "Brand access required" });
 
   const products = await prisma.product.findMany({
     where: { brandId: access.brandId },
+    include: productStructureInclude,
     orderBy: { createdAt: "desc" },
   });
 
@@ -845,13 +1085,10 @@ router.post("/products", async (req, res) => {
     return res.status(400).json({ message: "Invalid payload", issues: parsed.error.flatten() });
   }
 
-  const product = await prisma.product.create({
-    data: {
-      ...parsed.data,
-      brandId: access.brandId,
-      approvalStatus: "PENDING",
-      isActive: false,
-    },
+  const product = await createProduct(parsed.data, access.brandId, {
+    approvalStatus: "PENDING",
+    isActive: false,
+    source: "brand_upload",
   });
 
   queueNotificationEvent({
@@ -890,13 +1127,15 @@ router.put("/products/:id", async (req, res) => {
     // Brand edits to approved products must go back through Broady approval.
   }
 
+  await updateProduct(product.id, parsed.data);
   const updated = await prisma.product.update({
     where: { id: product.id },
     data: {
-      ...parsed.data,
       approvalStatus: "PENDING" as const,
       isActive: false,
+      source: "brand_upload",
     },
+    include: productStructureInclude,
   });
 
   return res.json({ data: updated });

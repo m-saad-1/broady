@@ -1,6 +1,7 @@
 type NotificationTargetInput = {
   type: string;
   orderId?: string;
+  subOrderId?: string;
   message?: string;
   title?: string;
   role?: string;
@@ -24,6 +25,7 @@ function isAuthType(type: string) {
 }
 
 function extractSubOrderId(input: NotificationTargetInput) {
+  if (input.subOrderId) return input.subOrderId;
   const message = input.message || "";
   const title = input.title || "";
   const source = `${title} ${message}`;

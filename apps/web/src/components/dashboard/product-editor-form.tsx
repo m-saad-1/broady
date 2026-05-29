@@ -36,6 +36,7 @@ import type {
   ProductTemplateType,
 } from "@/types/marketplace";
 import { CheckboxField, SelectField, TextareaField, TextField } from "@/components/forms/form-controls";
+import { PRODUCT_GENDER_OPTIONS } from "@broady/shared";
 
 type TemplateLibraryState = {
   SIZE_GUIDE: ProductContentTemplate[];
@@ -189,7 +190,7 @@ export function ProductEditorForm({
       const content = template.content as ProductSizeGuide;
       setValue("sizeGuideTemplateId", template.id, { shouldDirty: true });
       setValue("sizeGuideImageUrl", content.imageUrl || "", { shouldDirty: true });
-      replaceSizeGuideRows(content.entries.length ? content.entries : [{ size: "S", cm: "", inches: "" }]);
+      replaceSizeGuideRows(content.entries?.length ? content.entries : [{ size: "S", cm: "", inches: "" }]);
       setShowSizeGuideImage(Boolean(content.imageUrl));
       return;
     }
@@ -422,6 +423,16 @@ export function ProductEditorForm({
               errors={errors}
               disabled={isSubmitting}
             />
+            <TextareaField<ProductFormValues>
+              className="md:col-span-2"
+              name="shortDescription"
+              label="Short Description"
+              placeholder="Brief catalog summary"
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+              rows={2}
+            />
             <TextField<ProductFormValues>
               name="actualPrice"
               label="Actual Price (PKR)"
@@ -452,11 +463,94 @@ export function ProductEditorForm({
               disabled={isSubmitting || !!useWatch({ control, name: "discountPercentage" })}
             />
             <TextField<ProductFormValues>
+              name="currency"
+              label="Currency"
+              placeholder="PKR"
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              name="label"
+              label="Label"
+              placeholder="New, Limited, Trending"
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              name="saleStartDate"
+              label="Sale Start"
+              type="date"
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              name="saleEndDate"
+              label="Sale End"
+              type="date"
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
               name="stock"
               label="Stock"
               required
               type="number"
               min={0}
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              name="fit"
+              label="Fit"
+              placeholder="Regular, Slim, Relaxed"
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              name="season"
+              label="Season"
+              placeholder="SS-26, Summer"
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              name="collection"
+              label="Collection"
+              placeholder="Essentials, Eid Collection"
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              name="productUrl"
+              label="Original Product URL"
+              placeholder="https://brand.com/product"
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <SelectField<ProductFormValues>
+              name="visibility"
+              label="Visibility"
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+              options={[
+                { label: "Visible", value: "visible" },
+                { label: "Hidden", value: "hidden" },
+              ]}
+            />
+            <TextField<ProductFormValues>
+              name="source"
+              label="Source"
+              placeholder="manual, brand_upload, json_import"
               register={register}
               errors={errors}
               disabled={isSubmitting}
@@ -468,10 +562,7 @@ export function ProductEditorForm({
               register={register}
               errors={errors}
               disabled={isSubmitting}
-              options={[
-                { label: "Women", value: "WOMEN" },
-                { label: "Men", value: "MEN" },
-              ]}
+              options={PRODUCT_GENDER_OPTIONS.map((opt) => ({ label: opt, value: opt }))}
             />
             <TextField<ProductFormValues>
               name="color"
@@ -565,6 +656,114 @@ export function ProductEditorForm({
                 ))}
               </div>
             ) : null}
+          </div>
+        </section>
+
+        <section className="space-y-3 border border-zinc-200 p-4">
+          <h3 className="text-sm font-semibold uppercase tracking-[0.12em]">Product Detail Blocks</h3>
+          <div className="grid gap-3 md:grid-cols-2">
+            <TextField<ProductFormValues>
+              name="fabricComposition"
+              label="Fabric Composition"
+              placeholder="100% Cotton"
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              name="materialDetails"
+              label="Material Details"
+              placeholder="Lightweight woven fabric"
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              name="fitDetails"
+              label="Fit Details"
+              placeholder="Regular fit"
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              name="modelDetails"
+              label="Model Details"
+              placeholder="Model is 5'8 and wears S"
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              name="origin"
+              label="Origin"
+              placeholder="Made in Pakistan"
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              name="packageIncludes"
+              label="Package Includes"
+              placeholder="1 shirt"
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextareaField<ProductFormValues>
+              className="md:col-span-2"
+              name="careGuide"
+              label="Care Guide"
+              placeholder="Machine wash cold. Do not bleach."
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextareaField<ProductFormValues>
+              className="md:col-span-2"
+              name="sizeGuideText"
+              label="Size Guide Text"
+              placeholder="Measurements are approximate."
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              className="md:col-span-2"
+              name="detailSizeGuideImageUrl"
+              label="Detail Size Guide Image URL"
+              placeholder="https://..."
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextareaField<ProductFormValues>
+              className="md:col-span-2"
+              name="shippingDeliveryText"
+              label="Shipping Delivery Text"
+              placeholder="Delivered in 3-5 working days."
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextareaField<ProductFormValues>
+              className="md:col-span-2"
+              name="returnExchangePolicy"
+              label="Return Exchange Policy"
+              placeholder="Returns accepted within 7 days."
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextareaField<ProductFormValues>
+              className="md:col-span-2"
+              name="disclaimer"
+              label="Disclaimer"
+              placeholder="Color may slightly vary due to lighting."
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
           </div>
         </section>
 
@@ -806,6 +1005,67 @@ export function ProductEditorForm({
               disabled={isSubmitting}
             />
           ) : null}
+          <div className="grid gap-3 md:grid-cols-2">
+            <TextField<ProductFormValues>
+              name="estimatedDeliveryMinDays"
+              label="Min Delivery Days"
+              type="number"
+              min={0}
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              name="estimatedDeliveryMaxDays"
+              label="Max Delivery Days"
+              type="number"
+              min={0}
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              name="deliveryText"
+              label="Delivery Text"
+              placeholder="Delivered in 3-5 working days"
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              name="shippingFee"
+              label="Shipping Fee"
+              type="number"
+              min={0}
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              name="returnWindowDays"
+              label="Return Window Days"
+              type="number"
+              min={0}
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              name="exchangeWindowDays"
+              label="Exchange Window Days"
+              type="number"
+              min={0}
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <CheckboxField<ProductFormValues> name="freeShippingAvailable" label="Free Shipping" control={control} errors={errors} disabled={isSubmitting} />
+            <CheckboxField<ProductFormValues> name="codAvailable" label="COD Available" control={control} errors={errors} disabled={isSubmitting} />
+            <CheckboxField<ProductFormValues> name="returnAvailable" label="Returns Available" control={control} errors={errors} disabled={isSubmitting} />
+            <CheckboxField<ProductFormValues> name="exchangeAvailable" label="Exchanges Available" control={control} errors={errors} disabled={isSubmitting} />
+          </div>
         </section>
 
         <section className="space-y-3 border border-zinc-200 p-4">
@@ -855,6 +1115,46 @@ export function ProductEditorForm({
             errors={errors}
             disabled={isSubmitting}
           />
+        </section>
+
+        <section className="space-y-3 border border-zinc-200 p-4">
+          <h3 className="text-sm font-semibold uppercase tracking-[0.12em]">SEO and Search</h3>
+          <div className="grid gap-3 md:grid-cols-2">
+            <TextField<ProductFormValues>
+              name="metaTitle"
+              label="Meta Title"
+              placeholder="SEO title"
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              name="canonicalUrl"
+              label="Canonical URL"
+              placeholder="https://..."
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              name="ogImageUrl"
+              label="OG Image URL"
+              placeholder="https://..."
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextareaField<ProductFormValues>
+              className="md:col-span-2"
+              name="metaDescription"
+              label="Meta Description"
+              placeholder="Search result description"
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+              rows={3}
+            />
+          </div>
         </section>
 
         <div className="rounded border border-zinc-200 p-4">

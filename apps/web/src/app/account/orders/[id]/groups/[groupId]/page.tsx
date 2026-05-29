@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { getTrackingUrl } from "@broady/shared";
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { ProductImage } from "@/components/ui/product-image";
 import { formatPkr } from "@/lib/utils";
 import { getOrderStatusLabel, getOrderStatusTone } from "@/lib/order-status";
+import { getCancelledOrderItemIds } from "@/lib/order-cancellation";
 import { resolveMediaUrl } from "@/lib/media-url";
 import type { NotificationItem, ProductReview, UserOrder } from "@/types/marketplace";
 import { NotificationsLoadMore } from "./notifications-load-more";
@@ -75,6 +77,14 @@ function resolveProductImageSrc(imageUrl?: string | null) {
   return resolveMediaUrl(imageUrl);
 }
 
+const SHIPMENT_TIMELINE: Array<{ key: "CONFIRMED" | "PROCESSING" | "SHIPPED" | "OUT_FOR_DELIVERY" | "DELIVERED"; label: string }> = [
+  { key: "CONFIRMED", label: "Confirmed" },
+  { key: "PROCESSING", label: "Processing" },
+  { key: "SHIPPED", label: "Shipped" },
+  { key: "OUT_FOR_DELIVERY", label: "Out for Delivery" },
+  { key: "DELIVERED", label: "Delivered" },
+];
+
 export default async function VendorGroupDetailPage({ params }: VendorGroupDetailPageProps) {
   const token = (await cookies()).get("broady_token")?.value;
   if (!token) redirect("/login?next=/account/orders");
@@ -88,7 +98,7 @@ export default async function VendorGroupDetailPage({ params }: VendorGroupDetai
 
   const group = order.subOrders.find((item) => item.id === groupId);
   if (!group) {
-    notFound();
+    redirect(`/account/orders?orderId=${encodeURIComponent(id)}`);
   }
 
   const groupNotifications = notifications.filter((item) => {
@@ -100,6 +110,10 @@ export default async function VendorGroupDetailPage({ params }: VendorGroupDetai
   const canWriteReview = group.status === "DELIVERED";
   const canCancelGroup = ["PENDING", "CONFIRMED"].includes(group.status);
   const canReorderGroup = ["DELIVERED", "RETURNED", "CANCELED"].includes(group.status);
+  const canAddressCorrection = group.status === "ADDRESS_CORRECTION_REQUIRED";
+  const cancelledItemIds = getCancelledOrderItemIds(group.statusLogs);
+  const timelineStatuses = new Set(group.statusLogs.map((log) => log.status));
+  const trackingUrl = group.trackingId && group.courierName ? getTrackingUrl(group.courierName, group.trackingId) : null;
 
   return (
     <main className="mx-auto w-full max-w-5xl space-y-8 px-4 py-10 lg:px-10">
@@ -117,10 +131,22 @@ export default async function VendorGroupDetailPage({ params }: VendorGroupDetai
             {getOrderStatusLabel(group.status)}
           </p>
           <p className="mt-2 text-sm text-zinc-600">Tracking ID: {group.trackingId || "Pending assignment"}</p>
+          <p className="mt-2 text-sm text-zinc-600">Courier: {group.courierName || "Pending assignment"}</p>
+          {group.estimatedDelivery ? <p className="mt-2 text-sm text-zinc-600">Estimated delivery: {formatDateTime(group.estimatedDelivery)}</p> : null}
           <p className="mt-2 text-sm text-zinc-600">Delivery attempts: {group.deliveryAttempts || 0}</p>
           {group.failureReason ? <p className="mt-2 text-sm text-orange-800">Failure reason: {group.failureReason}</p> : null}
           {group.nextAttemptDate ? <p className="mt-2 text-sm text-blue-800">Next attempt: {formatDateTime(group.nextAttemptDate)}</p> : null}
           {group.refundProcessedAt ? <p className="mt-2 text-sm text-emerald-800">Refund marked: {formatDateTime(group.refundProcessedAt)}</p> : null}
+          {trackingUrl ? (
+            <a
+              href={trackingUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-flex h-9 items-center border border-black bg-black px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-white"
+            >
+              Track Shipment
+            </a>
+          ) : null}
         </div>
         <div>
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Brand</p>
@@ -143,15 +169,33 @@ export default async function VendorGroupDetailPage({ params }: VendorGroupDetai
             brandName={group.brand?.name || "Brand"}
             canCancel={canCancelGroup}
             canReorder={canReorderGroup}
+            canAddressCorrection={canAddressCorrection}
+            currentDeliveryAddress={order.deliveryAddress}
           />
+        </div>
+      </section>
+
+      <section className="space-y-3 border border-zinc-300 p-5">
+        <h2 className="font-heading text-3xl uppercase">Shipment Tracking</h2>
+        <div className="space-y-2 border border-zinc-200 p-4">
+          {SHIPMENT_TIMELINE.map((step) => {
+            const done = timelineStatuses.has(step.key) || group.status === step.key;
+            return (
+              <p key={step.key} className={`text-sm ${done ? "text-zinc-900 font-semibold" : "text-zinc-500"}`}>
+                {done ? "✔" : "○"} {step.label}
+              </p>
+            );
+          })}
         </div>
       </section>
 
       <section className="space-y-3 border border-zinc-300 p-5">
         <h2 className="font-heading text-3xl uppercase">Items</h2>
         <div className="space-y-3">
-          {group.items.map((item) => (
-            <article key={item.id} className="grid gap-3 border-b border-zinc-200 py-3 md:grid-cols-[72px_1fr_auto] md:items-center">
+          {group.items.map((item) => {
+            const isCancelled = group.status === "CANCELED" || cancelledItemIds.has(item.id);
+            return (
+            <article key={item.id} className={`grid gap-3 border-b py-3 md:grid-cols-[72px_1fr_auto] md:items-center ${isCancelled ? "border-red-100 bg-red-50 px-2" : "border-zinc-200"}`}>
               <div className="relative h-14 w-14 overflow-hidden border border-zinc-200">
                 <ProductImage
                   src={resolveProductImageSrc(item.product.imageUrl)}
@@ -174,10 +218,11 @@ export default async function VendorGroupDetailPage({ params }: VendorGroupDetai
                   <p className="font-semibold">Color: {item.selectedColor || "Not specified"}</p>
                   <p className="font-semibold">Quantity: {item.quantity}</p>
                   <p className="font-semibold">Price: {formatPkr(item.unitPricePkr)}</p>
+                  {isCancelled ? <p className="font-semibold uppercase tracking-[0.12em] text-red-700">Cancelled</p> : null}
                 </div>
               </div>
 
-              {canWriteReview ? (
+              {canWriteReview && !isCancelled ? (
                 myReviewsByOrderItemId[item.id] ? (
                   <div className="flex flex-wrap gap-2">
                     <Link
@@ -201,9 +246,14 @@ export default async function VendorGroupDetailPage({ params }: VendorGroupDetai
                     Write Review
                   </Link>
                 )
+              ) : isCancelled ? (
+                <span className="inline-flex h-9 items-center justify-center border border-red-200 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-red-700">
+                  Cancelled
+                </span>
               ) : null}
             </article>
-          ))}
+            );
+          })}
         </div>
       </section>
 

@@ -13,6 +13,8 @@ export const notificationEventNames = {
   paymentSuccess: "payment_success",
   paymentFailed: "payment_failed",
   refundProcessed: "refund_processed",
+  refundStateUpdated: "refund_state_updated",
+  returnStateUpdated: "return_state_updated",
   productSubmitted: "product_submitted",
   productApproved: "product_approved",
   productRejected: "product_rejected",
@@ -66,10 +68,20 @@ export type NotificationEvent =
         | typeof notificationEventNames.paymentInitiated
         | typeof notificationEventNames.paymentSuccess
         | typeof notificationEventNames.paymentFailed
-        | typeof notificationEventNames.refundProcessed;
+        | typeof notificationEventNames.refundProcessed
+        | typeof notificationEventNames.refundStateUpdated;
       orderId: string;
       paymentMethod?: "COD" | "JAZZCASH" | "EASYPAISA";
       reason?: string;
+    })
+  | (BaseEvent & {
+      name: typeof notificationEventNames.returnStateUpdated;
+      orderId: string;
+      subOrderId?: string;
+      note?: string;
+      brandName?: string;
+      changedByRole?: "SYSTEM" | "ADMIN" | "BRAND" | "USER";
+      notifyAdmin?: boolean;
     })
   | (BaseEvent & {
       name: typeof notificationEventNames.productSubmitted;

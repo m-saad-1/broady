@@ -16,6 +16,10 @@ import type {
   ProductContentTemplate,
   ProductDeliveriesReturns,
   ProductFabricCare,
+  ImportJobRecord,
+  ImportSourceType,
+  ImportLogRecord,
+  IngestionQueueMetrics,
   ProductShippingDelivery,
   ProductSizeGuide,
   ProductTemplateType,
@@ -26,6 +30,7 @@ import type {
   ReviewReportReason,
   ReviewReportStatus,
   SearchSuggestion,
+  User,
   UserOrder,
   UserPaymentMethod,
   UserPaymentType,
@@ -308,7 +313,7 @@ export async function getProduct(slug: string): Promise<Product | null> {
 
 export async function getProductSearchSuggestions(
   query: string,
-  options?: { topCategory?: string },
+  options?: { topCategory?: string; juniorCategory?: string },
 ): Promise<{ suggestions: SearchSuggestion[]; correctedQuery?: string }> {
   const normalized = query.trim();
   if (normalized.length < 2) {
@@ -318,6 +323,9 @@ export async function getProductSearchSuggestions(
   const params = new URLSearchParams({ q: normalized });
   if (options?.topCategory) {
     params.set("topCategory", options.topCategory);
+  }
+  if (options?.juniorCategory) {
+    params.set("juniorCategory", options.juniorCategory);
   }
 
   try {
@@ -524,6 +532,168 @@ export async function getAdminProducts(): Promise<Product[]> {
   return response.data.map(normalizeProduct);
 }
 
+export async function getAdminProductById(productId: string): Promise<Product> {
+  const response = await authFetch<ApiEnvelope<Product>>(`/products/admin/${productId}`, { method: "GET" });
+  return normalizeProduct(response.data);
+}
+
+export async function createAdminImportJob(payload: {
+  brandId: string;
+  sourceType: ImportSourceType;
+  sourceLabel?: string;
+  sourceLocation?: string;
+  rawText?: string;
+  rawJson?: unknown;
+  file?: File;
+}): Promise<ImportJobRecord> {
+  const formData = new FormData();
+  formData.append("brandId", payload.brandId);
+  formData.append("sourceType", payload.sourceType);
+  if (payload.sourceLabel) formData.append("sourceLabel", payload.sourceLabel);
+  if (payload.sourceLocation) formData.append("sourceLocation", payload.sourceLocation);
+  if (payload.rawText) formData.append("rawText", payload.rawText);
+  if (payload.rawJson !== undefined) formData.append("rawJson", JSON.stringify(payload.rawJson));
+  if (payload.file) formData.append("file", payload.file);
+
+  const response = await authFetch<ApiEnvelope<ImportJobRecord>>("/admin/ingestion/imports", {
+    method: "POST",
+    body: formData,
+  });
+  return response.data;
+}
+
+export async function getAdminImportJobs(): Promise<ImportJobRecord[]> {
+  const response = await authFetch<ApiEnvelope<ImportJobRecord[]>>("/admin/ingestion/imports", { method: "GET" });
+  return response.data;
+}
+
+export async function getAdminImportJob(importJobId: string): Promise<ImportJobRecord> {
+  const response = await authFetch<ApiEnvelope<ImportJobRecord>>(`/admin/ingestion/imports/${importJobId}`, { method: "GET" });
+  return response.data;
+}
+
+export async function getAdminImportFailedProducts(importJobId: string): Promise<ImportLogRecord[]> {
+  const response = await authFetch<ApiEnvelope<ImportLogRecord[]>>(`/admin/ingestion/imports/${importJobId}/failed-products`, {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function retryAdminImportJob(importJobId: string): Promise<ImportJobRecord> {
+  const response = await authFetch<ApiEnvelope<ImportJobRecord>>(`/admin/ingestion/imports/${importJobId}/retry`, { method: "POST" });
+  return response.data;
+}
+
+export async function deleteAdminImportJob(importJobId: string): Promise<void> {
+  await authFetch(`/admin/ingestion/imports/${importJobId}`, { method: "DELETE" });
+}
+
+export async function getAdminIngestionQueueMetrics(): Promise<IngestionQueueMetrics> {
+  const response = await authFetch<ApiEnvelope<IngestionQueueMetrics>>("/admin/ingestion/queues/metrics", { method: "GET" });
+  return response.data;
+}
+
+export async function getAdminIngestionPendingProducts(): Promise<Product[]> {
+  const response = await authFetch<ApiEnvelope<Product[]>>("/admin/ingestion/approvals/pending", { method: "GET" });
+  return response.data.map(normalizeProduct);
+}
+
+export async function getAdminIngestionPendingProductById(productId: string): Promise<Product> {
+  const response = await authFetch<ApiEnvelope<Product>>(`/admin/ingestion/approvals/pending/${productId}`, { method: "GET" });
+  return normalizeProduct(response.data);
+}
+
+export async function fixAdminIngestionProduct(
+  productId: string,
+  payload: Partial<Pick<Product, "name" | "description" | "topCategory" | "subCategory" | "color" | "pricePkr" | "stock" | "sizes" | "tags" | "imageUrl">>,
+): Promise<Product> {
+  const response = await authFetch<ApiEnvelope<Product>>(`/admin/ingestion/products/${productId}/fix`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return normalizeProduct(response.data);
+}
+
+export async function triggerAdminInventorySync(productId: string): Promise<{ queued: boolean; productId: string }> {
+  const response = await authFetch<ApiEnvelope<{ queued: boolean; productId: string }>>(
+    `/admin/ingestion/products/${productId}/inventory-sync`,
+    { method: "POST" },
+  );
+  return response.data;
+}
+
+export async function createBrandImportJob(payload: {
+  sourceType: ImportSourceType;
+  sourceLabel?: string;
+  sourceLocation?: string;
+  rawText?: string;
+  rawJson?: unknown;
+  file?: File;
+}): Promise<ImportJobRecord> {
+  const formData = new FormData();
+  formData.append("sourceType", payload.sourceType);
+  if (payload.sourceLabel) formData.append("sourceLabel", payload.sourceLabel);
+  if (payload.sourceLocation) formData.append("sourceLocation", payload.sourceLocation);
+  if (payload.rawText) formData.append("rawText", payload.rawText);
+  if (payload.rawJson !== undefined) formData.append("rawJson", JSON.stringify(payload.rawJson));
+  if (payload.file) formData.append("file", payload.file);
+
+  const response = await authFetch<ApiEnvelope<ImportJobRecord>>("/brand-dashboard/ingestion/imports", {
+    method: "POST",
+    body: formData,
+  });
+  return response.data;
+}
+
+export async function getBrandImportJobs(): Promise<ImportJobRecord[]> {
+  const response = await authFetch<ApiEnvelope<ImportJobRecord[]>>("/brand-dashboard/ingestion/imports", { method: "GET" });
+  return response.data;
+}
+
+export async function getBrandImportJob(importJobId: string): Promise<ImportJobRecord> {
+  const response = await authFetch<ApiEnvelope<ImportJobRecord>>(`/brand-dashboard/ingestion/imports/${importJobId}`, {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function retryBrandImportJob(importJobId: string): Promise<ImportJobRecord> {
+  const response = await authFetch<ApiEnvelope<ImportJobRecord>>(`/brand-dashboard/ingestion/imports/${importJobId}/retry`, {
+    method: "POST",
+  });
+  return response.data;
+}
+
+export async function deleteBrandImportJob(importJobId: string): Promise<void> {
+  await authFetch(`/brand-dashboard/ingestion/imports/${importJobId}`, { method: "DELETE" });
+}
+
+export async function getBrandPendingFixProducts(status?: "PENDING" | "REJECTED"): Promise<Product[]> {
+  const query = status ? `?status=${status}` : "";
+  const response = await authFetch<ApiEnvelope<Product[]>>(`/brand-dashboard/ingestion/products/pending-fixes${query}`, {
+    method: "GET",
+  });
+  return response.data.map(normalizeProduct);
+}
+
+export async function getBrandPendingFixProductById(productId: string): Promise<Product> {
+  const response = await authFetch<ApiEnvelope<Product>>(`/brand-dashboard/ingestion/products/pending-fixes/${productId}`, {
+    method: "GET",
+  });
+  return normalizeProduct(response.data);
+}
+
+export async function fixBrandIngestionProduct(
+  productId: string,
+  payload: Partial<Pick<Product, "name" | "description" | "topCategory" | "subCategory" | "color" | "pricePkr" | "stock" | "sizes" | "tags" | "imageUrl">>,
+): Promise<Product> {
+  const response = await authFetch<ApiEnvelope<Product>>(`/brand-dashboard/ingestion/products/${productId}/fix`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return normalizeProduct(response.data);
+}
+
 export async function getAdminBrandDashboard(): Promise<AdminBrandDashboardRecord[]> {
   const response = await authFetch<ApiEnvelope<AdminBrandDashboardRecord[]>>("/admin/brand-dashboard", {
     method: "GET",
@@ -555,11 +725,29 @@ export type ProductMutationPayload = {
   brandId: string;
   name: string;
   slug: string;
+  shortDescription?: string;
   description: string;
+  actualPrice: number;
+  salePrice?: number;
+  discountPercentage?: number;
   pricePkr: number;
+  currency?: string;
+  label?: string;
+  saleStartDate?: string;
+  saleEndDate?: string;
+  gender: "Men" | "Women" | "Juniors";
+  color: string;
+  type: "Top" | "Bottom" | "Footwear" | "Accessories";
+  fit?: string;
+  season?: string;
+  collection?: string;
+  productUrl?: string;
+  visibility?: "visible" | "hidden";
+  source?: string;
   topCategory: "Men" | "Women" | "Toddler Boys" | "Toddler Girls" | "Junior Boys" | "Junior Girls";
   subCategory: string;
   sizes: string[];
+  tags?: string[];
   imageUrl: string;
   sizeGuideTemplateId?: string;
   sizeGuide: ProductSizeGuide;
@@ -569,6 +757,38 @@ export type ProductMutationPayload = {
   shippingDelivery: ProductShippingDelivery;
   fabricCareTemplateId?: string;
   fabricCare: ProductFabricCare;
+  detail?: {
+    fabricComposition?: string;
+    careGuide?: string;
+    fitDetails?: string;
+    modelDetails?: string;
+    sizeGuideText?: string;
+    sizeGuideImageUrl?: string;
+    shippingDelivery?: string;
+    returnExchangePolicy?: string;
+    disclaimer?: string;
+    materialDetails?: string;
+    origin?: string;
+    packageIncludes?: string;
+  };
+  shipping?: {
+    estimatedDeliveryMinDays?: number;
+    estimatedDeliveryMaxDays?: number;
+    deliveryText?: string;
+    shippingFee?: number;
+    freeShippingAvailable?: boolean;
+    codAvailable?: boolean;
+    returnAvailable?: boolean;
+    exchangeAvailable?: boolean;
+    returnWindowDays?: number;
+    exchangeWindowDays?: number;
+  };
+  seo?: {
+    metaTitle?: string;
+    metaDescription?: string;
+    canonicalUrl?: string;
+    ogImageUrl?: string;
+  };
   stock: number;
   isActive?: boolean;
 };
@@ -823,13 +1043,14 @@ export async function getBrandDashboardOrder(orderId: string): Promise<BrandDash
 
 export async function updateBrandOrderStatus(
   orderId: string,
-  payload: { status: string; trackingId?: string; note?: string; customerNote?: string; failureReason?: string; failureReasonMessage?: string; nextAttemptDate?: Date },
+  payload: { status: string; trackingId?: string; courierName?: string; estimatedDelivery?: string; note?: string; failureReason?: string; failureReasonMessage?: string; nextAttemptDate?: Date },
 ): Promise<BrandDashboardOrder> {
   const body = {
     status: payload.status,
     trackingId: payload.trackingId,
+    courierName: payload.courierName,
+    estimatedDelivery: payload.estimatedDelivery,
     note: payload.note,
-    customerNote: payload.customerNote,
     failureReason: payload.failureReason,
     failureReasonMessage: payload.failureReasonMessage,
     nextAttemptDate: payload.nextAttemptDate ? payload.nextAttemptDate.toISOString() : undefined,
@@ -839,6 +1060,17 @@ export async function updateBrandOrderStatus(
     body: JSON.stringify(body),
   });
   return normalizeBrandDashboardOrder(response.data);
+}
+
+export async function cancelBrandOrder(
+  orderId: string,
+  payload: { reasonCode: "OUT_OF_STOCK" | "ITEM_DAMAGED"; note?: string; orderItemIds?: string[] },
+): Promise<{ success: boolean }> {
+  const response = await authFetch<ApiEnvelope<{ success: boolean }>>(`/brand-dashboard/orders/${orderId}/cancel`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
 }
 
 export async function updateAdminOrderStatus(

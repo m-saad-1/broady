@@ -8,10 +8,15 @@ export async function getBrandSession() {
   const token = (await cookies()).get("broady_token")?.value;
   if (!token) redirect("/brand/login");
 
-  const response = await fetch(`${API_BASE}/auth/me`, {
-    headers: { Cookie: `broady_token=${token}` },
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/auth/me`, {
+      headers: { Cookie: `broady_token=${token}` },
+      cache: "no-store",
+    });
+  } catch {
+    redirect("/brand/login?error=api_unreachable");
+  }
 
   if (!response.ok) redirect("/brand/login");
 

@@ -33,6 +33,7 @@ model User {
   notifications                   Notification[]
   notificationPreference          NotificationPreference?
   orders                          Order[]
+  returnRequests                  ReturnRequest[]
   productTemplates                ProductContentTemplate[] @relation("TemplateCreatedBy")
   reviewModerations               Review[]                 @relation("ReviewModeratedBy")
   reviews                         Review[]
@@ -47,6 +48,7 @@ model User {
   deviceTokens                    UserDeviceToken[]
   paymentMethods                  UserPaymentMethod[]
   wishlistItems                   WishlistItem[]
+  productApprovalsReviewed        ProductApproval[]
 }
 
 model UserPaymentMethod {
@@ -168,6 +170,9 @@ model Brand {
   notifications    Notification[]
   orderItems       OrderItem[]
   products         Product[]
+  importJobs       ImportJob[]
+  categories       Category[]
+  tags             ProductTag[]
   productTemplates ProductContentTemplate[]
   reviews          Review[]
   subOrders        SubOrder[]
@@ -196,14 +201,25 @@ model Product {
   searchDocument              String                  @default("")
   name                        String
   slug                        String                  @unique
+  shortDescription            String?
   description                 String
   gender                      String                  @default("WOMEN")
   color                       String                  @default("default")
   type                        String                  @default("Top")
+  fit                         String?
+  season                      String?
+  collection                  String?
+  productUrl                  String?
+  visibility                  String                  @default("visible")
+  source                      String                  @default("manual")
   actualPrice                 Float
   salePrice                   Float?
   discountPercentage          Float?
   pricePkr                    Int
+  currency                    String                  @default("PKR")
+  label                       String?
+  saleStartDate               DateTime?
+  saleEndDate                 DateTime?
   topCategory                 String
   subCategory                 String
   sizes                       String[]
@@ -219,6 +235,11 @@ model Product {
   fabricCare                  Json?
   stock                       Int                     @default(0)
   isActive                    Boolean                 @default(true)
+  externalProductId           String?
+  externalSource              String?
+  importHash                  String?
+  metadata                    Json?
+  deletedAt                   DateTime?
   createdAt                   DateTime                @default(now())
   updatedAt                   DateTime                @updatedAt
   cartItems                   CartItem[]
@@ -228,10 +249,313 @@ model Product {
   reviews                     Review[]
   activities                  UserActivity[]
   wishlistItems               WishlistItem[]
+  variants                    ProductVariant[]
+  images                      ProductImage[]
+  detail                      ProductDetail?
+  shipping                    ProductShipping?
+  seo                         ProductSEO?
+  importMeta                  ProductImportMeta?
+  attributes                  ProductAttribute[]
+  inventoryRecords            Inventory[]
+  approvals                   ProductApproval[]
+  importLogs                  ImportLog[]
+  importRawData               RawImportData[]
+  productTags                 ProductTagOnProduct[]
 
+  @@unique([brandId, externalSource, externalProductId])
   @@index([brandId, topCategory, subCategory])
   @@index([topCategory, subCategory])
   @@index([pricePkr])
+  @@index([brandId, externalProductId])
+  @@index([brandId, approvalStatus, deletedAt])
+}
+
+model Category {
+  id            String        @id @default(cuid())
+  brandId       String?
+  name          String
+  slug          String
+  description   String?
+  metadata      Json?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  deletedAt     DateTime?
+  brand         Brand?        @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  subCategories SubCategory[]
+
+  @@unique([brandId, slug])
+  @@index([name])
+}
+
+model SubCategory {
+  id         String    @id @default(cuid())
+  categoryId String
+  name       String
+  slug       String
+  metadata   Json?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+  category   Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, slug])
+  @@index([name])
+}
+
+model ProductVariant {
+  id                String         @id @default(cuid())
+  productId         String
+  externalVariantId String?
+  sku               String
+  barcode           String?
+  color             String?
+  colorHex          String?
+  size              String?
+  fit               String?
+  season            String?
+  style             String?
+  pricePkr          Int
+  salePricePkr      Int?
+  compareAtPricePkr Int?
+  stockStatus       String         @default("in_stock")
+  lowStockThreshold Int?
+  weight            Float?
+  isActive          Boolean        @default(true)
+  metadata          Json?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  deletedAt         DateTime?
+  product           Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  inventory         Inventory?
+  images            ProductImage[]
+
+  @@unique([sku])
+  @@index([productId, isActive])
+  @@index([productId, color, size])
+  @@index([barcode])
+}
+
+model ProductImage {
+  id         String          @id @default(cuid())
+  productId  String
+  variantId  String?
+  sourceUrl  String
+  storageKey String?
+  url        String
+  cdnUrl     String?
+  altText    String?
+  imageType  String          @default("gallery")
+  width      Int?
+  height     Int?
+  isPrimary  Boolean         @default(false)
+  sortOrder  Int             @default(0)
+  dedupeHash String?
+  metadata   Json?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  deletedAt  DateTime?
+  product    Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant    ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([productId, sortOrder])
+  @@index([productId, imageType])
+  @@index([variantId])
+  @@index([dedupeHash])
+}
+
+model ProductDetail {
+  productId            String   @id
+  fabricComposition    String?
+  careGuide            String?
+  fitDetails           String?
+  modelDetails         String?
+  sizeGuideText        String?
+  sizeGuideImageUrl    String?
+  shippingDelivery     String?
+  returnExchangePolicy String?
+  disclaimer           String?
+  materialDetails      String?
+  origin               String?
+  packageIncludes      String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  product              Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model ProductShipping {
+  productId                String   @id
+  estimatedDeliveryMinDays Int?
+  estimatedDeliveryMaxDays Int?
+  deliveryText             String?
+  shippingFee              Int?
+  freeShippingAvailable    Boolean?
+  codAvailable             Boolean?
+  returnAvailable          Boolean?
+  exchangeAvailable        Boolean?
+  returnWindowDays         Int?
+  exchangeWindowDays       Int?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+  product                  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model ProductSEO {
+  productId       String   @id
+  metaTitle       String?
+  metaDescription String?
+  canonicalUrl    String?
+  ogImageUrl      String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model ProductImportMeta {
+  productId        String    @id
+  importBatchId    String?
+  sourceFormat     String?
+  sourceBrandName  String?
+  rawProductData   Json?
+  mappingStatus    String?
+  validationErrors Json?
+  lastSyncedAt     DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  product          Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([importBatchId])
+  @@index([sourceFormat, mappingStatus])
+}
+
+model ProductAttribute {
+  id        String   @id @default(cuid())
+  productId String
+  key       String
+  value     String
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, key])
+}
+
+model ProductTag {
+  id        String                @id @default(cuid())
+  brandId   String?
+  name      String
+  slug      String
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+  brand     Brand?                @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  products  ProductTagOnProduct[]
+
+  @@unique([brandId, slug])
+}
+
+model ProductTagOnProduct {
+  productId String
+  tagId     String
+  createdAt DateTime   @default(now())
+  product   Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  tag       ProductTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([productId, tagId])
+  @@index([tagId])
+}
+
+model ImportJob {
+  id                String            @id @default(cuid())
+  brandId           String
+  sourceType        ImportSourceType
+  sourceLabel       String?
+  sourceLocation    String?
+  status            ImportJobStatus   @default(PENDING)
+  totalRecords      Int               @default(0)
+  processedRecords  Int               @default(0)
+  successfulRecords Int               @default(0)
+  failedRecords     Int               @default(0)
+  startedAt         DateTime?
+  completedAt       DateTime?
+  metadata          Json?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  brand             Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  logs              ImportLog[]
+  rawData           RawImportData[]
+  approvals         ProductApproval[]
+
+  @@index([brandId, status, createdAt])
+}
+
+model ImportLog {
+  id          String         @id @default(cuid())
+  importJobId String
+  productId   String?
+  level       ImportLogLevel @default(INFO)
+  code        String?
+  message     String
+  details     Json?
+  createdAt   DateTime       @default(now())
+  importJob   ImportJob      @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+  product     Product?       @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([importJobId, level, createdAt])
+}
+
+model RawImportData {
+  id             String    @id @default(cuid())
+  importJobId    String
+  productId      String?
+  externalId     String?
+  payload        Json
+  normalizedHash String?
+  createdAt      DateTime  @default(now())
+  importJob      ImportJob @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+  product        Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([importJobId, externalId])
+  @@index([normalizedHash])
+}
+
+model ProductApproval {
+  id              String               @id @default(cuid())
+  productId       String
+  importJobId     String?
+  status          ProductApprovalState @default(PENDING)
+  reviewerId      String?
+  rejectionReason String?
+  reviewNotes     String?
+  reviewedAt      DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  product         Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  importJob       ImportJob?           @relation(fields: [importJobId], references: [id], onDelete: SetNull)
+  reviewer        User?                @relation(fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([importJobId, status])
+}
+
+model Inventory {
+  id           String             @id @default(cuid())
+  productId    String
+  variantId    String?            @unique
+  sku          String
+  quantity     Int                @default(0)
+  reserved     Int                @default(0)
+  available    Int                @default(0)
+  lowStockAt   Int                @default(5)
+  syncState    InventorySyncState @default(IDLE)
+  lastSyncedAt DateTime?
+  metadata     Json?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  product      Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant      ProductVariant?    @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@unique([productId, sku])
+  @@index([syncState, updatedAt])
 }
 
 model ProductContentTemplate {
@@ -279,6 +603,8 @@ model Order {
   statusLogs          OrderStatusLog[]
   paymentTransactions PaymentTransaction[]
   subOrders           SubOrder[]
+  returnRequests      ReturnRequest[]
+  refundRequests      RefundRequest[]
 
   @@index([userId, status])
 }
@@ -324,6 +650,8 @@ model SubOrder {
   status                 OrderStatus         @default(PENDING)
   subtotalPkr            Int
   trackingId             String?
+  courierName            String?
+  estimatedDelivery      DateTime?
   deliveryAttempts       Int                 @default(0)
   failureReason          String?
   failureReasonMessage   String?
@@ -339,10 +667,88 @@ model SubOrder {
   brand                  Brand               @relation(fields: [brandId], references: [id], onDelete: Cascade)
   order                  Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
   statusLogs             SubOrderStatusLog[]
+  refundRequests         RefundRequest[]
+  returnRequests         ReturnRequest[]
 
   @@unique([orderId, brandId])
   @@index([brandId, status])
   @@index([orderId, createdAt])
+}
+
+model ReturnRequest {
+  id             String            @id @default(cuid())
+  orderId        String
+  subOrderId     String
+  userId         String
+  reasonCode     ReturnReasonCode
+  reasonText     String?
+  status         ReturnStatus      @default(REQUESTED)
+  reviewNote     String?
+  pickupTracking String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  order          Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  subOrder       SubOrder          @relation(fields: [subOrderId], references: [id], onDelete: Cascade)
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  statusLogs     ReturnStatusLog[]
+  refundRequests RefundRequest[]
+
+  @@index([orderId, createdAt])
+  @@index([subOrderId, status, createdAt])
+  @@index([userId, createdAt])
+}
+
+model ReturnStatusLog {
+  id              String               @id @default(cuid())
+  returnRequestId String
+  status          ReturnStatus
+  updatedBy       OrderStatusUpdatedBy
+  updatedById     String?
+  note            String?
+  createdAt       DateTime             @default(now())
+  returnRequest   ReturnRequest        @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+
+  @@index([returnRequestId, createdAt])
+}
+
+model RefundRequest {
+  id              String            @id @default(cuid())
+  orderId         String
+  subOrderId      String
+  returnRequestId String?
+  requestedByRole RefundRequestedBy
+  requestedById   String?
+  reasonCode      RefundReasonCode
+  reasonText      String?
+  method          RefundMethod
+  status          RefundStatus      @default(PENDING)
+  amountPkr       Int
+  reviewNote      String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  completedAt     DateTime?
+  order           Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  subOrder        SubOrder          @relation(fields: [subOrderId], references: [id], onDelete: Cascade)
+  returnRequest   ReturnRequest?    @relation(fields: [returnRequestId], references: [id], onDelete: SetNull)
+  statusLogs      RefundStatusLog[]
+
+  @@index([orderId, createdAt])
+  @@index([subOrderId, status, createdAt])
+  @@index([status, createdAt])
+  @@index([requestedByRole, createdAt])
+}
+
+model RefundStatusLog {
+  id              String               @id @default(cuid())
+  refundRequestId String
+  status          RefundStatus
+  updatedBy       OrderStatusUpdatedBy
+  updatedById     String?
+  note            String?
+  createdAt       DateTime             @default(now())
+  refundRequest   RefundRequest        @relation(fields: [refundRequestId], references: [id], onDelete: Cascade)
+
+  @@index([refundRequestId, createdAt])
 }
 
 model Review {
@@ -681,6 +1087,43 @@ enum ProductApprovalStatus {
   REJECTED
 }
 
+enum ImportSourceType {
+  SHOPIFY_JSON
+  WOOCOMMERCE_JSON
+  CUSTOM_JSON
+  CSV
+  REST_API
+  MANUAL_UPLOAD
+}
+
+enum ImportJobStatus {
+  PENDING
+  PROCESSING
+  PARTIAL_SUCCESS
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum ImportLogLevel {
+  INFO
+  WARN
+  ERROR
+}
+
+enum ProductApprovalState {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum InventorySyncState {
+  IDLE
+  PENDING
+  SYNCING
+  FAILED
+}
+
 enum ProductTemplateType {
   SIZE_GUIDE
   DELIVERIES_RETURNS
@@ -695,4 +1138,52 @@ enum UserActivityEventType {
   SEARCH_QUERY
   CATEGORY_BROWSE
   WISHLIST_ADDED
+}
+
+enum ReturnStatus {
+  REQUESTED
+  REVIEWING
+  APPROVED
+  REJECTED
+  PICKUP_SCHEDULED
+  IN_TRANSIT
+  RECEIVED
+  REFUND_INITIATED
+  COMPLETED
+}
+
+enum ReturnReasonCode {
+  DAMAGED_ITEM
+  WRONG_ITEM
+  SIZE_ISSUE
+  QUALITY_ISSUE
+  CHANGED_MIND
+  OTHER
+}
+
+enum RefundStatus {
+  PENDING
+  APPROVED
+  PROCESSING
+  COMPLETED
+  REJECTED
+}
+
+enum RefundMethod {
+  ORIGINAL_SOURCE
+  BANK_TRANSFER
+  WALLET_CREDIT
+}
+
+enum RefundReasonCode {
+  BRAND_CANCELLATION
+  DELIVERY_FAILURE
+  RETURNED_PRODUCT
+  FAILED_PAYMENT
+  OTHER
+}
+
+enum RefundRequestedBy {
+  BRAND
+  SYSTEM
 }
