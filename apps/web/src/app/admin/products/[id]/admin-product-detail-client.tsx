@@ -78,6 +78,23 @@ export function AdminProductDetailClient({ productId }: AdminProductDetailClient
   };
 
   const hasDiscount = useMemo(() => Number(product?.discountPercentage || 0) > 0 && Number(product?.salePrice || 0) > 0, [product]);
+  const galleryImages = useMemo(() => {
+    if (!product) return [];
+    const urls = (product.images || [])
+      .slice()
+      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+      .map((image) => image.cdnUrl || image.url || image.sourceUrl || "")
+      .filter(Boolean);
+    return Array.from(new Set([product.imageUrl, ...urls].map((url) => (url || "").trim()).filter(Boolean)));
+  }, [product]);
+  const [activeImage, setActiveImage] = useState("");
+
+  useEffect(() => {
+    if (!galleryImages.length) return;
+    if (!activeImage || !galleryImages.some((image) => image.toLowerCase() === activeImage.toLowerCase())) {
+      setActiveImage(galleryImages[0] || "");
+    }
+  }, [activeImage, galleryImages]);
 
   if (isLoading) {
     return <p className="text-sm text-zinc-600">Loading product details...</p>;
@@ -91,8 +108,23 @@ export function AdminProductDetailClient({ productId }: AdminProductDetailClient
     <section className="grid gap-6 md:grid-cols-12">
       <div className="md:col-span-7">
         <div className="relative aspect-[4/5] w-full overflow-hidden border border-zinc-300">
-          <ProductImage src={product.imageUrl} alt={product.name} fill className="object-cover" sizes="(max-width: 768px) 100vw, 60vw" />
+          <ProductImage src={activeImage || product.imageUrl} alt={product.name} fill className="object-cover" sizes="(max-width: 768px) 100vw, 60vw" />
         </div>
+        {galleryImages.length > 1 ? (
+          <div className="mt-3 grid grid-cols-5 gap-2 sm:grid-cols-6">
+            {galleryImages.map((image, index) => (
+              <button
+                key={`${image}-${index}`}
+                type="button"
+                onClick={() => setActiveImage(image)}
+                className={`relative aspect-square overflow-hidden border ${(activeImage || "").toLowerCase() === image.toLowerCase() ? "border-black" : "border-zinc-300"}`}
+                aria-label={`View product image ${index + 1}`}
+              >
+                <ProductImage src={image} alt={`${product.name} image ${index + 1}`} fill className="object-cover" sizes="20vw" />
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       <div className="space-y-5 border border-zinc-300 p-6 md:col-span-5">
@@ -132,7 +164,6 @@ export function AdminProductDetailClient({ productId }: AdminProductDetailClient
             {[
               ["Fabric", product.detail.fabricComposition],
               ["Care", product.detail.careGuide],
-              ["Fit", product.detail.fitDetails],
               ["Model", product.detail.modelDetails],
               ["Material", product.detail.materialDetails],
               ["Origin", product.detail.origin],
@@ -232,6 +263,7 @@ export function AdminProductDetailClient({ productId }: AdminProductDetailClient
               productId={product.id}
               initialValues={productToFormValues(product)}
               cancelHref="/admin/products"
+              onCancel={() => setIsEditOpen(false)}
               onCompleted={() => {
                 setIsEditOpen(false);
                 void loadProduct();

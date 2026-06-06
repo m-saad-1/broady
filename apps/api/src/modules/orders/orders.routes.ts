@@ -718,6 +718,18 @@ router.post("/", requireAuth, orderPlacementIpLimit, orderPlacementUserLimit, as
     });
   }
 
+  await trackUserActivity({
+    userId: req.auth!.userId,
+    eventType: UserActivityEventType.ORDER_PLACED,
+    sourcePage: "checkout",
+    metadata: {
+      orderId: order.id,
+      itemCount: parsed.data.items.length,
+      paymentMethod: parsed.data.paymentMethod,
+      totalPkr: order.totalPkr,
+    },
+  });
+
   await Promise.allSettled(
     parsed.data.items.map(async (item) => {
       const product = productById(item.productId);
@@ -727,11 +739,17 @@ router.post("/", requireAuth, orderPlacementIpLimit, orderPlacementUserLimit, as
         userId: req.auth!.userId,
         eventType: UserActivityEventType.PRODUCT_PURCHASED,
         productId: product.id,
+        brandId: product.brandId,
         topCategory: product.topCategory,
         subCategory: product.subCategory,
+        sourcePage: "checkout",
+        gender: product.gender,
         metadata: {
           quantity: item.quantity,
           orderId: order.id,
+          selectedColor: item.selectedColor,
+          selectedSize: item.selectedSize,
+          unitPricePkr: product.pricePkr,
         },
       });
     }),
@@ -1260,6 +1278,28 @@ router.post("/me/:orderId/cancel", requireAuth, async (req, res) => {
     });
   }
 
+  await Promise.allSettled(
+    order.items.map(async (item) => {
+      if (!item.product) return;
+
+      await trackUserActivity({
+        userId: req.auth!.userId,
+        eventType: UserActivityEventType.PRODUCT_CANCELLED,
+        productId: item.productId,
+        brandId: item.product.brandId,
+        topCategory: item.product.topCategory,
+        subCategory: item.product.subCategory,
+        sourcePage: "order-cancel",
+        gender: item.product.gender,
+        metadata: {
+          orderId: order.id,
+          quantity: item.quantity,
+          reason: cancellationReason,
+        },
+      });
+    }),
+  );
+
   return res.json({ data: canceled });
 });
 
@@ -1401,6 +1441,31 @@ router.post("/me/:orderId/sub-orders/:subOrderId/cancel", requireAuth, async (re
     notifyAdmin: true,
   });
 
+  await Promise.allSettled(
+    order.items
+      .filter((item) => item.subOrderId === targetSubOrder.id)
+      .map(async (item) => {
+        if (!item.product) return;
+
+        await trackUserActivity({
+          userId: req.auth!.userId,
+          eventType: UserActivityEventType.PRODUCT_CANCELLED,
+          productId: item.productId,
+          brandId: item.product.brandId,
+          topCategory: item.product.topCategory,
+          subCategory: item.product.subCategory,
+          sourcePage: "order-cancel",
+          gender: item.product.gender,
+          metadata: {
+            orderId: order.id,
+            subOrderId: targetSubOrder.id,
+            quantity: item.quantity,
+            reason: cancellationReason,
+          },
+        });
+      }),
+  );
+
   return res.json({ data: canceled });
 });
 
@@ -1487,6 +1552,36 @@ router.post("/me/:orderId/sub-orders/:subOrderId/return", requireAuth, async (re
     note: `Return requested (${payload.data.reasonCode})${payload.data.reasonText ? `: ${payload.data.reasonText}` : ""}`,
     notifyAdmin: true,
   });
+
+  const returnedItems = await prisma.orderItem.findMany({
+    where: { subOrderId: targetSubOrder.id },
+    include: { product: true },
+  });
+
+  await Promise.allSettled(
+    returnedItems.map(async (item) => {
+      if (!item.product) return;
+
+      await trackUserActivity({
+        userId: req.auth!.userId,
+        eventType: UserActivityEventType.PRODUCT_RETURNED,
+        productId: item.productId,
+        brandId: item.product.brandId,
+        topCategory: item.product.topCategory,
+        subCategory: item.product.subCategory,
+        sourcePage: "order-return",
+        gender: item.product.gender,
+        metadata: {
+          orderId: order.id,
+          subOrderId: targetSubOrder.id,
+          quantity: item.quantity,
+          reasonCode: payload.data.reasonCode,
+          reasonText: payload.data.reasonText?.trim(),
+          returnRequestId: created.id,
+        },
+      });
+    }),
+  );
 
   return res.status(201).json({ data: created });
 });

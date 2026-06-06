@@ -507,19 +507,192 @@ export async function reorderUserSubOrder(orderId: string, subOrderId: string): 
 }
 
 export type TrackUserBehaviorEventPayload = {
-  eventType: "PRODUCT_VIEW" | "PRODUCT_ADDED_TO_CART" | "WISHLIST_ADDED" | "SEARCH_QUERY" | "CATEGORY_BROWSE" | "PRODUCT_PURCHASED";
+  eventType:
+    | "PRODUCT_VIEW"
+    | "PRODUCT_CLICK"
+    | "PRODUCT_ADDED_TO_CART"
+    | "PRODUCT_REMOVED_FROM_CART"
+    | "WISHLIST_ADDED"
+    | "SEARCH_QUERY"
+    | "CATEGORY_BROWSE"
+    | "FILTER_USED"
+    | "PRODUCT_PURCHASED"
+    | "PRODUCT_RETURNED"
+    | "PRODUCT_CANCELLED"
+    | "CHECKOUT_STARTED"
+    | "ORDER_PLACED"
+    | "RECOMMENDATION_CLICK"
+    | "EXPLICIT_PRODUCT_INTEREST";
   productId?: string;
+  variantId?: string;
+  brandId?: string;
   searchQuery?: string;
+  filters?: Record<string, unknown>;
+  sourcePage?: string;
+  device?: string;
+  gender?: string;
   topCategory?: string;
   subCategory?: string;
   metadata?: Record<string, unknown>;
 };
 
+export type RecommendationMeta = {
+  impressionId?: string;
+  surface: "FOR_YOU" | "SIMILAR_ITEMS" | "TRENDING" | "POPULAR_IN_CATEGORY" | string;
+  algorithm: string;
+  generatedAt: string;
+  reason?: string;
+};
+
+type RecommendationEnvelope = {
+  data: Product[];
+  meta?: RecommendationMeta;
+};
+
+const RECOMMENDATION_SESSION_STORAGE_KEY = "broady-recommendation-session";
+const RECOMMENDATION_SESSION_COOKIE = "broady_recommendation_session";
+
+function isValidRecommendationSessionId(value?: string | null) {
+  return Boolean(value && /^[a-zA-Z0-9:_-]{12,96}$/.test(value));
+}
+
+function createRecommendationSessionId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `rec_${crypto.randomUUID()}`;
+  }
+  return `rec_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 14)}`;
+}
+
+export function getRecommendationSessionId() {
+  if (typeof window === "undefined") return undefined;
+
+  try {
+    const stored = window.localStorage.getItem(RECOMMENDATION_SESSION_STORAGE_KEY);
+    if (isValidRecommendationSessionId(stored)) {
+      return stored || undefined;
+    }
+
+    const sessionId = createRecommendationSessionId();
+    window.localStorage.setItem(RECOMMENDATION_SESSION_STORAGE_KEY, sessionId);
+    document.cookie = `${RECOMMENDATION_SESSION_COOKIE}=${encodeURIComponent(sessionId)}; Path=/; Max-Age=${60 * 60 * 24 * 180}; SameSite=Lax`;
+    return sessionId;
+  } catch {
+    return undefined;
+  }
+}
+
+async function recommendationFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const authToken = getStoredAuthToken();
+  const recommendationSessionId = getRecommendationSessionId();
+  let lastTransportError: unknown;
+
+  for (const apiBase of getApiBaseCandidates()) {
+    try {
+      const response = await fetch(`${apiBase}${path}`, {
+        credentials: "include",
+        ...init,
+        headers: {
+          "Content-Type": "application/json",
+          ...(recommendationSessionId ? { "X-Recommendation-Session-Id": recommendationSessionId } : {}),
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          ...(init?.headers || {}),
+        },
+      });
+
+      if (!response.ok) {
+        let message = `Request failed: ${response.status}`;
+        let code: string | undefined;
+        try {
+          const json = (await response.json()) as ApiErrorBody;
+          message = json.message || message;
+          code = json.code;
+        } catch {
+          // Ignore non-JSON error bodies.
+        }
+        throw new ApiRequestError(message, response.status, code);
+      }
+
+      if (response.status === 204) {
+        return undefined as T;
+      }
+
+      return (await response.json()) as T;
+    } catch (error) {
+      lastTransportError = error;
+      const isTransportFailure = error instanceof TypeError || (error instanceof DOMException && error.name === "AbortError");
+      if (!isTransportFailure) {
+        throw error;
+      }
+    }
+  }
+
+  const transportMessage = lastTransportError instanceof Error ? lastTransportError.message : "The API server could not be reached.";
+  throw new ApiRequestError(`Unable to reach the recommendation API. ${transportMessage}`.trim(), 0, "NETWORK_ERROR");
+}
+
+async function publicRecommendationFetch(path: string): Promise<RecommendationEnvelope> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    cache: "no-store",
+    next: { revalidate: 0 },
+  });
+  if (!response.ok) throw new Error("API failed");
+  return (await response.json()) as RecommendationEnvelope;
+}
+
+function normalizeRecommendationEnvelope(envelope: RecommendationEnvelope) {
+  return {
+    products: Array.isArray(envelope.data) ? envelope.data.map(normalizeProduct) : [],
+    meta: envelope.meta,
+  };
+}
+
 export async function trackUserBehaviorEvent(payload: TrackUserBehaviorEventPayload): Promise<void> {
-  await authFetch<{ accepted: boolean }>("/recommendations/events", {
+  await recommendationFetch<{ accepted: boolean }>("/recommendations/events", {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export async function getForYouRecommendationFeed(options?: {
+  limit?: number;
+  topCategory?: string;
+  subCategory?: string;
+}): Promise<{ products: Product[]; meta?: RecommendationMeta }> {
+  const params = new URLSearchParams();
+  if (options?.limit) params.set("limit", String(options.limit));
+  if (options?.topCategory) params.set("topCategory", options.topCategory);
+  if (options?.subCategory) params.set("subCategory", options.subCategory);
+  const query = params.toString();
+  const envelope = await recommendationFetch<RecommendationEnvelope>(`/recommendations/for-you${query ? `?${query}` : ""}`);
+  return normalizeRecommendationEnvelope(envelope);
+}
+
+export async function getSimilarRecommendationProducts(
+  productId: string,
+  limit = 12,
+): Promise<{ products: Product[]; meta?: RecommendationMeta }> {
+  const path = `/recommendations/similar/${encodeURIComponent(productId)}?limit=${limit}`;
+  const envelope = typeof window === "undefined"
+    ? await publicRecommendationFetch(path)
+    : await recommendationFetch<RecommendationEnvelope>(path);
+  return normalizeRecommendationEnvelope(envelope);
+}
+
+export async function getTrendingRecommendationProducts(options?: {
+  limit?: number;
+  topCategory?: string;
+  subCategory?: string;
+}): Promise<{ products: Product[]; meta?: RecommendationMeta }> {
+  const params = new URLSearchParams();
+  if (options?.limit) params.set("limit", String(options.limit));
+  if (options?.topCategory) params.set("topCategory", options.topCategory);
+  if (options?.subCategory) params.set("subCategory", options.subCategory);
+  const query = params.toString();
+  const path = `/recommendations/trending${query ? `?${query}` : ""}`;
+  const envelope = typeof window === "undefined"
+    ? await publicRecommendationFetch(path)
+    : await recommendationFetch<RecommendationEnvelope>(path);
+  return normalizeRecommendationEnvelope(envelope);
 }
 
 export async function getAdminBrands(): Promise<Brand[]> {
@@ -750,13 +923,13 @@ export type ProductMutationPayload = {
   tags?: string[];
   imageUrl: string;
   sizeGuideTemplateId?: string;
-  sizeGuide: ProductSizeGuide;
+  sizeGuide?: ProductSizeGuide;
   deliveriesReturnsTemplateId?: string;
-  deliveriesReturns: ProductDeliveriesReturns;
+  deliveriesReturns?: Partial<ProductDeliveriesReturns>;
   shippingDeliveryTemplateId?: string;
-  shippingDelivery: ProductShippingDelivery;
+  shippingDelivery?: Partial<ProductShippingDelivery>;
   fabricCareTemplateId?: string;
-  fabricCare: ProductFabricCare;
+  fabricCare?: Partial<ProductFabricCare>;
   detail?: {
     fabricComposition?: string;
     careGuide?: string;
@@ -1111,29 +1284,7 @@ export async function uploadBrandProductImages(files: File[]): Promise<string[]>
 
 export async function updateBrandDashboardProduct(
   productId: string,
-  payload: Partial<
-    Pick<
-      Product,
-      | "name"
-      | "slug"
-      | "description"
-      | "pricePkr"
-      | "topCategory"
-      | "subCategory"
-      | "sizes"
-      | "stock"
-      | "isActive"
-      | "imageUrl"
-      | "sizeGuideTemplateId"
-      | "sizeGuide"
-      | "deliveriesReturnsTemplateId"
-      | "deliveriesReturns"
-      | "shippingDeliveryTemplateId"
-      | "shippingDelivery"
-      | "fabricCareTemplateId"
-      | "fabricCare"
-    >
-  >,
+  payload: Partial<Omit<ProductMutationPayload, "brandId">>,
 ): Promise<Product> {
   const response = await authFetch<ApiEnvelope<Product>>(`/brand-dashboard/products/${productId}`, {
     method: "PUT",

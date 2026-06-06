@@ -2,6 +2,7 @@ import type { NormalizedProduct, NormalizedVariant, ParsedImportRecord } from ".
 import { createSlug, normalizePrice, normalizeText } from "../utils/ingestion.utils.js";
 
 const colorKeys = ["color", "color_name", "clr", "shade", "colour"];
+const DEFAULT_IMPORTED_STOCK = 10;
 const TYPE_BY_PRODUCT_TYPE: Record<string, "Top" | "Bottom" | "Footwear" | "Accessories"> = {
   tees: "Top",
   "t-shirts": "Top",
@@ -107,6 +108,8 @@ const SECTION_FABRIC_CARE = "fabric_care";
 const SECTION_DELIVERIES_RETURNS = "deliveries_returns";
 const SECTION_SHIPPING_DELIVERY = "shipping_delivery";
 const SECTION_SIZE_GUIDE = "size_guide";
+const SECTION_MODEL_DETAILS = "model_details";
+const SECTION_DISCLAIMER = "disclaimer";
 const SECTION_OTHER = "other";
 
 type HtmlSection = {
@@ -117,6 +120,8 @@ type HtmlSection = {
     | typeof SECTION_DELIVERIES_RETURNS
     | typeof SECTION_SHIPPING_DELIVERY
     | typeof SECTION_SIZE_GUIDE
+    | typeof SECTION_MODEL_DETAILS
+    | typeof SECTION_DISCLAIMER
     | typeof SECTION_OTHER;
   text: string;
 };
@@ -185,6 +190,8 @@ function classifyHeading(heading: string): HtmlSection["headingType"] {
   ) {
     return SECTION_FABRIC_CARE;
   }
+  if (normalized.includes("model")) return SECTION_MODEL_DETAILS;
+  if (normalized.includes("disclaimer") || normalized.includes("note") || normalized.includes("warning")) return SECTION_DISCLAIMER;
   if (normalized.includes("deliver") || normalized.includes("return") || normalized.includes("refund")) {
     return SECTION_DELIVERIES_RETURNS;
   }
@@ -327,6 +334,10 @@ function parseBooleanish(value: unknown): boolean | undefined {
   if (["true", "yes", "y", "1", "available"].includes(normalized)) return true;
   if (["false", "no", "n", "0", "unavailable"].includes(normalized)) return false;
   return undefined;
+}
+
+function hasNumericStockValue(value: unknown): boolean {
+  return value !== undefined && value !== null && String(value).trim() !== "" && /\d/.test(String(value));
 }
 
 function getSourceLookup(source: Record<string, unknown>) {
@@ -500,8 +511,8 @@ function parseFabricCare(
   }
 
   return {
-    fabricType: fabricType || "Not specified",
-    careInstructions: normalizedCare.length ? normalizedCare : ["Not specified"],
+    fabricType: fabricType || undefined,
+    careInstructions: normalizedCare.length ? normalizedCare : undefined,
   };
 }
 
@@ -536,23 +547,32 @@ function parseDeliveriesReturns(
 
   for (const section of sections) {
     if (section.headingType !== SECTION_DELIVERIES_RETURNS) continue;
-    lines.push(...parseTextList(section.text));
+    const heading = normalizeKey(section.headingRaw);
+    const sectionText = parseTextList(section.text).join("\n");
+    if (!sectionText) continue;
+    if (heading.includes("deliver") && !deliveryTime) {
+      deliveryTime = sectionText;
+    } else if ((heading.includes("refund") || heading.includes("condition")) && !refundConditions) {
+      refundConditions = sectionText;
+    } else if (!returnPolicy) {
+      returnPolicy = sectionText;
+    } else {
+      lines.push(sectionText);
+    }
   }
 
   const fallbackLines = uniq(lines);
-  deliveryTime = deliveryTime || fallbackLines[0] || "";
-  returnPolicy = returnPolicy || fallbackLines[1] || "";
-  refundConditions = refundConditions || fallbackLines[2] || "";
+  const fallbackReturnLines = fallbackLines.filter((line) => /\breturn\b|\bexchange\b|\brefund\b/i.test(line));
+  const fallbackDeliveryLines = fallbackLines.filter((line) => /\bdeliver\b|\bship\b|\bday\b|\btime\b/i.test(line) && !fallbackReturnLines.includes(line));
+  deliveryTime = deliveryTime || fallbackDeliveryLines[0] || "";
+  returnPolicy = returnPolicy || fallbackReturnLines[0] || fallbackLines[0] || "";
+  refundConditions = refundConditions || fallbackReturnLines[1] || "";
 
   if (!deliveryTime && !returnPolicy && !refundConditions) {
     return undefined;
   }
 
-  return {
-    deliveryTime: deliveryTime || "As per brand policy",
-    returnPolicy: returnPolicy || "As per brand policy",
-    refundConditions: refundConditions || "As per brand policy",
-  };
+  return { deliveryTime: deliveryTime || undefined, returnPolicy: returnPolicy || undefined, refundConditions: refundConditions || undefined };
 }
 
 function parseShippingDelivery(
@@ -611,11 +631,15 @@ function parseShippingDelivery(
     return undefined;
   }
 
-  return {
-    regions: regions.length ? regions : ["Pakistan"],
-    estimatedDeliveryTime: estimatedDeliveryTime || "As per brand policy",
-    charges: charges || undefined,
-  };
+  return { regions: regions.length ? regions : undefined, estimatedDeliveryTime: estimatedDeliveryTime || undefined, charges: charges || undefined };
+}
+
+function getFirstSectionText(sections: HtmlSection[], headingType: HtmlSection["headingType"]): string {
+  return sections
+    .filter((section) => section.headingType === headingType)
+    .map((section) => section.text)
+    .map((text) => cleanText(text))
+    .filter(Boolean)[0] || "";
 }
 
 function parseFit(
@@ -660,7 +684,14 @@ function parseAdditionalInfo(
   const pushAdditional = (label: string, value: unknown) => {
     const text = cleanText(value);
     if (!text) return;
-    additional.push({ label: label.trim(), value: text });
+    const normalizedLabel = normalizeKey(label);
+    if (normalizedLabel.includes("model")) {
+      additional.push({ label: "Model Details", value: text });
+      return;
+    }
+    if (normalizedLabel.includes("estimated_delivery") || normalizedLabel.includes("delivery_time")) {
+      additional.push({ label: "Estimated Delivery Time", value: text });
+    }
   };
 
   for (const [key, value] of Object.entries(source)) {
@@ -709,6 +740,12 @@ export function normalizeRecord(record: ParsedImportRecord): NormalizedProduct {
   const imageAltColors = imagesInput.map((image) => cleanText(image.alt)).filter(Boolean);
   const colors = uniq([...sourceColors, ...variantColors, ...imageAltColors]);
   const primaryColor = colors[0] || "default";
+  const hasSourceQuantitySignal = [
+    source.stock,
+    source.quantity,
+    source.inventory_quantity,
+    source.stock_quantity,
+  ].some(hasNumericStockValue);
 
   const type = inferType(source);
   const subCategory = normalizeText(source.subcategory ?? source.sub_category ?? source.category ?? source.product_type, "Uncategorized");
@@ -770,6 +807,8 @@ export function normalizeRecord(record: ParsedImportRecord): NormalizedProduct {
   const shippingDelivery = parseShippingDelivery(source, lookup, parsedBody.sections);
   const sizeGuide = parseSizeGuide(source, lookup, parsedBody.sections);
   const additionalInfo = parseAdditionalInfo(source, parsedBody.sections);
+  const modelDetailsFromSection = getFirstSectionText(parsedBody.sections, SECTION_MODEL_DETAILS);
+  const disclaimerFromSection = getFirstSectionText(parsedBody.sections, SECTION_DISCLAIMER);
   const productUrl = cleanText(getField(source, lookup, ["product_url", "url", "source_url", "handle_url"]));
   const season = cleanText(getField(source, lookup, ["season"]));
   const collection = cleanText(getField(source, lookup, ["collection", "collection_name"]));
@@ -779,14 +818,14 @@ export function normalizeRecord(record: ParsedImportRecord): NormalizedProduct {
     fabricComposition: cleanText(getField(source, lookup, ["fabric_composition", "composition", "material"])) || fabricCare?.fabricType,
     careGuide: cleanText(getField(source, lookup, ["care_guide", "care", "care_instructions"])) || fabricCare?.careInstructions?.join("\n"),
     fitDetails: cleanText(getField(source, lookup, ["fit_details", "fit", "fitting"])) || fitResult.fit,
-    modelDetails: cleanText(getField(source, lookup, ["model_details", "model_info", "model_wearing"])),
+    modelDetails: cleanText(getField(source, lookup, ["model_details", "model_info", "model_wearing"])) || modelDetailsFromSection,
     sizeGuideText: cleanText(getField(source, lookup, ["size_guide_text", "size_chart_text"])) || sizeGuide?.details?.join("\n"),
     sizeGuideImageUrl: sizeGuide?.imageUrl,
     shippingDelivery: cleanText(getField(source, lookup, ["shipping_delivery_text", "delivery_text"])) || shippingDelivery?.estimatedDeliveryTime,
     returnExchangePolicy:
       cleanText(getField(source, lookup, ["return_exchange_policy", "return_policy", "exchange_policy"])) ||
       [deliveriesReturns?.returnPolicy, deliveriesReturns?.refundConditions].filter(Boolean).join("\n"),
-    disclaimer: cleanText(getField(source, lookup, ["disclaimer", "note", "warning"])),
+    disclaimer: cleanText(getField(source, lookup, ["disclaimer", "note", "warning"])) || disclaimerFromSection,
     materialDetails: cleanText(getField(source, lookup, ["material_details", "material"])),
     origin: cleanText(getField(source, lookup, ["origin", "made_in", "country_of_origin"])),
     packageIncludes: cleanText(getField(source, lookup, ["package_includes", "includes", "package_content"])),
@@ -827,12 +866,29 @@ export function normalizeRecord(record: ParsedImportRecord): NormalizedProduct {
     : (sizeList.length ? sizeList : ["ONE SIZE"]).map((size, index) => ({
         sku: `${fallbackSkuBase}-${String(size).replace(/\s+/g, "-").toUpperCase()}-${index}`,
         option2: size,
-        inventory_quantity: source.stock ?? source.quantity,
+        inventory_quantity: source.stock ?? source.quantity ?? DEFAULT_IMPORTED_STOCK,
       }))) as Array<Record<string, unknown>>;
 
   const normalizedVariants = variants.map((variant, index) => {
     const sku = cleanText(variant.sku) || `${fallbackSkuBase}-${index}`;
-    const quantity = normalizePrice(variant.inventory_quantity ?? variant.stock_quantity ?? source.stock ?? source.quantity, 0);
+    const hasVariantQuantitySignal = [
+      variant.inventory_quantity,
+      variant.stock_quantity,
+      variant.stock,
+      variant.quantity,
+    ].some(hasNumericStockValue);
+    const variantAvailability = parseBooleanish(variant.available ?? variant.availability ?? source.available ?? source.availability);
+    const stockStatusText = cleanText(variant.stock_status ?? source.stock_status).toLowerCase();
+    const defaultQuantity =
+      variantAvailability === false || /out[_ -]?of[_ -]?stock|sold[_ -]?out|unavailable/.test(stockStatusText)
+        ? 0
+        : hasSourceQuantitySignal || hasVariantQuantitySignal
+          ? 0
+          : DEFAULT_IMPORTED_STOCK;
+    const quantity = normalizePrice(
+      variant.inventory_quantity ?? variant.stock_quantity ?? variant.stock ?? variant.quantity ?? source.stock ?? source.quantity,
+      defaultQuantity,
+    );
     const compareAtPrice = normalizePrice(variant.compare_at_price ?? variant.price, pricePkr);
     const variantSalePrice = normalizePrice(variant.price, salePrice ?? pricePkr);
     const stockStatus: NormalizedVariant["stockStatus"] = quantity <= 0 ? "out_of_stock" : quantity <= 5 ? "low_stock" : "in_stock";

@@ -30,6 +30,7 @@ export type ProductFormValues = {
   sizes: string;
   tags?: string;
   imageUrl: string;
+  imageUrls?: string[];
   sizeGuideTemplateId?: string;
   sizeGuideImageUrl?: string;
   sizeGuideRows: Array<{ size: string; cm: string; inches: string }>;
@@ -119,7 +120,11 @@ function optionalNumber(value: string | undefined) {
 
 function cleanBlock<T extends Record<string, unknown>>(block: T): Partial<T> | undefined {
   const cleaned = Object.fromEntries(
-    Object.entries(block).filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== ""),
+    Object.entries(block).filter(([, value]) => {
+      if (value === undefined || value === null) return false;
+      if (Array.isArray(value)) return value.length > 0;
+      return String(value).trim() !== "";
+    }),
   ) as Partial<T>;
   return Object.keys(cleaned).length ? cleaned : undefined;
 }
@@ -129,7 +134,7 @@ function formatValidationIssues(error: z.ZodError) {
 }
 
 const optionalTemplateIdSchema = z.preprocess(
-  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  (value) => (value === null || (typeof value === "string" && value.trim() === "") ? undefined : value),
   z.string().trim().min(1).optional(),
 );
 
@@ -188,9 +193,9 @@ const productFormSchema = z.object({
   sizeGuideRows: z
     .array(
       z.object({
-        size: z.string().trim().min(1, "Size is required"),
-        cm: z.string().trim().min(1, "CM measurement is required"),
-        inches: z.string().trim().min(1, "Inches measurement is required"),
+        size: z.string().trim().optional(),
+        cm: z.string().trim().optional(),
+        inches: z.string().trim().optional(),
       }),
     )
     .optional(),
@@ -243,6 +248,28 @@ export { productFormSchema, adminProductFormSchema };
 
 function buildProductPayloadFromParsed(data: z.infer<typeof productFormSchema>): Omit<ProductMutationPayload, "brandId"> {
   const sizeGuideImageUrl = data.detailSizeGuideImageUrl || data.sizeGuideImageUrl;
+  const sizeGuideRows = (data.sizeGuideRows || []).filter(
+    (row) => row.size?.trim() && row.cm?.trim() && row.inches?.trim(),
+  ) as Array<{ size: string; cm: string; inches: string }>;
+  const sizeGuide = cleanBlock({
+    imageUrl: data.sizeGuideImageUrl || undefined,
+    entries: sizeGuideRows.length ? sizeGuideRows : undefined,
+    details: data.sizeGuideText ? parseLinesCsv(data.sizeGuideText) : undefined,
+  });
+  const deliveriesReturns = cleanBlock({
+    deliveryTime: data.deliveryTime,
+    returnPolicy: data.returnPolicy,
+    refundConditions: data.refundConditions,
+  });
+  const shippingDelivery = cleanBlock({
+    regions: data.shippingRegions ? parseLinesCsv(data.shippingRegions) : undefined,
+    estimatedDeliveryTime: data.shippingEstimatedDeliveryTime,
+    charges: data.shippingCharges,
+  });
+  const fabricCare = cleanBlock({
+    fabricType: data.fabricType || data.fabricComposition,
+    careInstructions: data.careInstructions ? parseLinesCsv(data.careInstructions) : data.careGuide ? parseLinesCsv(data.careGuide) : undefined,
+  });
 
   return {
     name: data.name,
@@ -271,33 +298,17 @@ function buildProductPayloadFromParsed(data: z.infer<typeof productFormSchema>):
     sizes: parseSizesCsv(data.sizes),
     tags: parseTagsCsv(data.tags),
     imageUrl: data.imageUrl,
-    sizeGuideTemplateId: data.sizeGuideTemplateId,
-    sizeGuide: {
-      imageUrl: data.sizeGuideImageUrl || undefined,
-      entries: data.sizeGuideRows || [],
-      details: data.sizeGuideText ? parseLinesCsv(data.sizeGuideText) : undefined,
-    },
-    deliveriesReturnsTemplateId: data.deliveriesReturnsTemplateId,
-    deliveriesReturns: {
-      deliveryTime: data.deliveryTime || "",
-      returnPolicy: data.returnPolicy || "",
-      refundConditions: data.refundConditions || "",
-    },
-    shippingDeliveryTemplateId: data.shippingDeliveryTemplateId,
-    shippingDelivery: {
-      regions: data.shippingRegions ? parseLinesCsv(data.shippingRegions) : [],
-      estimatedDeliveryTime: data.shippingEstimatedDeliveryTime || "",
-      charges: data.shippingCharges,
-    },
-    fabricCareTemplateId: data.fabricCareTemplateId,
-    fabricCare: {
-      fabricType: data.fabricType || data.fabricComposition || "",
-      careInstructions: data.careInstructions ? parseLinesCsv(data.careInstructions) : data.careGuide ? parseLinesCsv(data.careGuide) : [],
-    },
+    sizeGuideTemplateId: data.sizeGuideTemplateId || undefined,
+    sizeGuide,
+    deliveriesReturnsTemplateId: data.deliveriesReturnsTemplateId || undefined,
+    deliveriesReturns,
+    shippingDeliveryTemplateId: data.shippingDeliveryTemplateId || undefined,
+    shippingDelivery,
+    fabricCareTemplateId: data.fabricCareTemplateId || undefined,
+    fabricCare,
     detail: cleanBlock({
       fabricComposition: data.fabricComposition,
       careGuide: data.careGuide,
-      fitDetails: data.fitDetails || data.fit,
       modelDetails: data.modelDetails,
       sizeGuideText: data.sizeGuideText,
       sizeGuideImageUrl,
@@ -462,18 +473,28 @@ export function productToFormValues(product: Partial<Product>): Partial<ProductF
     sizes: product.sizes ? product.sizes.join(", ") : "",
     tags: product.tags ? product.tags.join(", ") : "",
     imageUrl: product.imageUrl || "",
-    sizeGuideTemplateId: product.sizeGuideTemplateId,
+    imageUrls: Array.from(
+      new Set(
+        [
+          product.imageUrl,
+          ...(product.images || []).map((image) => image.cdnUrl || image.url || image.sourceUrl || ""),
+        ]
+          .map((url) => (url || "").trim())
+          .filter(Boolean),
+      ),
+    ),
+    sizeGuideTemplateId: product.sizeGuideTemplateId || undefined,
     sizeGuideImageUrl: product.sizeGuide?.imageUrl,
     sizeGuideRows: product.sizeGuide?.entries || [{ size: "", cm: "", inches: "" }],
-    deliveriesReturnsTemplateId: product.deliveriesReturnsTemplateId,
+    deliveriesReturnsTemplateId: product.deliveriesReturnsTemplateId || undefined,
     deliveryTime: product.deliveriesReturns?.deliveryTime || "",
     returnPolicy: product.deliveriesReturns?.returnPolicy || "",
     refundConditions: product.deliveriesReturns?.refundConditions || "",
-    shippingDeliveryTemplateId: product.shippingDeliveryTemplateId,
+    shippingDeliveryTemplateId: product.shippingDeliveryTemplateId || undefined,
     shippingRegions: product.shippingDelivery?.regions?.join("\n") || "",
     shippingEstimatedDeliveryTime: product.shippingDelivery?.estimatedDeliveryTime || "",
     shippingCharges: product.shippingDelivery?.charges,
-    fabricCareTemplateId: product.fabricCareTemplateId,
+    fabricCareTemplateId: product.fabricCareTemplateId || undefined,
     fabricType: product.fabricCare?.fabricType || "",
     careInstructions: product.fabricCare?.careInstructions?.join("\n") || "",
     fabricComposition: product.detail?.fabricComposition || product.fabricCare?.fabricType || "",

@@ -21,6 +21,32 @@ declare global {
   }
 }
 
+async function resolveRequestAuth(req: Request): Promise<AuthPayload | null> {
+  const authHeader = req.headers.authorization;
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : undefined;
+  const cookieToken = req.cookies?.broady_token as string | undefined;
+  const token = cookieToken || bearerToken;
+  if (!token) return null;
+
+  const payload = jwt.verify(token, env.jwtSecret) as AuthPayload;
+  const session = await prisma.session.findUnique({
+    where: { id: payload.sessionId },
+    include: { user: { select: { id: true, role: true, brandId: true } } },
+  });
+
+  if (!session || session.tokenId !== payload.tokenId || session.revokedAt || session.expiresAt < new Date()) {
+    return null;
+  }
+
+  return {
+    userId: session.user.id,
+    role: session.user.role,
+    brandId: session.user.brandId,
+    sessionId: session.id,
+    tokenId: session.tokenId,
+  };
+}
+
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : undefined;
@@ -29,23 +55,12 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   if (!token) return res.status(401).json({ message: "Unauthorized", code: "AUTH_MISSING" });
 
   try {
-    const payload = jwt.verify(token, env.jwtSecret) as AuthPayload;
-    const session = await prisma.session.findUnique({
-      where: { id: payload.sessionId },
-      include: { user: { select: { id: true, role: true, brandId: true } } },
-    });
-
-    if (!session || session.tokenId !== payload.tokenId || session.revokedAt || session.expiresAt < new Date()) {
+    const auth = await resolveRequestAuth(req);
+    if (!auth) {
       return res.status(401).json({ message: "Session expired or revoked", code: "AUTH_SESSION_EXPIRED" });
     }
 
-    req.auth = {
-      userId: session.user.id,
-      role: session.user.role,
-      brandId: session.user.brandId,
-      sessionId: session.id,
-      tokenId: session.tokenId,
-    };
+    req.auth = auth;
     next();
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {
@@ -53,6 +68,15 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     }
     return res.status(401).json({ message: "Invalid token", code: "AUTH_INVALID_TOKEN" });
   }
+}
+
+export async function optionalAuth(req: Request, _res: Response, next: NextFunction) {
+  try {
+    req.auth = (await resolveRequestAuth(req)) || undefined;
+  } catch {
+    req.auth = undefined;
+  }
+  next();
 }
 
 export function requireAdmin(req: Request, res: Response, next: NextFunction) {

@@ -28,6 +28,7 @@ export type MeilisearchProductSearchFilters = {
   maxPrice?: number;
   shouldEnforceNameMatch?: boolean;
   nameMatchTokens?: string[];
+  limit?: number;
 };
 
 export type ProductSearchSuggestion = {
@@ -135,7 +136,7 @@ export async function runMeilisearchProductSearch(q: string, filters: Meilisearc
   const filterParts = buildMeilisearchFilters(filters);
 
   const res = await index.search(q, {
-    limit: 100,
+    limit: filters.limit ?? 100,
     filter: filterParts.length ? filterParts : undefined,
     attributesToSearchOn: filters.shouldEnforceNameMatch ? (["name"] as const) : undefined,
   });

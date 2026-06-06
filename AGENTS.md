@@ -1,5 +1,15 @@
 # CODEX Instructions for Broady
 
+## Documentation-first workflow
+
+Before starting implementation work, always check `docs/` for relevant project documentation.
+
+- Read relevant domain docs in `docs/` before editing related code.
+- Check `docs/issue-tracking/` for previously fixed issues, bug notes, and major implementation decisions.
+- Avoid reintroducing solved bugs documented in the issue-tracking knowledge base.
+- Continue existing implementations consistently with the documented architecture, filtering/search rules, and prior fixes.
+- When completing a bug fix, feature implementation, or major change, add or update a focused Markdown file in `docs/issue-tracking/` with the issue description, root cause, changes made, files modified, verification, and follow-up tasks.
+
 ## Build, lint, and test commands
 
 Run from repository root unless noted.

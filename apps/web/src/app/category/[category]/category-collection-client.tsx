@@ -2,8 +2,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ProductCarouselRow } from "@/components/ui/product-carousel-row";
+import { trackUserBehaviorEvent } from "@/lib/api";
 import { normalizeProduct } from "@/lib/taxonomy";
 import type { Product } from "@/types/marketplace";
 
@@ -78,7 +79,7 @@ function splitKidsProducts(products: Product[]) {
   };
 
   products.forEach((product) => {
-    if (JUNIOR_GROUPS.includes(product.topCategory as any)) {
+    if ((JUNIOR_GROUPS as readonly string[]).includes(product.topCategory)) {
       groups[product.topCategory as (typeof JUNIOR_GROUPS)[number]].push(product);
     }
   });
@@ -166,7 +167,7 @@ function SectionBlock({ title, products, helper }: { title: string; products: Pr
         <h3 className="font-heading text-3xl uppercase tracking-[0.06em]">{title}</h3>
         {helper ? <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">{helper}</p> : null}
       </div>
-      <ProductCarouselRow products={products} label={title} />
+      <ProductCarouselRow products={products} label={title} source={`category:${title}`} />
     </section>
   );
 }
@@ -254,6 +255,25 @@ export function CategoryCollectionClient({ products, categorySlug }: Props) {
 
   const isJuniorsRoot = isJuniorsSlug(slug);
   const isMenWomenOrJuniorSubpage = isMenSlug(slug) || isWomenSlug(slug) || (!isJuniorsRoot && label !== "Category");
+
+  useEffect(() => {
+    if (label === "Category") return;
+
+    void trackUserBehaviorEvent({
+      eventType: "CATEGORY_BROWSE",
+      sourcePage: "category-page",
+      gender: mapTopCategory(slug),
+      topCategory: mapTopCategory(slug),
+      subCategory: !isMenSlug(slug) && !isWomenSlug(slug) && !isJuniorsRoot ? label : undefined,
+      metadata: {
+        source: "category-page",
+        categorySlug,
+        visibleProducts: categoryProducts.length,
+      },
+    }).catch(() => {
+      // Recommendation telemetry should not interrupt category browsing.
+    });
+  }, [categoryProducts.length, categorySlug, isJuniorsRoot, label, slug]);
 
   if (isJuniorsRoot) {
     return (

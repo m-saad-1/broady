@@ -1,17 +1,25 @@
 "use client";
 
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { ProductCard } from "@/components/ui/product-card";
+import type { RecommendationMeta } from "@/lib/api";
 import type { Product } from "@/types/marketplace";
 
 type ProductCarouselRowProps = {
   products: Product[];
   label: string;
+  recommendationMeta?: RecommendationMeta;
+  recommendationProductIds?: string[];
+  source?: string;
 };
 
-export function ProductCarouselRow({ products, label }: ProductCarouselRowProps) {
+export function ProductCarouselRow({ products, label, recommendationMeta, recommendationProductIds, source }: ProductCarouselRowProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const visibleProducts = products.slice(0, 24);
+  const recommendationProductIdSet = useMemo(
+    () => new Set(recommendationProductIds || (recommendationMeta ? visibleProducts.map((product) => product.id) : [])),
+    [recommendationMeta, recommendationProductIds, visibleProducts],
+  );
 
   const scrollByCards = (direction: "next" | "prev") => {
     const node = scrollRef.current;
@@ -51,7 +59,11 @@ export function ProductCarouselRow({ products, label }: ProductCarouselRowProps)
       >
         {visibleProducts.map((product) => (
           <div key={product.id} className="snap-start">
-            <ProductCard product={product} />
+            <ProductCard
+              product={product}
+              recommendationMeta={recommendationProductIdSet.has(product.id) ? recommendationMeta : undefined}
+              source={source || label}
+            />
           </div>
         ))}
       </div>

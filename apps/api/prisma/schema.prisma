@@ -41,6 +41,9 @@ model User {
   reviewModerationLogs            ReviewModerationLog[]
   reviewReports                   ReviewReport[]           @relation("ReviewReportsByUser")
   resolvedReviewReports           ReviewReport[]           @relation("ReviewReportsResolvedBy")
+  recommendationClicks             RecommendationClick[]
+  recommendationImpressions        RecommendationImpression[]
+  recommendationProfile            UserRecommendationProfile?
   sessions                        Session[]
   brand                           Brand?                   @relation("BrandOwnership", fields: [brandId], references: [id])
   activities                      UserActivity[]
@@ -248,6 +251,7 @@ model Product {
   reviewAggregate             ProductReviewAggregate?
   reviews                     Review[]
   activities                  UserActivity[]
+  recommendationClicks        RecommendationClick[]
   wishlistItems               WishlistItem[]
   variants                    ProductVariant[]
   images                      ProductImage[]
@@ -934,22 +938,94 @@ model NotificationChannelLog {
 }
 
 model UserActivity {
-  id          String                @id @default(cuid())
-  userId      String
-  productId   String?
-  eventType   UserActivityEventType
-  searchQuery String?
-  topCategory String?
-  subCategory String?
-  weight      Float                 @default(0)
-  metadata    Json?
-  createdAt   DateTime              @default(now())
-  product     Product?              @relation(fields: [productId], references: [id])
-  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                 String                @id @default(cuid())
+  userId             String?
+  anonymousSessionId String?
+  productId          String?
+  variantId          String?
+  brandId            String?
+  eventType          UserActivityEventType
+  searchQuery        String?
+  filters            Json?
+  sourcePage         String?
+  device             String?
+  gender             String?
+  topCategory        String?
+  subCategory        String?
+  weight             Float                 @default(0)
+  metadata           Json?
+  createdAt          DateTime              @default(now())
+  product            Product?              @relation(fields: [productId], references: [id])
+  user               User?                 @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([userId, eventType, createdAt])
+  @@index([anonymousSessionId, createdAt])
+  @@index([anonymousSessionId, eventType, createdAt])
+  @@index([brandId, eventType, createdAt])
+  @@index([topCategory, subCategory, createdAt])
   @@index([productId, eventType, createdAt])
+}
+
+model UserRecommendationProfile {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  preferredGender     String?
+  topCategories       Json
+  topSubCategories    Json
+  topBrands           Json
+  topColors           Json
+  topSizes            Json
+  topFits             Json
+  styleTags           Json
+  priceMinPkr         Int?
+  priceMaxPkr         Int?
+  lastAnonymousSessionId String?
+  lastBuiltAt         DateTime @default(now())
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([preferredGender, lastBuiltAt])
+  @@index([lastBuiltAt])
+}
+
+model RecommendationImpression {
+  id                 String                @id @default(cuid())
+  userId             String?
+  anonymousSessionId String?
+  surface            String                @default("FOR_YOU")
+  algorithm          String                @default("hybrid_v2")
+  productIds         String[]
+  context            Json?
+  createdAt          DateTime              @default(now())
+  user               User?                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clicks             RecommendationClick[]
+
+  @@index([userId, createdAt])
+  @@index([anonymousSessionId, createdAt])
+  @@index([surface, createdAt])
+  @@index([algorithm, createdAt])
+}
+
+model RecommendationClick {
+  id                 String                    @id @default(cuid())
+  impressionId       String?
+  userId             String?
+  anonymousSessionId String?
+  productId          String
+  surface            String                    @default("FOR_YOU")
+  metadata           Json?
+  createdAt          DateTime                  @default(now())
+  impression         RecommendationImpression? @relation(fields: [impressionId], references: [id], onDelete: SetNull)
+  product            Product                   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user               User?                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([impressionId, createdAt])
+  @@index([userId, createdAt])
+  @@index([anonymousSessionId, createdAt])
+  @@index([productId, createdAt])
+  @@index([surface, createdAt])
 }
 
 enum Role {
@@ -1133,11 +1209,20 @@ enum ProductTemplateType {
 
 enum UserActivityEventType {
   PRODUCT_VIEW
+  PRODUCT_CLICK
   PRODUCT_ADDED_TO_CART
+  PRODUCT_REMOVED_FROM_CART
   PRODUCT_PURCHASED
+  PRODUCT_RETURNED
+  PRODUCT_CANCELLED
   SEARCH_QUERY
   CATEGORY_BROWSE
+  FILTER_USED
   WISHLIST_ADDED
+  CHECKOUT_STARTED
+  ORDER_PLACED
+  RECOMMENDATION_CLICK
+  EXPLICIT_PRODUCT_INTEREST
 }
 
 enum ReturnStatus {

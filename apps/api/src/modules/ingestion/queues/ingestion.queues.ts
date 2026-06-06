@@ -23,10 +23,14 @@ const defaultJobOptions: JobsOptions = {
 };
 
 function createQueue(name: string) {
-  return new Queue(name, {
+  const queue = new Queue(name, {
     connection: parseRedisConnectionOptions(env.redisUrl),
     defaultJobOptions,
   });
+  queue.on("error", () => {
+    // Import routes fall back to inline processing when Redis is unavailable.
+  });
+  return queue;
 }
 
 export const productImportQueue = createQueue(ingestionQueueNames.productImport);

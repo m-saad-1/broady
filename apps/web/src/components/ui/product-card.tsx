@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { addWishlistProduct, removeWishlistProduct } from "@/lib/api";
+import { addWishlistProduct, removeWishlistProduct, trackUserBehaviorEvent, type RecommendationMeta } from "@/lib/api";
 import { getProductPricing } from "@/lib/pricing";
 import { getProductDisplayCategory } from "@/lib/taxonomy";
 import { formatPkr } from "@/lib/utils";
@@ -17,7 +17,13 @@ import { Card } from "./card";
 import { ConfirmModal } from "./confirm-modal";
 import { ProductImage } from "./product-image";
 
-export function ProductCard({ product }: { product: Product }) {
+type ProductCardProps = {
+  product: Product;
+  recommendationMeta?: RecommendationMeta;
+  source?: string;
+};
+
+export function ProductCard({ product, recommendationMeta, source = "product-card" }: ProductCardProps) {
   const [hasHydrated, setHasHydrated] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const user = useAuthStore((state) => state.user);
@@ -67,9 +73,40 @@ export function ProductCard({ product }: { product: Product }) {
     setHasHydrated(true);
   }, []);
 
+  const trackCardEvent = (
+    eventType: "PRODUCT_CLICK" | "RECOMMENDATION_CLICK" | "PRODUCT_ADDED_TO_CART" | "WISHLIST_ADDED",
+    metadata?: Record<string, unknown>,
+  ) => {
+    void trackUserBehaviorEvent({
+      eventType,
+      productId: product.id,
+      brandId: product.brandId,
+      sourcePage: source,
+      topCategory: product.topCategory,
+      subCategory: product.subCategory,
+      gender: product.gender,
+      metadata: {
+        source: recommendationMeta ? "recommendation" : source,
+        component: "ProductCard",
+        recommendationSurface: recommendationMeta?.surface,
+        impressionId: recommendationMeta?.impressionId,
+        algorithm: recommendationMeta?.algorithm,
+        ...metadata,
+      },
+    }).catch(() => {
+      // Recommendation telemetry must never block shopping actions.
+    });
+  };
+
+  const trackProductOpen = () => {
+    trackCardEvent(recommendationMeta ? "RECOMMENDATION_CLICK" : "PRODUCT_CLICK", {
+      action: "open-product",
+    });
+  };
+
   return (
     <Card className="group overflow-hidden">
-      <Link href={`/product/${product.slug}`} className="block">
+      <Link href={`/product/${product.slug}`} className="block" onClick={trackProductOpen}>
         <div className="relative aspect-[4/5] bg-zinc-100">
           <ProductImage
             src={product.imageUrl}
@@ -86,7 +123,7 @@ export function ProductCard({ product }: { product: Product }) {
       <div className="space-y-2 p-3">
         <div className="space-y-0.5 leading-snug">
           <p className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">{product.brand?.name || "Brand"}</p>
-          <Link href={`/product/${product.slug}`} className="block text-sm font-medium uppercase tracking-[0.05em] truncate" title={displayTitle}>
+          <Link href={`/product/${product.slug}`} className="block text-sm font-medium uppercase tracking-[0.05em] truncate" title={displayTitle} onClick={trackProductOpen}>
             {displayTitle}
           </Link>
           <div className="mt-1 pb-1 flex items-center justify-between">
@@ -121,11 +158,13 @@ export function ProductCard({ product }: { product: Product }) {
                 try {
                   await addWishlistProduct(product.id);
                   addWishlistLocal(product);
+                  trackCardEvent("WISHLIST_ADDED", { action: "wishlist-add" });
                 } catch (error) {
                   const message = error instanceof Error ? error.message : "Failed to save wishlist item";
                   // Mock products have fallback IDs that may not exist in DB yet; keep UX working locally.
                   if (message.toLowerCase().includes("product not found")) {
                     addWishlistLocal(product);
+                    trackCardEvent("WISHLIST_ADDED", { action: "wishlist-add-local" });
                     pushToast("Saved locally (mock item)", "info");
                   } else {
                     pushToast(message, "error");
@@ -134,6 +173,7 @@ export function ProductCard({ product }: { product: Product }) {
                 }
               } else {
                 toggleWishlistLocal(product);
+                trackCardEvent("WISHLIST_ADDED", { action: "wishlist-add-local" });
               }
 
               pushToast("Added to wishlist", "success");
@@ -159,6 +199,11 @@ export function ProductCard({ product }: { product: Product }) {
             className="col-span-9 border-zinc-900 bg-zinc-900 text-white hover:bg-black"
             onClick={() => {
               addToCart(product, { selectedColor: defaultColor, selectedSize: defaultSize });
+              trackCardEvent("PRODUCT_ADDED_TO_CART", {
+                action: "add-to-cart",
+                selectedColor: defaultColor,
+                selectedSize: defaultSize,
+              });
               pushToast("Added to cart", "success");
             }}
             disabled={!canAdd}

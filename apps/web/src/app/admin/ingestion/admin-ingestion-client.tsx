@@ -63,6 +63,19 @@ function toFixDraft(product: Product): FixDraft {
   };
 }
 
+function JsonReviewBlock({ title, value }: { title: string; value: unknown }) {
+  if (value === undefined || value === null) return null;
+
+  return (
+    <div className="space-y-2">
+      <h4 className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-700">{title}</h4>
+      <pre className="max-h-80 overflow-auto whitespace-pre-wrap border border-zinc-200 bg-zinc-50 p-3 text-[11px] leading-5 text-zinc-800">
+        {JSON.stringify(value, null, 2)}
+      </pre>
+    </div>
+  );
+}
+
 export function AdminIngestionClient({ initialBrands = [] }: { initialBrands?: Brand[] }) {
   const pushToast = useToastStore((state) => state.pushToast);
 
@@ -760,6 +773,18 @@ export function AdminIngestionClient({ initialBrands = [] }: { initialBrands?: B
                 </div>
               </div>
             ) : null}
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <JsonReviewBlock
+                title="Raw Source Product"
+                value={selectedProductModal.importRawData?.[0]?.payload && typeof selectedProductModal.importRawData[0].payload === "object"
+                  ? (selectedProductModal.importRawData[0].payload as Record<string, unknown>).metadata &&
+                    typeof (selectedProductModal.importRawData[0].payload as Record<string, unknown>).metadata === "object"
+                    ? ((selectedProductModal.importRawData[0].payload as Record<string, unknown>).metadata as Record<string, unknown>).raw
+                    : undefined
+                  : undefined}
+              />
+              <JsonReviewBlock title="Normalized Broady Product" value={selectedProductModal.importRawData?.[0]?.payload} />
+            </div>
           </div>
         </div>
       ) : null}

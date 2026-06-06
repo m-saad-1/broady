@@ -25,10 +25,6 @@ async function hasActiveImportWorker() {
 
 export async function enqueueImport(payload: ImportInputPayload) {
   const redisHealth = await getRedisHealthMetrics();
-  if (!redisHealth.ok) {
-    throw new Error(`Queue backend is unavailable (${redisHealth.error || redisHealth.status || "unknown"}).`);
-  }
-
   const serializedFileBuffer = payload.fileBuffer?.toString("base64");
   const job = await createImportJob({
     brandId: payload.brandId,
@@ -42,6 +38,23 @@ export async function enqueueImport(payload: ImportInputPayload) {
       },
     },
   });
+
+  if (!redisHealth.ok) {
+    await logImport(job.id, "WARN", "Queue backend unavailable. Running inline ingestion fallback.", {
+      status: redisHealth.status,
+      error: redisHealth.error,
+    });
+    void processImportJob(job.id, payload).catch(async (error) => {
+      await logImport(job.id, "ERROR", "Inline ingestion fallback failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      await prisma.importJob.update({
+        where: { id: job.id },
+        data: { status: "FAILED", completedAt: new Date() },
+      });
+    });
+    return job;
+  }
 
   const hasWorker = await hasActiveImportWorker();
   if (hasWorker) {
@@ -143,9 +156,7 @@ export async function processImportJob(importJobId: string, payload: ImportInput
       }
 
       const product = await upsertNormalizedProduct(payload.brandId, importJobId, normalized);
-      await imageProcessingQueue.add("process-product-images", { productId: product.id, importJobId });
-      await searchIndexingQueue.add("sync-product-search", { productId: product.id, importJobId });
-      await inventorySyncQueue.add("sync-product-inventory", { productId: product.id, importJobId });
+      await enqueuePostImportJobs(product.id, importJobId);
 
       successfulRecords += 1;
 
@@ -179,10 +190,6 @@ export async function processImportJob(importJobId: string, payload: ImportInput
 
 export async function retryImport(importJobId: string) {
   const redisHealth = await getRedisHealthMetrics();
-  if (!redisHealth.ok) {
-    throw new Error(`Queue backend is unavailable (${redisHealth.error || redisHealth.status || "unknown"}).`);
-  }
-
   const importJob = await prisma.importJob.findUnique({ where: { id: importJobId } });
   if (!importJob) throw new Error("Import job not found");
 
@@ -190,6 +197,23 @@ export async function retryImport(importJobId: string) {
   const retryPayload = metadata?.retryPayload;
   if (!retryPayload) {
     throw new Error("Retry payload not available for this job");
+  }
+
+  const inlinePayload = {
+    ...(retryPayload as ImportInputPayload),
+    fileBuffer:
+      typeof retryPayload.fileBuffer === "string"
+        ? Buffer.from(retryPayload.fileBuffer, "base64")
+        : undefined,
+  } as ImportInputPayload;
+
+  if (!redisHealth.ok) {
+    await logImport(importJobId, "WARN", "Queue backend unavailable. Running inline retry fallback.", {
+      status: redisHealth.status,
+      error: redisHealth.error,
+    });
+    await processImportJob(importJobId, inlinePayload);
+    return prisma.importJob.findUniqueOrThrow({ where: { id: importJobId } });
   }
 
   try {
@@ -210,15 +234,33 @@ export async function retryImport(importJobId: string) {
     return updateImportJobStatus(importJobId, "PENDING");
   } catch {
     await logImport(importJobId, "WARN", "Retry queue dispatch failed. Running inline retry fallback.");
-    const inlinePayload = {
-      ...(retryPayload as ImportInputPayload),
-      fileBuffer:
-        typeof retryPayload.fileBuffer === "string"
-          ? Buffer.from(retryPayload.fileBuffer, "base64")
-          : undefined,
-    } as ImportInputPayload;
     await processImportJob(importJobId, inlinePayload);
     return prisma.importJob.findUniqueOrThrow({ where: { id: importJobId } });
+  }
+}
+
+async function enqueuePostImportJobs(productId: string, importJobId: string) {
+  const postImportJobs = [
+    imageProcessingQueue.add("process-product-images", { productId, importJobId }),
+    searchIndexingQueue.add("sync-product-search", { productId, importJobId }),
+    inventorySyncQueue.add("sync-product-inventory", { productId, importJobId }),
+  ];
+
+  const results = await Promise.allSettled(postImportJobs);
+  const failed = results
+    .map((result, index) => ({ result, queue: ["imageProcessing", "searchIndexing", "inventorySync"][index] }))
+    .filter((entry) => entry.result.status === "rejected");
+
+  if (failed.length) {
+    await logImport(importJobId, "WARN", "Some post-import queue tasks could not be scheduled.", {
+      productId,
+      failedQueues: failed.map((entry) => entry.queue),
+      errors: failed.map((entry) =>
+        entry.result.status === "rejected" && entry.result.reason instanceof Error
+          ? entry.result.reason.message
+          : String(entry.result.status === "rejected" ? entry.result.reason : ""),
+      ),
+    }, productId);
   }
 }
 

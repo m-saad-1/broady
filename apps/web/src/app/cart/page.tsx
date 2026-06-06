@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { ProductImage } from "@/components/ui/product-image";
+import { trackUserBehaviorEvent } from "@/lib/api";
 import { getProductPricing } from "@/lib/pricing";
 import { formatPkr } from "@/lib/utils";
 import { useStableNow } from "@/hooks/use-stable-now";
@@ -57,11 +58,39 @@ export default function CartPage() {
   );
 
   const previewItem = items.find((item) => getRowKey(item) === previewItemKey) || null;
+  const trackCartEvent = (
+    eventType: "PRODUCT_REMOVED_FROM_CART" | "CHECKOUT_STARTED",
+    item: (typeof items)[number],
+    metadata?: Record<string, unknown>,
+  ) => {
+    void trackUserBehaviorEvent({
+      eventType,
+      productId: item.product.id,
+      brandId: item.product.brandId,
+      sourcePage: "cart",
+      gender: item.product.gender,
+      topCategory: item.product.topCategory,
+      subCategory: item.product.subCategory,
+      metadata: {
+        selectedColor: item.selectedColor,
+        selectedSize: item.selectedSize,
+        quantity: item.quantity,
+        ...metadata,
+      },
+    }).catch(() => {
+      // Cart telemetry should never block checkout or item removal.
+    });
+  };
+
   const handleProceedCheckout = () => {
     if (!selectedRows.length) {
       pushToast("Select at least one cart item to continue checkout", "error");
       return;
     }
+
+    items
+      .filter((item) => selectedRows.includes(getRowKey(item)))
+      .forEach((item) => trackCartEvent("CHECKOUT_STARTED", item, { selectedItemCount: selectedRows.length }));
 
     const checkoutHref = `/checkout?items=${encodeURIComponent(selectedRows.join(","))}`;
     router.push(checkoutHref);
@@ -182,10 +211,19 @@ export default function CartPage() {
         onCancel={() => setRemoveTarget(null)}
         onConfirm={() => {
           if (!removeTarget) return;
+          const removedItem = items.find(
+            (item) =>
+              item.product.id === removeTarget.productId &&
+              item.selectedColor === removeTarget.selectedColor &&
+              item.selectedSize === removeTarget.selectedSize,
+          );
           removeFromCart(removeTarget.productId, {
             selectedColor: removeTarget.selectedColor,
             selectedSize: removeTarget.selectedSize,
           });
+          if (removedItem) {
+            trackCartEvent("PRODUCT_REMOVED_FROM_CART", removedItem);
+          }
           pushToast("Removed from cart", "info");
           setRemoveTarget(null);
         }}

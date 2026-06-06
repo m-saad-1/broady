@@ -80,18 +80,18 @@ export type NormalizedProduct = {
     details?: string[];
   };
   deliveriesReturns?: {
-    deliveryTime: string;
-    returnPolicy: string;
-    refundConditions: string;
+    deliveryTime?: string;
+    returnPolicy?: string;
+    refundConditions?: string;
   };
   shippingDelivery?: {
-    regions: string[];
-    estimatedDeliveryTime: string;
+    regions?: string[];
+    estimatedDeliveryTime?: string;
     charges?: string;
   };
   fabricCare?: {
-    fabricType: string;
-    careInstructions: string[];
+    fabricType?: string;
+    careInstructions?: string[];
   };
   additionalInfo?: Array<{
     label: string;

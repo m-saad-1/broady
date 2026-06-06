@@ -1,10 +1,10 @@
 import { notFound } from "next/navigation";
 import { ProductCard } from "@/components/ui/product-card";
-import { getProduct, getProductReviews, getProducts } from "@/lib/api";
+import { getProduct, getProductReviews, getProducts, getSimilarRecommendationProducts, type RecommendationMeta } from "@/lib/api";
 import { ReviewSection } from "@/components/ui/review-section";
 import type { ProductReview } from "@/types/marketplace";
 import { ProductDetailClient } from "./product-detail-client";
-import { findRelatedProducts } from "@/lib/related-products";
+import { findRelatedProducts, mergeRelatedProducts } from "@/lib/related-products";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -31,7 +31,22 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
 
   if (!product) return notFound();
 
-  const related = findRelatedProducts(product, products);
+  const localRelated = findRelatedProducts(product, products, 8);
+  let related = localRelated;
+  let relatedMeta: RecommendationMeta | undefined;
+  let recommendedRelatedIds = new Set<string>();
+
+  try {
+    const similar = await getSimilarRecommendationProducts(product.id, 20);
+    const matchedSimilar = findRelatedProducts(product, similar.products, 8);
+    if (matchedSimilar.length) {
+      related = mergeRelatedProducts(matchedSimilar, localRelated, 8);
+      relatedMeta = similar.meta;
+      recommendedRelatedIds = new Set(matchedSimilar.map((item) => item.id));
+    }
+  } catch {
+    // Keep local related-products fallback if recommendation API is unavailable.
+  }
 
   let reviewSummary: {
     aggregate: {
@@ -77,14 +92,21 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
     <main className="mx-auto w-full max-w-7xl space-y-12 px-4 py-10 lg:px-10">
       <ProductDetailClient product={product} />
 
-      <section className="space-y-5">
-        <h2 className="font-heading text-3xl uppercase">Related Pieces</h2>
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {related.map((item) => (
-            <ProductCard key={item.id} product={item} />
-          ))}
-        </div>
-      </section>
+      {related.length ? (
+        <section className="space-y-5">
+          <h2 className="font-heading text-3xl uppercase">Related Pieces</h2>
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {related.map((item) => (
+              <ProductCard
+                key={item.id}
+                product={item}
+                recommendationMeta={recommendedRelatedIds.has(item.id) ? relatedMeta : undefined}
+                source="similar-products"
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <ReviewSection
         productId={product.id}

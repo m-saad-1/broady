@@ -30,8 +30,9 @@ import {
   syncUserCartItems,
 } from "@/lib/api";
 import { fallbackProducts } from "@/lib/mock-data";
-import { filterProductsBySearchQuery, filterProductsBySubCategoryContains, isEligibleSearchQuery } from "@/lib/search-fallback";
-import { inferProductType, normalizeProduct, resolveTopCategoryFilter } from "@/lib/taxonomy";
+import { ProductImage } from "@/components/ui/product-image";
+import { buildSearchSuggestions, correctSearchQuery, filterProductsBySearchQuery } from "@/lib/search-fallback";
+import { normalizeProduct, resolveTopCategoryFilter } from "@/lib/taxonomy";
 import { buildCatalogFiltersFromSuggestion, inferCatalogFiltersFromQuery } from "@/lib/catalog-search";
 import { getNotificationHref } from "@/lib/notification-routing";
 import { useAuthStore } from "@/stores/auth-store";
@@ -89,6 +90,170 @@ const primaryNavItems = [
   { href: "/offers", label: "Offers" },
   { href: "/brands", label: "Brands" },
 ];
+
+const RECENT_SEARCHES_KEY = "broady:recent-searches";
+const fallbackCatalogProducts = fallbackProducts.map(normalizeProduct);
+
+const priceFormatter = new Intl.NumberFormat("en-PK", {
+  style: "currency",
+  currency: "PKR",
+  maximumFractionDigits: 0,
+});
+
+const starterSearchSuggestions: SearchSuggestion[] = [
+  {
+    id: "starter:men-black-polo",
+    label: "Men black polo shirt",
+    query: "men black polo shirt",
+    kind: "query",
+    gender: "Men",
+    topCategory: "Men",
+    productType: "Top",
+    subCategory: "Polo Shirts",
+    color: "black",
+  },
+  {
+    id: "starter:baggy-jeans",
+    label: "Baggy jeans",
+    query: "baggy jeans",
+    kind: "query",
+    productType: "Bottom",
+    subCategory: "Jeans",
+  },
+  {
+    id: "starter:girls-jeans",
+    label: "Girls jeans",
+    query: "girls jeans",
+    kind: "query",
+    gender: "Juniors",
+    topCategory: "Junior Girls",
+    juniorCategory: "Junior Girls",
+    productType: "Bottom",
+    subCategory: "Jeans",
+  },
+  {
+    id: "starter:men-jeans",
+    label: "Men jeans",
+    query: "men jeans",
+    kind: "query",
+    gender: "Men",
+    topCategory: "Men",
+    productType: "Bottom",
+    subCategory: "Jeans",
+  },
+  {
+    id: "starter:junior-jeans",
+    label: "Junior jeans",
+    query: "junior jeans",
+    kind: "query",
+    gender: "Juniors",
+    productType: "Bottom",
+    subCategory: "Jeans",
+  },
+  {
+    id: "starter:women-jackets",
+    label: "Women jackets",
+    query: "women jackets",
+    kind: "query",
+    gender: "Women",
+    topCategory: "Women",
+    productType: "Top",
+    subCategory: "Jackets",
+  },
+  {
+    id: "starter:sneakers",
+    label: "Sneakers",
+    query: "sneakers",
+    kind: "query",
+    productType: "Footwear",
+    subCategory: "Sneakers",
+  },
+  {
+    id: "starter:bags",
+    label: "Bags",
+    query: "bags",
+    kind: "query",
+    productType: "Accessories",
+    subCategory: "Bags",
+  },
+];
+
+function suggestionFromQuery(query: string, idPrefix: string): SearchSuggestion {
+  const inferred = inferCatalogFiltersFromQuery(query);
+
+  return {
+    id: `${idPrefix}:${query.toLowerCase()}`,
+    label: query,
+    query,
+    kind: "query",
+    topCategory: inferred.topCategory as SearchSuggestion["topCategory"],
+    juniorCategory: inferred.juniorCategory as SearchSuggestion["juniorCategory"],
+    productType: inferred.productType as SearchSuggestion["productType"],
+    subCategory: inferred.subCategory,
+    size: inferred.size,
+  };
+}
+
+function mergeSearchSuggestions(...groups: SearchSuggestion[][]) {
+  const seen = new Set<string>();
+  const merged: SearchSuggestion[] = [];
+
+  for (const group of groups) {
+    for (const suggestion of group) {
+      const key = `${suggestion.kind}:${suggestion.query.toLowerCase()}:${suggestion.label.toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(suggestion);
+    }
+  }
+
+  return merged;
+}
+
+function loadRecentSearches() {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const raw = window.localStorage.getItem(RECENT_SEARCHES_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 5) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRecentSearches(searches: string[]) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(searches.slice(0, 5)));
+  } catch {
+    // Local search history is best effort.
+  }
+}
+
+function normalizeSearchFilterValue(value?: string | null) {
+  return (value || "").trim().toLowerCase();
+}
+
+function productMatchesTopCategoryContext(product: Product, topCategoryContext?: string) {
+  if (!topCategoryContext) return true;
+
+  const context = normalizeSearchFilterValue(topCategoryContext);
+  const gender = normalizeSearchFilterValue(product.gender);
+  const topCategory = normalizeSearchFilterValue(product.topCategory);
+  const juniorsGroup = normalizeSearchFilterValue(product.juniorsGroup);
+
+  if (context === "men" || context === "women") {
+    return gender === context || topCategory === context;
+  }
+
+  return gender === "juniors" || topCategory === context || juniorsGroup === context;
+}
+
+function formatProductPrice(product: Product) {
+  return priceFormatter.format(product.salePrice ?? product.pricePkr ?? product.actualPrice ?? 0);
+}
 
 function isLinkActive(pathname: string, href: string) {
   if (href === "/catalog") {
@@ -199,7 +364,7 @@ function IconButton({
 export function SiteHeader() {
   const router = useRouter();
   const pathname = usePathname();
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   const [hasHydrated, setHasHydrated] = useState(false);
   const [openMenu, setOpenMenu] = useState<"men" | "women" | "juniors" | null>(null);
   const cartCount = useCartStore((state) => state.items.length);
@@ -218,6 +383,7 @@ export function SiteHeader() {
   const [suggestionsCorrection, setSuggestionsCorrection] = useState<string | null>(null);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
   const [liveResults, setLiveResults] = useState<Product[]>([]);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -226,6 +392,7 @@ export function SiteHeader() {
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const cartSyncEnabledRef = useRef(false);
   const dropdownCloseTimerRef = useRef<number | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const topCategoryContext = useMemo(() => {
     if (!pathname.startsWith("/category/")) {
@@ -248,10 +415,49 @@ export function SiteHeader() {
     return undefined;
   }, [pathname]);
 
+  const starterSuggestions = useMemo(() => {
+    const recentSuggestions = recentSearches.map((query) => suggestionFromQuery(query, "recent"));
+    const scopedStarterSuggestions = starterSearchSuggestions.filter((suggestion) => {
+      if (!topCategoryContext) return true;
+      if (!suggestion.topCategory && !suggestion.gender) return true;
+      return (
+        normalizeSearchFilterValue(suggestion.topCategory) === normalizeSearchFilterValue(topCategoryContext) ||
+        normalizeSearchFilterValue(suggestion.juniorCategory) === normalizeSearchFilterValue(topCategoryContext) ||
+        (normalizeSearchFilterValue(topCategoryContext).startsWith("junior") && suggestion.gender === "Juniors") ||
+        (normalizeSearchFilterValue(topCategoryContext).startsWith("toddler") && suggestion.gender === "Juniors")
+      );
+    });
+
+    return mergeSearchSuggestions(recentSuggestions, scopedStarterSuggestions).slice(0, 8);
+  }, [recentSearches, topCategoryContext]);
+
+  const defaultPreviewProducts = useMemo(
+    () =>
+      fallbackCatalogProducts
+        .filter((product) => productMatchesTopCategoryContext(product, topCategoryContext))
+        .slice(0, 4),
+    [topCategoryContext],
+  );
+
+  const hasQuery = useMemo(() => searchTerm.trim().length > 0, [searchTerm]);
+  const visibleSearchSuggestions = hasQuery ? suggestions : starterSuggestions;
+  const visiblePreviewProducts = hasQuery ? liveResults : defaultPreviewProducts;
+
+  const rememberSearch = (query: string) => {
+    const normalized = query.trim();
+    if (normalized.length < 2) return;
+
+    setRecentSearches((current) => {
+      const next = [normalized, ...current.filter((item) => item.toLowerCase() !== normalized.toLowerCase())].slice(0, 5);
+      saveRecentSearches(next);
+      return next;
+    });
+  };
+
   const handleSearchSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (activeSuggestionIndex >= 0 && suggestions[activeSuggestionIndex]) {
-      applySuggestion(suggestions[activeSuggestionIndex] as SearchSuggestion);
+    if (activeSuggestionIndex >= 0 && visibleSearchSuggestions[activeSuggestionIndex]) {
+      applySuggestion(visibleSearchSuggestions[activeSuggestionIndex] as SearchSuggestion);
     } else {
       void navigateToCatalogFromQuery(searchTerm);
     }
@@ -260,18 +466,27 @@ export function SiteHeader() {
   const handleSearchKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setActiveSuggestionIndex((prev) => Math.min(prev + 1, suggestions.length - 1));
+      if (!visibleSearchSuggestions.length) {
+        setActiveSuggestionIndex(-1);
+        return;
+      }
+      setActiveSuggestionIndex((prev) => Math.min(prev + 1, visibleSearchSuggestions.length - 1));
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
+      if (!visibleSearchSuggestions.length) {
+        setActiveSuggestionIndex(-1);
+        return;
+      }
       setActiveSuggestionIndex((prev) => Math.max(prev - 1, 0));
     } else if (event.key === "Enter") {
       handleSearchSubmit(event as any);
     } else if (event.key === "Escape") {
-      setSearchOpen(false);
+      closeSearch();
     }
   };
 
   const applySuggestion = (item: SearchSuggestion) => {
+    rememberSearch(item.query);
     const baseFilters = buildCatalogFiltersFromSuggestion(item);
     const scopedTopCategory = baseFilters.topCategory || topCategoryContext;
     navigateToCatalog({
@@ -286,71 +501,31 @@ export function SiteHeader() {
   };
 
   const navigateToCatalogFromQuery = async (query: string) => {
-    let targetQuery = query;
+    const normalizedQuery = query.trim();
+    const localCorrection = correctSearchQuery(normalizedQuery);
+    let targetQuery = localCorrection || normalizedQuery;
     let correctedFrom: string | undefined;
+    if (localCorrection && localCorrection.toLowerCase() !== normalizedQuery.toLowerCase()) {
+      correctedFrom = normalizedQuery;
+    }
+
     try {
-      const suggestionResult = await getProductSearchSuggestions(query, { topCategory: topCategoryContext });
+      const suggestionResult = await getProductSearchSuggestions(normalizedQuery, { topCategory: topCategoryContext });
       if (suggestionResult.correctedQuery) {
         targetQuery = suggestionResult.correctedQuery;
-        correctedFrom = query;
+        correctedFrom = normalizedQuery;
       }
     } catch {
       // Ignore suggestion fetch errors and fall back to raw query.
     }
 
-    const inferred = inferCatalogFiltersFromQuery(targetQuery);
+    rememberSearch(targetQuery);
     navigateToCatalog({
       q: targetQuery,
-      topCategory: inferred.topCategory || topCategoryContext,
-      juniorCategory: inferred.juniorCategory,
-      productType: inferred.productType,
-      subCategory: inferred.subCategory,
-      size: inferred.size,
+      topCategory: topCategoryContext,
       correctedFrom,
     });
     closeSearch();
-  };
-
-  const runCatalogSearch = async (query: string, topCategory?: string) => {
-    if (!query) {
-      return;
-    }
-
-    const effectiveTopCategory = topCategory || topCategoryContext;
-    const productParams: Record<string, string> = { q: query };
-    if (effectiveTopCategory) {
-      productParams.topCategory = effectiveTopCategory;
-    }
-
-    try {
-      const [suggestionResult, productResult] = await Promise.all([
-        getProductSearchSuggestions(query, { topCategory: effectiveTopCategory }),
-        getProducts(productParams),
-      ]);
-
-      setSuggestions(suggestionResult.suggestions.slice(0, 8));
-      setSuggestionsCorrection(suggestionResult.correctedQuery || null);
-      const apiLiveResults = productResult.slice(0, 6);
-      if (apiLiveResults.length) {
-        setLiveResults(apiLiveResults);
-      } else if (isEligibleSearchQuery(query)) {
-        const fallbackLive = filterProductsBySubCategoryContains(
-          fallbackProducts.map(normalizeProduct),
-          query,
-        ).slice(0, 6);
-        setLiveResults(fallbackLive);
-      } else {
-        setLiveResults([]);
-      }
-      setActiveSuggestionIndex(-1);
-    } catch {
-      setSuggestions([]);
-      setSuggestionsCorrection(null);
-      setLiveResults([]);
-      setActiveSuggestionIndex(-1);
-    } finally {
-      setSuggestionsLoading(false);
-    }
   };
 
   const getLatestNotifications = useCallback(async () => {
@@ -595,7 +770,33 @@ export function SiteHeader() {
   }, [user, getUnreadNotificationCount]);
 
   useEffect(() => {
-    if (!searchOpen || searchTerm.trim().length < 2) {
+    setRecentSearches(loadRecentSearches());
+  }, []);
+
+  useEffect(() => {
+    if (!searchOpen) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [searchOpen]);
+
+  useEffect(() => {
+    if (!searchOpen) {
+      setSuggestions([]);
+      setSuggestionsCorrection(null);
+      setSuggestionsLoading(false);
+      setActiveSuggestionIndex(-1);
+      setLiveResults([]);
+      return;
+    }
+
+    const rawQuery = searchTerm.trim();
+    if (rawQuery.length < 2) {
       setSuggestions([]);
       setSuggestionsCorrection(null);
       setSuggestionsLoading(false);
@@ -608,36 +809,43 @@ export function SiteHeader() {
     setSuggestionsLoading(true);
 
     const timeout = setTimeout(async () => {
-      const q = searchTerm.trim();
-      const productParams: Record<string, string> = { q };
+      const correctedQuery = correctSearchQuery(rawQuery) || rawQuery;
+      const productParams: Record<string, string> = { q: correctedQuery };
       if (topCategoryContext) {
         productParams.topCategory = topCategoryContext;
       }
 
       try {
         const [suggestionResult, productResult] = await Promise.all([
-          getProductSearchSuggestions(q, { topCategory: topCategoryContext }),
+          getProductSearchSuggestions(rawQuery, { topCategory: topCategoryContext }),
           getProducts(productParams),
         ]);
 
         if (!active) return;
-        setSuggestions(suggestionResult.suggestions.slice(0, 8));
-        setSuggestionsCorrection(suggestionResult.correctedQuery || null);
+        const fallbackSuggestions = buildSearchSuggestions(
+          fallbackCatalogProducts,
+          suggestionResult.correctedQuery || correctedQuery,
+          8,
+        );
+        setSuggestions(mergeSearchSuggestions(suggestionResult.suggestions, fallbackSuggestions).slice(0, 8));
+        setSuggestionsCorrection(
+          suggestionResult.correctedQuery ||
+            (correctedQuery.toLowerCase() !== rawQuery.toLowerCase() ? correctedQuery : null),
+        );
         const apiLiveResults = productResult.slice(0, 6);
         if (apiLiveResults.length) {
           setLiveResults(apiLiveResults);
-        } else if (isEligibleSearchQuery(q)) {
-          const fallbackLive = filterProductsBySearchQuery(fallbackProducts.map(normalizeProduct), q).slice(0, 6);
-          setLiveResults(fallbackLive);
         } else {
-          setLiveResults([]);
+          const fallbackLive = filterProductsBySearchQuery(fallbackCatalogProducts, correctedQuery).slice(0, 6);
+          setLiveResults(fallbackLive);
         }
         setActiveSuggestionIndex(-1);
       } catch {
         if (!active) return;
-        setSuggestions([]);
-        setSuggestionsCorrection(null);
-        setLiveResults([]);
+        const correctedQuery = correctSearchQuery(rawQuery) || rawQuery;
+        setSuggestions(buildSearchSuggestions(fallbackCatalogProducts, correctedQuery, 8));
+        setSuggestionsCorrection(correctedQuery.toLowerCase() !== rawQuery.toLowerCase() ? correctedQuery : null);
+        setLiveResults(filterProductsBySearchQuery(fallbackCatalogProducts, correctedQuery).slice(0, 6));
         setActiveSuggestionIndex(-1);
       } finally {
         if (active) {
@@ -660,8 +868,6 @@ export function SiteHeader() {
     setLiveResults([]);
     setActiveSuggestionIndex(-1);
   };
-
-  const hasQuery = useMemo(() => searchTerm.trim().length > 0, [searchTerm]);
 
   useEffect(() => {
     setHasHydrated(true);
@@ -918,18 +1124,25 @@ export function SiteHeader() {
         <div
           className={`absolute left-0 right-0 top-0 border-b border-zinc-300 bg-white p-4 transition-transform duration-300 ${searchOpen ? "pointer-events-auto translate-y-0" : "pointer-events-none -translate-y-full"}`}
         >
-          <div className="mx-auto max-w-5xl space-y-3">
-            <div className="flex items-center gap-2">
-              <form onSubmit={handleSearchSubmit} className="relative">
+          <div className="mx-auto max-w-6xl space-y-4">
+            <div className="flex items-center gap-3">
+              <form onSubmit={handleSearchSubmit} className="relative flex-1">
                 <input
+                  ref={searchInputRef}
                   type="search"
                   placeholder="Search products..."
-                  className="w-full rounded-md border border-zinc-300 bg-zinc-100 px-4 py-2 pr-10 text-sm"
+                  aria-label="Search products"
+                  className="h-12 w-full border border-zinc-300 bg-zinc-100 px-4 pr-12 text-base outline-none transition focus:border-black focus:bg-white"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   onKeyDown={handleSearchKeyDown}
                 />
-                <button type="submit" className="absolute inset-y-0 right-0 flex items-center pr-3">
+                <button
+                  type="submit"
+                  title="Search"
+                  aria-label="Search"
+                  className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-zinc-600 hover:text-black"
+                >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="20"
@@ -947,62 +1160,114 @@ export function SiteHeader() {
                   </svg>
                 </button>
               </form>
+              <button
+                type="button"
+                title="Close search"
+                aria-label="Close search"
+                onClick={closeSearch}
+                className="flex h-12 w-12 shrink-0 items-center justify-center border border-zinc-300 bg-white text-zinc-700 hover:border-black hover:text-black"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M6 6l12 12" />
+                  <path d="M18 6L6 18" />
+                </svg>
+              </button>
             </div>
 
-            {hasQuery ? (
-              <div className="grid gap-3 lg:grid-cols-2">
-                <div className="max-h-72 overflow-auto border border-zinc-300">
-                  {suggestionsLoading ? (
-                    <p className="px-4 py-4 text-sm text-zinc-600">Searching suggestions...</p>
-                  ) : suggestions.length ? (
-                    suggestions.map((item, index) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className={`grid w-full grid-cols-[1fr_auto] gap-3 border-b border-zinc-200 px-4 py-3 text-left text-sm ${activeSuggestionIndex === index ? "bg-zinc-100" : "hover:bg-zinc-50"}`}
-                        onMouseEnter={() => setActiveSuggestionIndex(index)}
-                        onClick={() => applySuggestion(item)}
-                      >
-                        <span className="uppercase tracking-[0.08em]">{item.label}</span>
-                        <span className="text-xs uppercase tracking-[0.12em] text-zinc-500">{item.topCategory || item.kind}</span>
-                      </button>
-                    ))
-                  ) : (
-                    <p className="px-4 py-4 text-sm text-zinc-600">No suggestions yet.</p>
-                  )}
-                  {suggestionsCorrection ? (
-                    <button
-                      type="button"
-                      className="w-full border-t border-zinc-200 px-4 py-3 text-left text-xs uppercase tracking-[0.12em] text-zinc-600 hover:bg-zinc-50"
-                      onClick={() => navigateToCatalogFromQuery(suggestionsCorrection)}
-                    >
-                      Did you mean: {suggestionsCorrection}
-                    </button>
+            <div className="grid overflow-hidden border border-zinc-200 bg-white shadow-2xl lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+              <section className="border-b border-zinc-200 lg:border-b-0 lg:border-r">
+                <div className="flex h-11 items-center justify-between border-b border-zinc-200 px-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
+                    {hasQuery ? "Suggestions" : "Suggested searches"}
+                  </p>
+                  {suggestionsLoading && hasQuery ? (
+                    <span className="text-[11px] uppercase tracking-[0.12em] text-zinc-400">Searching</span>
                   ) : null}
                 </div>
 
-                <div className="max-h-72 overflow-auto border border-zinc-300">
-                  {liveResults.length ? (
-                    liveResults.map((item) => (
+                <div className="max-h-[360px] overflow-auto">
+                  {visibleSearchSuggestions.length ? (
+                    visibleSearchSuggestions.map((item, index) => (
                       <button
                         key={item.id}
                         type="button"
-                        className="grid w-full grid-cols-[1fr_auto] gap-3 border-b border-zinc-200 px-4 py-3 text-left text-sm hover:bg-zinc-50"
+                        className={`grid min-h-14 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-zinc-100 px-4 py-3 text-left text-sm ${activeSuggestionIndex === index ? "bg-zinc-100" : "hover:bg-zinc-50"}`}
+                        onMouseEnter={() => setActiveSuggestionIndex(index)}
+                        onClick={() => applySuggestion(item)}
+                      >
+                        <span className="min-w-0 truncate font-medium uppercase tracking-[0.08em] text-zinc-900">{item.label}</span>
+                        <span className="max-w-28 truncate text-right text-xs uppercase tracking-[0.12em] text-zinc-500">
+                          {item.brand || item.subCategory || item.topCategory || item.juniorCategory || item.kind}
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <p className="px-4 py-5 text-sm text-zinc-600">No suggestions found.</p>
+                  )}
+                  {suggestionsCorrection && hasQuery ? (
+                    <button
+                      type="button"
+                      className="grid w-full grid-cols-[minmax(0,1fr)_auto] gap-3 border-t border-zinc-200 px-4 py-3 text-left text-xs uppercase tracking-[0.12em] text-zinc-600 hover:bg-zinc-50"
+                      onClick={() => navigateToCatalogFromQuery(suggestionsCorrection)}
+                    >
+                      <span className="truncate">Did you mean {suggestionsCorrection}</span>
+                      <span>Search</span>
+                    </button>
+                  ) : null}
+                </div>
+              </section>
+
+              <section>
+                <div className="flex h-11 items-center justify-between border-b border-zinc-200 px-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
+                    {hasQuery ? "Related products" : "Popular products"}
+                  </p>
+                  {visiblePreviewProducts.length ? (
+                    <span className="text-[11px] uppercase tracking-[0.12em] text-zinc-400">{visiblePreviewProducts.length}</span>
+                  ) : null}
+                </div>
+
+                <div className="max-h-[360px] overflow-auto">
+                  {visiblePreviewProducts.length ? (
+                    visiblePreviewProducts.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="grid min-h-24 w-full grid-cols-[64px_minmax(0,1fr)] gap-3 border-b border-zinc-100 px-4 py-3 text-left text-sm hover:bg-zinc-50 sm:grid-cols-[72px_minmax(0,1fr)_auto]"
                         onClick={() => {
                           router.push(`/product/${item.slug}`);
                           closeSearch();
                         }}
                       >
-                        <span className="uppercase tracking-[0.08em]">{item.name}</span>
-                        <span className="text-xs uppercase tracking-[0.12em] text-zinc-500">{item.topCategory} / {item.subCategory}</span>
+                        <span className="relative h-16 w-16 overflow-hidden border border-zinc-200 bg-zinc-100 sm:h-[72px] sm:w-[72px]">
+                          <ProductImage
+                            src={item.imageUrl}
+                            alt={item.name}
+                            fill
+                            sizes="72px"
+                            className="object-cover"
+                          />
+                        </span>
+                        <span className="min-w-0 self-center">
+                          <span className="block truncate font-semibold uppercase tracking-[0.08em] text-zinc-900">{item.name}</span>
+                          <span className="mt-1 block truncate text-xs uppercase tracking-[0.12em] text-zinc-500">
+                            {item.brand?.name || item.topCategory} / {item.subCategory}
+                          </span>
+                          <span className="mt-2 block text-xs font-semibold uppercase tracking-[0.08em] text-zinc-900 sm:hidden">
+                            {formatProductPrice(item)}
+                          </span>
+                        </span>
+                        <span className="hidden self-center whitespace-nowrap text-xs font-semibold uppercase tracking-[0.08em] text-zinc-900 sm:block">
+                          {formatProductPrice(item)}
+                        </span>
                       </button>
                     ))
                   ) : (
-                    <p className="px-4 py-4 text-sm text-zinc-600">No matching products found.</p>
+                    <p className="px-4 py-5 text-sm text-zinc-600">No matching products found.</p>
                   )}
                 </div>
-              </div>
-            ) : null}
+              </section>
+            </div>
           </div>
         </div>
       </div>

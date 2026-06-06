@@ -264,7 +264,17 @@ router.get("/approvals/pending", async (_req, res) => {
   try {
     const products = await prisma.product.findMany({
       where: { approvalStatus: "PENDING", deletedAt: null },
-      include: { brand: true, variants: true, images: true, detail: true, shipping: true, seo: true, importMeta: true, approvals: { orderBy: { createdAt: "desc" }, take: 3 } },
+      include: {
+        brand: true,
+        variants: true,
+        images: true,
+        detail: true,
+        shipping: true,
+        seo: true,
+        importMeta: true,
+        importRawData: { orderBy: { createdAt: "desc" }, take: 1 },
+        approvals: { orderBy: { createdAt: "desc" }, take: 3 },
+      },
       orderBy: { updatedAt: "desc" },
       take: 200,
     });
@@ -280,7 +290,17 @@ router.get("/approvals/pending/:productId", async (req, res) => {
     const productId = String(req.params.productId);
     const product = await prisma.product.findFirst({
       where: { id: productId, deletedAt: null },
-      include: { brand: true, variants: true, images: true, detail: true, shipping: true, seo: true, importMeta: true, approvals: { orderBy: { createdAt: "desc" }, take: 3 } },
+      include: {
+        brand: true,
+        variants: true,
+        images: true,
+        detail: true,
+        shipping: true,
+        seo: true,
+        importMeta: true,
+        importRawData: { orderBy: { createdAt: "desc" }, take: 1 },
+        approvals: { orderBy: { createdAt: "desc" }, take: 3 },
+      },
     });
     if (!product) return res.status(404).json({ message: "Product not found" });
     return res.json({ data: product });

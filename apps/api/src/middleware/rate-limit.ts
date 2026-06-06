@@ -27,6 +27,13 @@ export function createRedisRateLimiter(options: RateLimitOptions) {
     }
 
     const client = getRedisClient();
+
+    // If Redis is not available, allow request (graceful degradation)
+    if (!client) {
+      next();
+      return;
+    }
+
     const redisKey = `rate:${options.namespace}:${keySuffix}`;
     const now = Date.now();
 
@@ -85,12 +92,7 @@ export function createRedisRateLimiter(options: RateLimitOptions) {
 
       next();
     } catch (error) {
-      console.warn("[rate-limit] redis unavailable, allowing request", {
-        namespace: options.namespace,
-        scope: keySuffix,
-        ip: requestIp(req),
-        message: error instanceof Error ? error.message : String(error),
-      });
+      // If Redis is unavailable or fails, allow request (graceful degradation)
       next();
     }
   };

@@ -175,6 +175,16 @@ export type ProductMediaImage = {
   metadata?: Record<string, unknown> | null;
 };
 
+export type ProductRawImportData = {
+  id: string;
+  importJobId: string;
+  productId?: string | null;
+  externalId?: string | null;
+  payload?: Record<string, unknown> | null;
+  normalizedHash?: string | null;
+  createdAt?: string;
+};
+
 export type Product = {
   id: string;
   brandId: string;
@@ -233,6 +243,7 @@ export type Product = {
   seo?: ProductSEOBlock | null;
   variants?: ProductVariant[];
   images?: ProductMediaImage[];
+  importRawData?: ProductRawImportData[];
 };
 
 export type AuthUser = {

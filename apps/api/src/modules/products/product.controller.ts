@@ -11,11 +11,13 @@ import {
   updateProduct,
 } from "./product.service.js";
 import {
+  correctSearchInput,
   inferSearchFilters,
   normalizeSearchInput,
 } from "./products.search-utils.js";
 import {
   isMeilisearchProductSearchEnabled,
+  type ProductSearchSuggestion,
   runMeilisearchProductSuggest,
 } from "./products.meilisearch-search.js";
 import { productBaseSchema } from "./product.validation.js";
@@ -25,6 +27,100 @@ const router = Router();
 
 function getParamValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function addSuggestion(suggestions: ProductSearchSuggestion[], seen: Set<string>, suggestion: ProductSearchSuggestion) {
+  const key = `${suggestion.kind}:${suggestion.label.toLowerCase()}:${suggestion.query.toLowerCase()}`;
+  if (seen.has(key)) return;
+  seen.add(key);
+  suggestions.push(suggestion);
+}
+
+function buildIntentSuggestions(inferred: ReturnType<typeof inferSearchFilters>) {
+  const suggestions: ProductSearchSuggestion[] = [];
+  const seen = new Set<string>();
+  const subCategory = inferred.subCategory;
+
+  if (!subCategory) return suggestions;
+
+  const base = subCategory.toLowerCase();
+  const productType = inferred.productType;
+  const add = (label: string, query: string, extra: Partial<ProductSearchSuggestion> = {}) => {
+    addSuggestion(suggestions, seen, {
+      id: `intent:${query}`,
+      label,
+      query,
+      kind: "query",
+      productType,
+      subCategory,
+      ...extra,
+    });
+  };
+
+  if (subCategory === "Jeans") {
+    add("Baggy jeans", "baggy jeans");
+    add("Girls jeans", "girls jeans", {
+      gender: "Juniors",
+      topCategory: "Junior Girls",
+      juniorCategory: "Junior Girls",
+    });
+  }
+
+  add(`Men ${base}`, `men ${base}`, { gender: "Men", topCategory: "Men" });
+  add(`Women ${base}`, `women ${base}`, { gender: "Women", topCategory: "Women" });
+  add(`Junior ${base}`, `junior ${base}`, { gender: "Juniors" });
+  add(`Black ${base}`, `black ${base}`, { color: "black" });
+
+  return suggestions;
+}
+
+function buildProductSuggestions(products: any[]) {
+  const suggestions: ProductSearchSuggestion[] = [];
+  const seen = new Set<string>();
+
+  for (const product of products) {
+    if (product?.name) {
+      addSuggestion(suggestions, seen, {
+        id: `product:${product.id || product.slug || product.name}`,
+        label: product.name,
+        query: product.name,
+        kind: "product",
+        topCategory: product.topCategory,
+        gender: product.gender,
+        juniorCategory: product.juniorsGroup,
+        productType: product.productType || product.type,
+        subCategory: product.subCategory,
+        brand: product.brand?.name,
+        color: product.color,
+      });
+    }
+
+    if (product?.subCategory) {
+      addSuggestion(suggestions, seen, {
+        id: `sub:${product.subCategory}:${product.topCategory || ""}`,
+        label: product.subCategory,
+        query: product.subCategory,
+        kind: "query",
+        topCategory: product.topCategory,
+        gender: product.gender,
+        juniorCategory: product.juniorsGroup,
+        productType: product.productType || product.type,
+        subCategory: product.subCategory,
+      });
+    }
+
+    if (product?.brand?.name) {
+      addSuggestion(suggestions, seen, {
+        id: `brand:${product.brand.name}`,
+        label: product.brand.name,
+        query: product.brand.name,
+        kind: "query",
+        brand: product.brand.name,
+      });
+    }
+  }
+
+  return suggestions;
 }
 
 router.post("/", requireAuth, requireAdmin, async (req, res, next) => {
@@ -58,11 +154,21 @@ router.get("/suggest", async (req, res, next) => {
       return res.json({ data: [] });
     }
 
-    const inferred = inferSearchFilters(normalized);
+    const corrected = correctSearchInput(normalized) || normalized;
+    const inferred = inferSearchFilters(corrected);
     const topCategory = getParamValue(req.query.topCategory as string | undefined);
     const juniorCategory = getParamValue(req.query.juniorCategory as string | undefined);
-    const suggestions = isMeilisearchProductSearchEnabled()
-      ? await runMeilisearchProductSuggest(normalized, {
+    const hasStructuredIntent = Boolean(inferred.gender || inferred.productType || inferred.subCategory || inferred.color || inferred.size);
+    const suggestionQuery = hasStructuredIntent ? inferred.normalizedQuery : corrected;
+    const suggestionSeed = [
+      ...buildIntentSuggestions(inferred),
+    ];
+    const meiliEnabled = isMeilisearchProductSearchEnabled();
+    let suggestions: ProductSearchSuggestion[] = [];
+
+    if (meiliEnabled) {
+      try {
+        suggestions = await runMeilisearchProductSuggest(suggestionQuery, {
           gender: inferred.gender,
           topCategory: topCategory || (inferred.gender === "Juniors" ? "Juniors" : undefined),
           juniorCategory: juniorCategory || inferred.juniorCategory,
@@ -70,13 +176,30 @@ router.get("/suggest", async (req, res, next) => {
           subCategory: inferred.subCategory,
           color: inferred.color,
           size: inferred.size,
-        })
-      : [];
+        });
+      } catch {
+        suggestions = [];
+      }
+    }
 
-    const correctedQuery =
-      inferred.subCategory && !normalized.toLowerCase().includes(inferred.subCategory.toLowerCase())
-        ? inferred.subCategory
-        : undefined;
+    if (!suggestions.length || !meiliEnabled) {
+      const products = await listProducts({
+        q: corrected,
+        topCategory,
+        juniorCategory,
+        limit: 12,
+      });
+      suggestions = [...suggestionSeed, ...buildProductSuggestions(products)].slice(0, 10);
+    } else if (suggestionSeed.length) {
+      const seen = new Set<string>();
+      const merged: ProductSearchSuggestion[] = [];
+      for (const suggestion of [...suggestionSeed, ...suggestions]) {
+        addSuggestion(merged, seen, suggestion);
+      }
+      suggestions = merged.slice(0, 10);
+    }
+
+    const correctedQuery = corrected !== normalized ? corrected : undefined;
 
     res.json({ data: suggestions, correctedQuery });
   } catch (error) {
@@ -89,7 +212,6 @@ router.get("/admin", requireAuth, requireAdmin, async (_req, res, next) => {
     const products = await prisma.product.findMany({
       where: {
         deletedAt: null,
-        approvalStatus: { not: "REJECTED" },
       },
       include: productStructureInclude,
       orderBy: { createdAt: "desc" },

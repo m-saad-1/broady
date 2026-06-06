@@ -17,9 +17,27 @@ type Props = {
   product: Product;
 };
 
+function hasText(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function uniqueLines(values: Array<string | null | undefined>) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    if (!hasText(value)) continue;
+    for (const line of value.split(/\n|;/).map((entry) => entry.trim()).filter(Boolean)) {
+      const key = line.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(line);
+    }
+  }
+  return result;
+}
+
 export function ProductDetailClient({ product }: Props) {
   const [hasHydrated, setHasHydrated] = useState(false);
-  const [selectedSize, setSelectedSize] = useState(product.sizes[0] || "");
   const [selectedColor, setSelectedColor] = useState(product.color || "");
   const [openPanel, setOpenPanel] = useState<string | null>(null);
   const [zoomOpen, setZoomOpen] = useState(false);
@@ -40,6 +58,25 @@ export function ProductDetailClient({ product }: Props) {
     return unique;
   }, [product.imageUrl, product.images]);
   const [activeImage, setActiveImage] = useState(galleryImages[0] || product.imageUrl);
+  const sizeAvailability = useMemo(() => {
+    const availability = new Map<string, boolean>();
+    const variants = product.variants || [];
+
+    for (const size of product.sizes) {
+      const matchingVariants = variants.filter((variant) => (variant.size || "").toLowerCase() === size.toLowerCase());
+      const available = matchingVariants.length
+        ? matchingVariants.some((variant) => variant.isActive !== false && String(variant.stockStatus || "").toLowerCase() !== "out_of_stock")
+        : product.stock > 0;
+      availability.set(size, available);
+    }
+
+    return availability;
+  }, [product.sizes, product.stock, product.variants]);
+  const firstAvailableSize = useMemo(
+    () => product.sizes.find((size) => sizeAvailability.get(size)) || "",
+    [product.sizes, sizeAvailability],
+  );
+  const [selectedSize, setSelectedSize] = useState(firstAvailableSize);
 
   const user = useAuthStore((state) => state.user);
   const addToCart = useCartStore((state) => state.addToCart);
@@ -63,6 +100,23 @@ export function ProductDetailClient({ product }: Props) {
       .map((normalized) => [...fromArray, ...fromColor].find((entry) => entry.toLowerCase() === normalized) || normalized)
       .filter(Boolean);
   }, [product.color, product.colors]);
+
+  const estimatedDeliveryTime = useMemo(() => {
+    const direct = uniqueLines([
+      product.shippingDelivery?.estimatedDeliveryTime,
+      product.shipping?.deliveryText,
+      product.deliveriesReturns?.deliveryTime,
+      product.detail?.shippingDelivery,
+    ])[0];
+    if (direct) return direct;
+    if (product.shipping?.estimatedDeliveryMinDays != null && product.shipping?.estimatedDeliveryMaxDays != null) {
+      return `Delivered in ${product.shipping.estimatedDeliveryMinDays}-${product.shipping.estimatedDeliveryMaxDays} working days`;
+    }
+    if (product.shipping?.estimatedDeliveryMaxDays != null) {
+      return `Delivered within ${product.shipping.estimatedDeliveryMaxDays} working days`;
+    }
+    return "";
+  }, [product]);
 
   const detailPanels = useMemo(() => {
     const panels: Array<{ key: string; title: string; content: ReactNode }> = [];
@@ -117,15 +171,20 @@ export function ProductDetailClient({ product }: Props) {
       });
     }
 
-    if (product.deliveriesReturns && (product.deliveriesReturns.deliveryTime || product.deliveriesReturns.returnPolicy || product.deliveriesReturns.refundConditions)) {
+    const returnLines = uniqueLines([
+      product.deliveriesReturns?.returnPolicy,
+      product.deliveriesReturns?.refundConditions,
+      product.detail?.returnExchangePolicy,
+      product.shipping?.returnWindowDays != null ? `Return window: ${product.shipping.returnWindowDays} days` : undefined,
+      product.shipping?.exchangeWindowDays != null ? `Exchange window: ${product.shipping.exchangeWindowDays} days` : undefined,
+    ]);
+    if (returnLines.length) {
       panels.push({
-        key: "deliveriesReturns",
-        title: "Deliveries & Returns",
+        key: "returnExchange",
+        title: "Return & Exchange",
         content: (
           <div className="space-y-2 text-sm text-zinc-700">
-            {product.deliveriesReturns.deliveryTime ? <p><span className="font-semibold">Delivery Time:</span> {product.deliveriesReturns.deliveryTime}</p> : null}
-            {product.deliveriesReturns.returnPolicy ? <p><span className="font-semibold">Return Policy:</span> {product.deliveriesReturns.returnPolicy}</p> : null}
-            {product.deliveriesReturns.refundConditions ? <p><span className="font-semibold">Refund Conditions:</span> {product.deliveriesReturns.refundConditions}</p> : null}
+            {returnLines.map((line) => <p key={`return-${line}`}>{line}</p>)}
           </div>
         ),
       });
@@ -133,7 +192,9 @@ export function ProductDetailClient({ product }: Props) {
 
     if (
       (product.shippingDelivery && (product.shippingDelivery.estimatedDeliveryTime || product.shippingDelivery.regions?.length || product.shippingDelivery.charges)) ||
-      (product.shipping && (product.shipping.deliveryText || product.shipping.shippingFee != null || product.shipping.returnWindowDays != null || product.shipping.exchangeWindowDays != null))
+      (product.shipping && (product.shipping.deliveryText || product.shipping.shippingFee != null)) ||
+      hasText(product.detail?.shippingDelivery) ||
+      hasText(product.deliveriesReturns?.deliveryTime)
     ) {
       panels.push({
         key: "shippingDelivery",
@@ -144,26 +205,35 @@ export function ProductDetailClient({ product }: Props) {
             {product.shippingDelivery?.regions?.length ? <p><span className="font-semibold">Regions:</span> {product.shippingDelivery.regions.join(", ")}</p> : null}
             {product.shippingDelivery?.charges ? <p><span className="font-semibold">Charges:</span> {product.shippingDelivery.charges}</p> : null}
             {product.shipping?.deliveryText ? <p><span className="font-semibold">Delivery:</span> {product.shipping.deliveryText}</p> : null}
+            {product.detail?.shippingDelivery ? <p><span className="font-semibold">Shipping:</span> {product.detail.shippingDelivery}</p> : null}
+            {product.deliveriesReturns?.deliveryTime ? <p><span className="font-semibold">Delivery Time:</span> {product.deliveriesReturns.deliveryTime}</p> : null}
             {product.shipping?.shippingFee != null ? <p><span className="font-semibold">Shipping Fee:</span> {formatPkr(product.shipping.shippingFee)}</p> : null}
-            {product.shipping?.returnWindowDays != null ? <p><span className="font-semibold">Return Window:</span> {product.shipping.returnWindowDays} days</p> : null}
-            {product.shipping?.exchangeWindowDays != null ? <p><span className="font-semibold">Exchange Window:</span> {product.shipping.exchangeWindowDays} days</p> : null}
           </div>
         ),
       });
     }
 
-    if (product.fabricCare && (product.fabricCare.fabricType || product.fabricCare.careInstructions?.length)) {
+    const fabricLines = uniqueLines([product.fabricCare?.fabricType, product.detail?.fabricComposition]);
+    const careLines = uniqueLines([...(product.fabricCare?.careInstructions || []), product.detail?.careGuide]);
+    if (fabricLines.length || careLines.length) {
       panels.push({
         key: "fabricCare",
         title: "Fabric & Care",
         content: (
           <div className="space-y-2 text-sm text-zinc-700">
-            {product.fabricCare.fabricType ? <p><span className="font-semibold">Fabric:</span> {product.fabricCare.fabricType}</p> : null}
-            {product.fabricCare.careInstructions?.length ? (
+            {fabricLines.length ? (
+              <div>
+                <p className="font-semibold">Fabric:</p>
+                <ul className="list-disc space-y-1 pl-5">
+                  {fabricLines.map((line) => <li key={`fabric-${line}`}>{line}</li>)}
+                </ul>
+              </div>
+            ) : null}
+            {careLines.length ? (
               <div>
                 <p className="font-semibold">Care Instructions:</p>
                 <ul className="list-disc space-y-1 pl-5">
-                  {product.fabricCare.careInstructions.map((instruction) => (
+                  {careLines.map((instruction) => (
                     <li key={`care-${instruction}`}>{instruction}</li>
                   ))}
                 </ul>
@@ -174,16 +244,26 @@ export function ProductDetailClient({ product }: Props) {
       });
     }
 
+    if (hasText(product.detail?.modelDetails)) {
+      panels.push({
+        key: "modelDetails",
+        title: "Model Details",
+        content: <p className="text-sm text-zinc-700">{product.detail.modelDetails}</p>,
+      });
+    }
+
+    if (hasText(product.detail?.disclaimer)) {
+      panels.push({
+        key: "disclaimer",
+        title: "Disclaimer",
+        content: <p className="text-sm text-zinc-700">{product.detail.disclaimer}</p>,
+      });
+    }
+
     const structuredDetails = [
-      ["Fabric Composition", product.detail?.fabricComposition],
-      ["Care Guide", product.detail?.careGuide],
-      ["Fit Details", product.detail?.fitDetails],
-      ["Model Details", product.detail?.modelDetails],
       ["Material Details", product.detail?.materialDetails],
       ["Origin", product.detail?.origin],
       ["Package Includes", product.detail?.packageIncludes],
-      ["Return / Exchange", product.detail?.returnExchangePolicy],
-      ["Disclaimer", product.detail?.disclaimer],
     ].filter(([, value]) => typeof value === "string" && value.trim());
 
     if (structuredDetails.length) {
@@ -203,17 +283,30 @@ export function ProductDetailClient({ product }: Props) {
     return panels;
   }, [product.deliveriesReturns, product.detail, product.fabricCare, product.name, product.shipping, product.shippingDelivery, product.sizeGuide]);
 
-  const additionalInfo = useMemo(
-    () =>
-      Array.isArray(product.additionalInfo)
-        ? product.additionalInfo.filter((item) => item?.label?.trim() && item?.value?.trim())
-        : [],
-    [product.additionalInfo],
-  );
-
   useEffect(() => {
     setHasHydrated(true);
   }, []);
+
+  const trackProductDetailEvent = (
+    eventType: "PRODUCT_VIEW" | "PRODUCT_ADDED_TO_CART" | "WISHLIST_ADDED" | "EXPLICIT_PRODUCT_INTEREST",
+    metadata?: Record<string, unknown>,
+  ) => {
+    void trackUserBehaviorEvent({
+      eventType,
+      productId: product.id,
+      brandId: product.brandId,
+      sourcePage: "product-detail",
+      gender: product.gender,
+      topCategory: product.topCategory,
+      subCategory: product.subCategory,
+      metadata: {
+        source: "product-detail",
+        ...metadata,
+      },
+    }).catch(() => {
+      // Keep product interactions resilient if telemetry is unavailable.
+    });
+  };
 
   useEffect(() => {
     if (!availableColors.length) return;
@@ -223,17 +316,25 @@ export function ProductDetailClient({ product }: Props) {
   }, [availableColors, selectedColor]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!selectedSize || !sizeAvailability.get(selectedSize)) {
+      setSelectedSize(firstAvailableSize);
+    }
+  }, [firstAvailableSize, selectedSize, sizeAvailability]);
 
+  useEffect(() => {
     void trackUserBehaviorEvent({
       eventType: "PRODUCT_VIEW",
       productId: product.id,
+      brandId: product.brandId,
+      sourcePage: "product-detail",
+      gender: product.gender,
       topCategory: product.topCategory,
       subCategory: product.subCategory,
+      metadata: { source: "product-detail" },
     }).catch(() => {
       // Ignore telemetry failures to keep browsing uninterrupted.
     });
-  }, [product.id, product.subCategory, product.topCategory, user]);
+  }, [product.brandId, product.gender, product.id, product.subCategory, product.topCategory]);
 
   useEffect(() => {
     const nextImage = galleryImages[0] || product.imageUrl;
@@ -250,7 +351,7 @@ export function ProductDetailClient({ product }: Props) {
     if (product.stock <= 0) return "Out of Stock";
     if (product.pricePkr < 3000) return "Sale";
     return "New";
-  }, [pricing.discountPercentage, pricing.hasDiscount, product.badge, product.pricePkr, product.stock]);
+  }, [pricing.discountPercentage, pricing.hasDiscount, product.badge, product.label, product.pricePkr, product.stock]);
 
   const badgeClass =
     pricing.hasDiscount
@@ -263,7 +364,7 @@ export function ProductDetailClient({ product }: Props) {
           ? "border-amber-700 bg-amber-500 text-black"
           : "border-zinc-700 bg-zinc-800 text-white";
 
-  const canAdd = product.stock > 0;
+  const canAdd = product.stock > 0 && Boolean(selectedSize) && sizeAvailability.get(selectedSize) !== false;
 
   // Remove brand name from product title
   const stripBrandPrefix = (title: string, brandName?: string) => {
@@ -277,7 +378,7 @@ export function ProductDetailClient({ product }: Props) {
   const soldCount = product.soldCount || 0;
 
   return (
-    <section className="grid gap-6 md:grid-cols-12">
+    <section className="grid gap-4 md:grid-cols-12">
       <div className="space-y-3 md:col-span-7">
         <button
           type="button"
@@ -311,7 +412,7 @@ export function ProductDetailClient({ product }: Props) {
         ) : null}
       </div>
 
-      <div className="space-y-5 border border-zinc-300 p-6 md:col-span-5">
+      <div className="space-y-3 border border-zinc-300 p-5 md:col-span-5">
         <div className="flex items-center justify-between gap-3">
           <Link href={product.brand?.slug ? `/brand/${product.brand.slug}` : "/brands"} className="text-xs uppercase tracking-[0.14em] text-zinc-500 hover:text-zinc-700">
             {product.brand?.name || "Verified Brand"}
@@ -319,7 +420,7 @@ export function ProductDetailClient({ product }: Props) {
           <span className={`border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${badgeClass}`}>{badge}</span>
         </div>
 
-        <h1 className="font-heading text-5xl uppercase leading-[0.95]" title={product.name}>{displayTitle}</h1>
+        <h1 className="font-heading text-4xl uppercase leading-[0.95]" title={product.name}>{displayTitle}</h1>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             {pricing.hasDiscount ? (
@@ -333,29 +434,56 @@ export function ProductDetailClient({ product }: Props) {
           </div>
           <p className="text-xs font-semibold text-rose-600 uppercase tracking-[0.12em]">{soldCount} Sold</p>
         </div>
-        <p className="text-sm leading-7 text-zinc-700">{product.descriptionLong || product.description}</p>
+        <p className="text-sm leading-6 text-zinc-700">{product.descriptionLong || product.description}</p>
 
         <div className="space-y-1 text-xs uppercase tracking-[0.12em]">
           <p className={product.stock > 0 ? "font-semibold text-emerald-700" : "font-semibold text-rose-700"}>
             Stock: {product.stock > 0 ? `${product.stock} available` : "Out of stock"}
           </p>
-          <p className="text-zinc-500">{product.topCategory} / {product.subCategory}</p>
-          {product.fit ? <p className="text-zinc-500">Fit: {product.fit}</p> : null}
+          <div className="flex flex-wrap items-center justify-between gap-2 text-zinc-500">
+            <p>{product.topCategory} / {product.subCategory}</p>
+            {product.fit ? <p>Fit: {product.fit}</p> : null}
+          </div>
+          {estimatedDeliveryTime ? (
+            <p className="normal-case tracking-normal text-zinc-700">
+              <span className="font-semibold uppercase tracking-[0.12em] text-zinc-500">Estimated Delivery Time:</span> {estimatedDeliveryTime}
+            </p>
+          ) : null}
         </div>
 
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">Size</p>
           <div className="flex flex-wrap gap-2">
-            {product.sizes.map((size) => (
-              <button
-                key={size}
-                type="button"
-                onClick={() => setSelectedSize(size)}
-                className={`border px-3 py-2 text-xs uppercase tracking-[0.12em] ${selectedSize === size ? "border-black bg-black text-white" : "border-zinc-300 bg-white"}`}
-              >
-                {size}
-              </button>
-            ))}
+            {product.sizes.map((size) => {
+              const isAvailable = sizeAvailability.get(size) !== false;
+              const isSelected = selectedSize === size;
+              return (
+                <button
+                  key={size}
+                  type="button"
+                  disabled={!isAvailable}
+                  onClick={() => {
+                    if (isAvailable) {
+                      setSelectedSize(size);
+                      trackProductDetailEvent("EXPLICIT_PRODUCT_INTEREST", {
+                        action: "select-size",
+                        selectedSize: size,
+                      });
+                    }
+                  }}
+                  className={`border px-3 py-2 text-xs uppercase tracking-[0.12em] ${
+                    isSelected
+                      ? "border-black bg-black text-white"
+                      : isAvailable
+                        ? "border-zinc-300 bg-white"
+                        : "cursor-not-allowed border-zinc-200 bg-zinc-100 text-zinc-400 line-through"
+                  }`}
+                  aria-disabled={!isAvailable}
+                >
+                  {size}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -366,7 +494,13 @@ export function ProductDetailClient({ product }: Props) {
               <button
                 key={color}
                 type="button"
-                onClick={() => setSelectedColor(color)}
+                onClick={() => {
+                  setSelectedColor(color);
+                  trackProductDetailEvent("EXPLICIT_PRODUCT_INTEREST", {
+                    action: "select-color",
+                    selectedColor: color,
+                  });
+                }}
                 className={`border px-3 py-2 text-xs uppercase tracking-[0.12em] ${selectedColor === color ? "border-black bg-black text-white" : "border-zinc-300 bg-white"}`}
               >
                 {color}
@@ -383,17 +517,11 @@ export function ProductDetailClient({ product }: Props) {
             onClick={() => {
               addToCart(product, { selectedColor, selectedSize });
               pushToast("Added to cart", "success");
-              if (user) {
-                void trackUserBehaviorEvent({
-                  eventType: "PRODUCT_ADDED_TO_CART",
-                  productId: product.id,
-                  topCategory: product.topCategory,
-                  subCategory: product.subCategory,
-                  metadata: { source: "product-detail" },
-                }).catch(() => {
-                  // Ignore telemetry failures.
-                });
-              }
+              trackProductDetailEvent("PRODUCT_ADDED_TO_CART", {
+                action: "add-to-cart",
+                selectedColor,
+                selectedSize,
+              });
             }}
           >
             {canAdd ? "Add to Cart" : "Out of Stock"}
@@ -421,19 +549,12 @@ export function ProductDetailClient({ product }: Props) {
                 try {
                   await addWishlistProduct(product.id);
                   addWishlistLocal(product);
-                  void trackUserBehaviorEvent({
-                    eventType: "WISHLIST_ADDED",
-                    productId: product.id,
-                    topCategory: product.topCategory,
-                    subCategory: product.subCategory,
-                    metadata: { source: "product-detail" },
-                  }).catch(() => {
-                    // Ignore telemetry failures.
-                  });
+                  trackProductDetailEvent("WISHLIST_ADDED", { action: "wishlist-add" });
                 } catch (error) {
                   const message = error instanceof Error ? error.message : "Failed to save wishlist item";
                   if (message.toLowerCase().includes("product not found")) {
                     addWishlistLocal(product);
+                    trackProductDetailEvent("WISHLIST_ADDED", { action: "wishlist-add-local" });
                   } else {
                     pushToast(message, "error");
                     return;
@@ -441,6 +562,7 @@ export function ProductDetailClient({ product }: Props) {
                 }
               } else {
                 toggleWishlist(product);
+                trackProductDetailEvent("WISHLIST_ADDED", { action: "wishlist-add-local" });
               }
               pushToast("Added to wishlist", "success");
             }}
@@ -471,18 +593,6 @@ export function ProductDetailClient({ product }: Props) {
           </section>
         ) : null}
 
-        {additionalInfo.length ? (
-          <section className="space-y-3 border border-zinc-300 p-4">
-            <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-600">Additional Details</h2>
-            <div className="space-y-2 text-sm text-zinc-700">
-              {additionalInfo.map((entry) => (
-                <p key={`${entry.label}-${entry.value}`}>
-                  <span className="font-semibold">{entry.label}:</span> {entry.value}
-                </p>
-              ))}
-            </div>
-          </section>
-        ) : null}
       </div>
 
       {zoomOpen ? (

@@ -2,6 +2,12 @@ type CatalogTopCategory = "Men" | "Women" | "Toddler Boys" | "Toddler Girls" | "
 
 type ProductType = "Top" | "Bottom" | "Footwear" | "Accessories";
 
+type SubCategoryDefinition = {
+  label: string;
+  productType: ProductType;
+  terms: string[];
+};
+
 const adultCategoryTokenMap: Record<string, CatalogTopCategory> = {
   men: "Men",
   mens: "Men",
@@ -15,14 +21,6 @@ const adultCategoryTokenMap: Record<string, CatalogTopCategory> = {
 
 const searchStopWords = new Set(["for", "and", "the", "a", "an", "of", "to", "in", "on", "with", "by"]);
 
-/**
- * Expands catalog top category with junior category refinement
- * Used to filter products by their target demographic
- * 
- * @param topCategory - Main category (Men, Women, Juniors, etc.)
- * @param juniorCategory - Specific junior variant (Junior Boys, Junior Girls, Toddler Boys, etc.) - only used if topCategory is "Juniors"
- * @returns Array of expanded top category values for filtering
- */
 export function expandCatalogTopCategory(
   topCategory?: string,
   juniorCategory?: string
@@ -33,7 +31,6 @@ export function expandCatalogTopCategory(
 
   const normalizedTop = topCategory.toLowerCase();
 
-  // Support legacy plural/group labels and expand to a full junior/toddler set when no specific category is provided.
   if (normalizedTop === "juniors" || normalizedTop === "kids") {
     if (juniorCategory) {
       return [juniorCategory];
@@ -45,63 +42,66 @@ export function expandCatalogTopCategory(
     return [juniorCategory];
   }
 
-  // Return the top category as-is
   return [topCategory];
 }
 
-export const subCategoryHintMap: Record<string, string[]> = {
-  shirt: ["Shirts", "Polo Shirts", "T-Shirts"],
-  tshirt: ["T-Shirts"],
-  tee: ["T-Shirts"],
-  polo: ["Polo Shirts"],
-  hoodie: ["Hoodies"],
-  jacket: ["Jackets"],
-  jean: ["Jeans"],
-  pant: ["Pants", "Trousers"],
-  trouser: ["Trousers"],
-  skirt: ["Skirts"],
-  sneaker: ["Sneakers"],
-  trainer: ["Trainers"],
-  shoe: ["Shoes"],
-  pump: ["Pumps"],
-  sandal: ["Sandals"],
-  cap: ["Caps"],
-  bag: ["Bags"],
-  belt: ["Belts"],
-  watch: ["Watches"],
-};
+const subCategoryDefinitions: SubCategoryDefinition[] = [
+  { label: "Polo Shirts", productType: "Top", terms: ["polo", "polo shirt", "polo shirts"] },
+  { label: "T-Shirts", productType: "Top", terms: ["tshirt", "t shirt", "t shirts", "tee", "tees"] },
+  { label: "Shirts", productType: "Top", terms: ["shirt", "shirts", "formal shirt", "overshirt"] },
+  { label: "Hoodies", productType: "Top", terms: ["hoodie", "hoodies", "sweatshirt", "sweatshirts"] },
+  { label: "Jackets", productType: "Top", terms: ["jacket", "jackets", "coat", "coats", "bomber", "puffer"] },
+  { label: "Jeans", productType: "Bottom", terms: ["jean", "jeans", "denim"] },
+  { label: "Trousers", productType: "Bottom", terms: ["trouser", "trousers", "pant", "pants", "chino", "chinos"] },
+  { label: "Cargo Pants", productType: "Bottom", terms: ["cargo", "cargo pant", "cargo pants"] },
+  { label: "Joggers", productType: "Bottom", terms: ["jogger", "joggers"] },
+  { label: "Shorts", productType: "Bottom", terms: ["short", "shorts"] },
+  { label: "Skirts", productType: "Bottom", terms: ["skirt", "skirts"] },
+  { label: "Dresses", productType: "Top", terms: ["dress", "dresses"] },
+  { label: "Sneakers", productType: "Footwear", terms: ["sneaker", "sneakers", "trainer", "trainers", "runner", "runners"] },
+  { label: "Boots", productType: "Footwear", terms: ["boot", "boots"] },
+  { label: "Shoes", productType: "Footwear", terms: ["shoe", "shoes"] },
+  { label: "Pumps", productType: "Footwear", terms: ["pump", "pumps"] },
+  { label: "Sandals", productType: "Footwear", terms: ["sandal", "sandals"] },
+  { label: "Bags", productType: "Accessories", terms: ["bag", "bags", "backpack", "tote"] },
+  { label: "Belts", productType: "Accessories", terms: ["belt", "belts"] },
+  { label: "Caps", productType: "Accessories", terms: ["cap", "caps", "hat", "hats"] },
+  { label: "Watches", productType: "Accessories", terms: ["watch", "watches"] },
+  { label: "Socks", productType: "Accessories", terms: ["sock", "socks"] },
+];
 
-const subCategoryToType: Record<string, ProductType> = {
-  Shirts: "Top",
-  "Polo Shirts": "Top",
-  "T-Shirts": "Top",
-  Hoodies: "Top",
-  Jackets: "Top",
-  Jeans: "Bottom",
-  Pants: "Bottom",
-  Trousers: "Bottom",
-  Skirts: "Bottom",
-  Sneakers: "Footwear",
-  Trainers: "Footwear",
-  Shoes: "Footwear",
-  Pumps: "Footwear",
-  Sandals: "Footwear",
-  Caps: "Accessories",
-  Bags: "Accessories",
-  Belts: "Accessories",
-  Watches: "Accessories",
-};
+export const subCategoryHintMap = subCategoryDefinitions.reduce<Record<string, string[]>>((map, definition) => {
+  for (const term of definition.terms) {
+    for (const token of tokenizePlainText(term)) {
+      if (!map[token]) {
+        map[token] = [];
+      }
+      if (!map[token]!.includes(definition.label)) {
+        map[token]!.push(definition.label);
+      }
+    }
+  }
+
+  return map;
+}, {});
+
+const subCategoryToType = subCategoryDefinitions.reduce<Record<string, ProductType>>((map, definition) => {
+  map[definition.label] = definition.productType;
+  return map;
+}, {});
 
 const typeTokenMap: Record<string, ProductType> = {
   top: "Top",
+  tops: "Top",
   bottom: "Bottom",
+  bottoms: "Bottom",
   footwear: "Footwear",
-  shoes: "Footwear",
   shoe: "Footwear",
-  sneakers: "Footwear",
+  shoes: "Footwear",
   sneaker: "Footwear",
-  trainers: "Footwear",
+  sneakers: "Footwear",
   trainer: "Footwear",
+  trainers: "Footwear",
   accessories: "Accessories",
   accessory: "Accessories",
 };
@@ -122,11 +122,61 @@ export const colorWords = [
   "olive",
   "maroon",
   "cream",
+  "khaki",
+  "charcoal",
+  "pink",
+  "purple",
+  "yellow",
+  "orange",
+  "silver",
+  "gold",
+  "denim",
 ];
+
+const correctionEntries = [
+  ...colorWords.map((word) => ({ token: normalizeSearchToken(word), display: word })),
+  ...Object.keys(adultCategoryTokenMap).map((word) => ({ token: normalizeSearchToken(word), display: word })),
+  ...Object.keys(typeTokenMap).map((word) => ({ token: normalizeSearchToken(word), display: word })),
+  { token: "junior", display: "junior" },
+  { token: "kid", display: "kids" },
+  { token: "toddler", display: "toddler" },
+  { token: "baby", display: "baby" },
+  { token: "boy", display: "boys" },
+  { token: "girl", display: "girls" },
+  ...subCategoryDefinitions.flatMap((definition) =>
+    definition.terms.flatMap((term) =>
+      rawSearchTokens(term).map((token) => ({
+        token: normalizeSearchToken(token),
+        display: definition.label.toLowerCase(),
+      })),
+    ),
+  ),
+];
+
+const correctionDictionary = Array.from(
+  correctionEntries
+    .reduce((map, entry) => {
+      if (entry.token.length > 1 && !map.has(entry.token)) {
+        map.set(entry.token, entry);
+      }
+      return map;
+    }, new Map<string, { token: string; display: string }>())
+    .values(),
+);
 
 export function normalizeSearchInput(input?: string) {
   if (!input) return "";
   return input.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function canonicalizeQueryText(query: string) {
+  return normalizeSearchInput(query)
+    .replace(/\bt[\s-]?shirts?\b/g, "tshirt")
+    .replace(/\bpolo[\s-]?shirts?\b/g, "polo shirt");
+}
+
+function rawSearchTokens(query: string) {
+  return canonicalizeQueryText(query).match(/[a-z0-9]+/g) || [];
 }
 
 function normalizeSearchToken(token: string) {
@@ -143,48 +193,121 @@ function normalizeSearchToken(token: string) {
   return normalized;
 }
 
+function tokenizePlainText(query: string) {
+  return rawSearchTokens(query).map((term) => normalizeSearchToken(term)).filter(Boolean);
+}
+
+function levenshteinDistance(a: string, b: string) {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  const current = Array.from({ length: b.length + 1 }, () => 0);
+
+  for (let i = 1; i <= a.length; i += 1) {
+    current[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const substitutionCost = a[i - 1] === b[j - 1] ? 0 : 1;
+      current[j] = Math.min(
+        current[j - 1]! + 1,
+        previous[j]! + 1,
+        previous[j - 1]! + substitutionCost,
+      );
+    }
+    for (let j = 0; j <= b.length; j += 1) {
+      previous[j] = current[j]!;
+    }
+  }
+
+  return previous[b.length]!;
+}
+
+function correctionThreshold(token: string) {
+  if (token.length >= 7) return 2;
+  if (token.length >= 4) return 1;
+  return 0;
+}
+
+function correctToken(token: string) {
+  const normalized = normalizeSearchToken(token);
+  if (normalized.length < 3 || /^\d+$/.test(normalized)) {
+    return { normalized, display: token.toLowerCase(), corrected: false };
+  }
+
+  const exact = correctionDictionary.find((entry) => entry.token === normalized);
+  if (exact) {
+    return { normalized, display: token.toLowerCase(), corrected: false };
+  }
+
+  let best: { token: string; display: string; distance: number } | undefined;
+  for (const entry of correctionDictionary) {
+    if (Math.abs(entry.token.length - normalized.length) > 2) continue;
+    const distance = levenshteinDistance(normalized, entry.token);
+    if (distance > correctionThreshold(normalized)) continue;
+    if (!best || distance < best.distance || (distance === best.distance && entry.token.length > best.token.length)) {
+      best = { ...entry, distance };
+    }
+  }
+
+  if (!best) {
+    return { normalized, display: token.toLowerCase(), corrected: false };
+  }
+
+  return { normalized: best.token, display: best.display, corrected: true };
+}
+
+export function correctSearchInput(input?: string) {
+  const tokens = rawSearchTokens(input || "");
+  if (!tokens.length) return "";
+
+  return tokens
+    .map((token) => correctToken(token).display)
+    .join(" ")
+    .trim();
+}
+
 export function tokenizeSearchQuery(query: string) {
   return (
-    query
-      .toLowerCase()
-      .match(/[a-z0-9]+/g)
-      ?.map((term) => normalizeSearchToken(term))
+    tokenizePlainText(correctSearchInput(query))
       .filter((term) => term.length > 1 && !searchStopWords.has(term)) || []
   );
 }
 
-export function inferSubCategoryHints(query: string) {
-  const tokens = tokenizeSearchQuery(query);
-  if (!tokens.length) return [] as string[];
+function inferSubCategoryMatches(query: string) {
+  const corrected = correctSearchInput(query);
+  const tokens = tokenizeSearchQuery(corrected);
+  const tokenSet = new Set(tokens);
+  if (!tokens.length) return [] as SubCategoryDefinition[];
 
-  const categoryMap = new Map<string, Set<string>>();
-  for (const token of tokens) {
-    const matches = subCategoryHintMap[token];
-    if (!matches) continue;
+  const scored = subCategoryDefinitions
+    .map((definition) => {
+      let score = 0;
+      for (const term of definition.terms) {
+        const termTokens = tokenizePlainText(term).filter((token) => token.length > 1);
+        if (!termTokens.length) continue;
 
-    for (const subCategory of matches) {
-      if (!categoryMap.has(subCategory)) {
-        categoryMap.set(subCategory, new Set());
+        if (termTokens.every((token) => tokenSet.has(token))) {
+          score += termTokens.length * 4;
+        }
+
+        if (termTokens.length > 1 && corrected.includes(termTokens.join(" "))) {
+          score += termTokens.length * 3;
+        }
       }
-      categoryMap.get(subCategory)?.add(token);
-    }
-  }
 
-  let maxCoverage = 0;
-  const bestHints = new Set<string>();
+      return { definition, score };
+    })
+    .filter((entry) => entry.score > 0);
 
-  for (const [subCategory, matchedTokens] of categoryMap) {
-    const coverage = matchedTokens.size / tokens.length;
-    if (coverage > maxCoverage) {
-      maxCoverage = coverage;
-      bestHints.clear();
-      bestHints.add(subCategory);
-    } else if (coverage === maxCoverage) {
-      bestHints.add(subCategory);
-    }
-  }
+  if (!scored.length) return [];
 
-  return Array.from(bestHints);
+  const maxScore = Math.max(...scored.map((entry) => entry.score));
+  return scored.filter((entry) => entry.score === maxScore).map((entry) => entry.definition);
+}
+
+export function inferSubCategoryHints(query: string) {
+  return inferSubCategoryMatches(query).map((match) => match.label);
 }
 
 function isJuniorGroup(value: string | undefined): value is CatalogTopCategory {
@@ -194,9 +317,16 @@ function isJuniorGroup(value: string | undefined): value is CatalogTopCategory {
 function inferSizeToken(tokens: string[]) {
   for (const token of tokens) {
     if (sizeTokens.has(token)) return token.toUpperCase();
-    if (/^\d{2}$/.test(token)) return token;
+    if (/^\d{1,2}$/.test(token)) return token;
   }
   return undefined;
+}
+
+function addNormalizedPhraseTokens(target: Set<string>, value?: string) {
+  if (!value) return;
+  for (const token of tokenizePlainText(value)) {
+    target.add(token);
+  }
 }
 
 function stripFilterTokens(tokens: string[], filters: Set<string>) {
@@ -204,43 +334,56 @@ function stripFilterTokens(tokens: string[], filters: Set<string>) {
 }
 
 export function inferSearchFilters(query: string) {
-  const tokens = tokenizeSearchQuery(query);
+  const correctedInput = correctSearchInput(query);
+  const normalizedOriginal = normalizeSearchInput(query);
+  const tokens = tokenizeSearchQuery(correctedInput);
 
   const inferredTopCategory = detectTopCategoryToken(tokens);
-  const hasJuniorsToken = tokens.includes("juniors") || tokens.includes("kids") || tokens.includes("kid");
+  const hasJuniorsToken = tokens.includes("junior") || tokens.includes("kid");
   const gender = isJuniorGroup(inferredTopCategory)
     ? "Juniors"
     : inferredTopCategory || (hasJuniorsToken ? "Juniors" : undefined);
   const juniorCategory = isJuniorGroup(inferredTopCategory) ? inferredTopCategory : undefined;
 
-  const subCategoryHints = inferSubCategoryHints(query);
+  const subCategoryMatches = inferSubCategoryMatches(correctedInput);
+  const subCategoryHints = subCategoryMatches.map((match) => match.label);
   const subCategory = subCategoryHints[0];
   const productType =
-    subCategory ? subCategoryToType[subCategory] : tokens.map((t) => typeTokenMap[t]).find(Boolean);
+    subCategoryMatches.length === 1
+      ? subCategoryMatches[0]!.productType
+      : tokens.map((t) => typeTokenMap[t]).find(Boolean);
 
   const color = tokens.find((token) => colorWords.includes(token));
   const size = inferSizeToken(tokens);
 
   const filterTokens = new Set<string>();
-  if (gender) {
-    filterTokens.add(gender.toLowerCase());
+  for (const token of tokens) {
+    if (adultCategoryTokenMap[token] || ["junior", "kid", "toddler", "baby", "boy", "girl"].includes(token)) {
+      filterTokens.add(token);
+    }
+    if (typeTokenMap[token] || colorWords.includes(token) || sizeTokens.has(token) || /^\d{1,2}$/.test(token)) {
+      filterTokens.add(token);
+    }
   }
-  if (juniorCategory) {
-    juniorCategory
-      .toLowerCase()
-      .split(/\s+/)
-      .forEach((token) => filterTokens.add(token));
-  }
-  if (productType) filterTokens.add(productType.toLowerCase());
-  if (subCategory) {
-    subCategory.toLowerCase().split(/\s+/).forEach((token) => filterTokens.add(token));
-  }
-  if (color) filterTokens.add(color);
-  if (size) filterTokens.add(size.toLowerCase());
 
-  const normalizedQuery = stripFilterTokens(tokens, filterTokens).join(" ").trim() || query;
+  if (juniorCategory) {
+    addNormalizedPhraseTokens(filterTokens, juniorCategory);
+  }
+  if (productType) {
+    addNormalizedPhraseTokens(filterTokens, productType);
+  }
+  for (const match of subCategoryMatches) {
+    for (const term of match.terms) {
+      addNormalizedPhraseTokens(filterTokens, term);
+    }
+    addNormalizedPhraseTokens(filterTokens, match.label);
+  }
+
+  const normalizedQuery = stripFilterTokens(tokens, filterTokens).join(" ").trim();
 
   return {
+    correctedInput,
+    correctedQuery: correctedInput && correctedInput !== normalizedOriginal ? correctedInput : undefined,
     normalizedQuery,
     inferredTopCategory,
     gender,
@@ -254,9 +397,10 @@ export function inferSearchFilters(query: string) {
 }
 
 export function inferQueryCategory(query: string) {
-  const tokens = tokenizeSearchQuery(query);
+  const correctedInput = correctSearchInput(query);
+  const tokens = tokenizeSearchQuery(correctedInput);
   if (!tokens.length) {
-    return { normalizedQuery: query } as { normalizedQuery: string; inferredTopCategory?: CatalogTopCategory };
+    return { normalizedQuery: correctedInput || query } as { normalizedQuery: string; inferredTopCategory?: CatalogTopCategory };
   }
 
   const inferredTopCategory = detectTopCategoryToken(tokens);
@@ -266,7 +410,7 @@ export function inferQueryCategory(query: string) {
     : tokens;
 
   return {
-    normalizedQuery: normalizedTokens.join(" ").trim() || query,
+    normalizedQuery: normalizedTokens.join(" ").trim(),
     inferredTopCategory,
   };
 }

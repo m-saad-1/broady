@@ -2,7 +2,9 @@ import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { TopPromoBanner } from "@/components/layout/top-promo-banner";
+import { PersonalizedForYouSection } from "@/components/ui/personalized-for-you-section";
 import { ProductCarouselRow } from "@/components/ui/product-carousel-row";
+import { RecommendedProductCarouselRow } from "@/components/ui/recommended-product-carousel-row";
 import { getProducts } from "@/lib/api";
 
 function SectionHeader({ title, eyebrow, ctaLabel, href }: { title: string; eyebrow?: string; ctaLabel?: string; href?: string }) {
@@ -104,21 +106,23 @@ export default async function Home() {
         </div>
       </GridSection>
 
+      <PersonalizedForYouSection products={products} />
+
       <GridSection title="Men" eyebrow="Category spotlight" href="/category/Men" ctaLabel="View Men">
         <div className="min-w-0 overflow-x-hidden">
-          <ProductCarouselRow products={menProducts} label="Men" />
+          <RecommendedProductCarouselRow products={menProducts} label="Men" topCategory="Men" source="home-men" />
         </div>
       </GridSection>
 
       <GridSection title="Women" eyebrow="Category spotlight" href="/category/Women" ctaLabel="View Women">
         <div className="min-w-0 overflow-x-hidden">
-          <ProductCarouselRow products={womenProducts} label="Women" />
+          <RecommendedProductCarouselRow products={womenProducts} label="Women" topCategory="Women" source="home-women" />
         </div>
       </GridSection>
 
       <GridSection title="Juniors" eyebrow="Category spotlight" href="/category/Juniors" ctaLabel="View Juniors">
         <div className="min-w-0 overflow-x-hidden">
-          <ProductCarouselRow products={juniorsProducts} label="Juniors" />
+          <RecommendedProductCarouselRow products={juniorsProducts} label="Juniors" topCategory="Juniors" source="home-juniors" />
         </div>
       </GridSection>
 

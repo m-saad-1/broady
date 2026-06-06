@@ -2,9 +2,10 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
 import { productBaseSchema } from "./product.validation.js";
 import {
-  inferSearchFilters,
+  correctSearchInput,
   normalizeSearchInput,
   expandCatalogTopCategory,
+  tokenizeSearchQuery,
 } from "./products.search-utils.js";
 import {
   isMeilisearchProductSearchEnabled,
@@ -49,6 +50,102 @@ function normalizePricing(data: Partial<ProductCreateData>, currentActualPrice?:
 function splitStructuredProductPayload<T extends Partial<ProductCreateData>>(data: T) {
   const { detail, shipping, seo, ...productData } = data;
   return { detail, shipping, seo, productData };
+}
+
+function toTitleCase(value: string) {
+  return value.replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function tokenVariants(token: string) {
+  const upper = token.toUpperCase();
+  const title = toTitleCase(token);
+  return Array.from(new Set([token, upper, title]));
+}
+
+function containsToken(field: string, token: string) {
+  return { [field]: { contains: token, mode: "insensitive" } };
+}
+
+function buildSearchTokenCondition(token: string) {
+  const variants = tokenVariants(token);
+
+  return {
+    OR: [
+      containsToken("name", token),
+      containsToken("slug", token),
+      containsToken("shortDescription", token),
+      containsToken("description", token),
+      containsToken("searchDocument", token),
+      containsToken("gender", token),
+      containsToken("type", token),
+      containsToken("color", token),
+      containsToken("fit", token),
+      containsToken("season", token),
+      containsToken("collection", token),
+      containsToken("label", token),
+      containsToken("topCategory", token),
+      containsToken("subCategory", token),
+      { tags: { hasSome: variants } },
+      { sizes: { hasSome: variants } },
+      {
+        brand: {
+          is: {
+            OR: [
+              { name: { contains: token, mode: "insensitive" } },
+              { slug: { contains: token, mode: "insensitive" } },
+              { description: { contains: token, mode: "insensitive" } },
+            ],
+          },
+        },
+      },
+      {
+        variants: {
+          some: {
+            deletedAt: null,
+            OR: [
+              { sku: { contains: token, mode: "insensitive" } },
+              { barcode: { contains: token, mode: "insensitive" } },
+              { color: { contains: token, mode: "insensitive" } },
+              { size: { in: variants } },
+              { fit: { contains: token, mode: "insensitive" } },
+              { season: { contains: token, mode: "insensitive" } },
+              { style: { contains: token, mode: "insensitive" } },
+            ],
+          },
+        },
+      },
+      {
+        detail: {
+          is: {
+            OR: [
+              { fabricComposition: { contains: token, mode: "insensitive" } },
+              { careGuide: { contains: token, mode: "insensitive" } },
+              { fitDetails: { contains: token, mode: "insensitive" } },
+              { modelDetails: { contains: token, mode: "insensitive" } },
+              { sizeGuideText: { contains: token, mode: "insensitive" } },
+              { shippingDelivery: { contains: token, mode: "insensitive" } },
+              { returnExchangePolicy: { contains: token, mode: "insensitive" } },
+              { disclaimer: { contains: token, mode: "insensitive" } },
+              { materialDetails: { contains: token, mode: "insensitive" } },
+              { origin: { contains: token, mode: "insensitive" } },
+              { packageIncludes: { contains: token, mode: "insensitive" } },
+            ],
+          },
+        },
+      },
+      {
+        seo: {
+          is: {
+            OR: [
+              { metaTitle: { contains: token, mode: "insensitive" } },
+              { metaDescription: { contains: token, mode: "insensitive" } },
+              { canonicalUrl: { contains: token, mode: "insensitive" } },
+            ],
+          },
+        },
+      },
+    ],
+  };
 }
 
 async function syncStructuredProductBlocks(productId: string, data: Partial<ProductCreateData>) {
@@ -213,33 +310,31 @@ export async function listProducts(options: Record<string, any>) {
 
   const rawQuery = typeof q === "string" && q.trim() ? q : typeof query === "string" ? query : "";
   const normalizedInput = normalizeSearchInput(rawQuery);
-  const inferred = inferSearchFilters(normalizedInput);
+  const correctedInput = correctSearchInput(normalizedInput) || normalizedInput;
 
-  const resolvedTopCategory = typeof topCategory === "string" ? topCategory : undefined;
-  const resolvedJuniorCategory = typeof juniorCategory === "string" ? juniorCategory : undefined;
+  const resolvedTopCategory = typeof topCategory === "string" && topCategory ? topCategory : undefined;
+  const resolvedJuniorCategory = typeof juniorCategory === "string" && juniorCategory ? juniorCategory : undefined;
   const resolvedGender =
     typeof gender === "string" && gender
       ? gender
       : resolvedTopCategory === "Juniors" ||
           ["Toddler Boys", "Toddler Girls", "Junior Boys", "Junior Girls"].includes(resolvedTopCategory || "")
         ? "Juniors"
-        : resolvedTopCategory || inferred.gender;
+        : resolvedTopCategory;
 
   const effectiveJuniorCategory =
     resolvedJuniorCategory ||
     (["Toddler Boys", "Toddler Girls", "Junior Boys", "Junior Girls"].includes(resolvedTopCategory || "")
       ? resolvedTopCategory
-      : inferred.juniorCategory);
-  const effectiveType = typeof productType === "string" && productType ? productType : inferred.productType;
-  const effectiveSubCategory = typeof subCategory === "string" && subCategory ? subCategory : inferred.subCategory;
-  const effectiveSize = typeof size === "string" && size ? size : inferred.size;
-  const effectiveColor = typeof color === "string" && color ? color : inferred.color;
+      : undefined);
+  const effectiveType = typeof productType === "string" && productType ? productType : undefined;
+  const effectiveSubCategory = typeof subCategory === "string" && subCategory ? subCategory : undefined;
+  const effectiveSize = typeof size === "string" && size ? size : undefined;
+  const effectiveColor = typeof color === "string" && color ? color : undefined;
 
   const minPriceValue = typeof minPrice === "string" ? Number(minPrice) : minPrice;
   const maxPriceValue = typeof maxPrice === "string" ? Number(maxPrice) : maxPrice;
 
-  const effectiveQuery = inferred.normalizedQuery || normalizedInput;
-  const isShortQuery = effectiveQuery.trim().length > 0 && effectiveQuery.trim().length < 3;
   const hasAnyFilters =
     Boolean(resolvedGender) ||
     Boolean(effectiveJuniorCategory) ||
@@ -248,6 +343,13 @@ export async function listProducts(options: Record<string, any>) {
     Boolean(effectiveSize) ||
     Boolean(effectiveColor) ||
     Boolean(minPriceValue || maxPriceValue);
+  const effectiveQuery = correctedInput;
+  const effectiveSearchTokens = tokenizeSearchQuery(effectiveQuery);
+  const isShortQuery = correctedInput.trim().length > 0 && correctedInput.trim().length < 2 && !hasAnyFilters;
+  const pageValue = Math.max(Number(page) || 1, 1);
+  const limitValue = Math.min(Math.max(Number(limit) || 100, 1), 5000);
+  const skipValue = (pageValue - 1) * limitValue;
+  const takeValue = limitValue;
 
   if (isShortQuery && !hasAnyFilters) {
     return [];
@@ -265,6 +367,7 @@ export async function listProducts(options: Record<string, any>) {
       color: effectiveColor,
       minPrice: Number.isFinite(minPriceValue) ? minPriceValue : undefined,
       maxPrice: Number.isFinite(maxPriceValue) ? maxPriceValue : undefined,
+      limit: skipValue + takeValue,
     });
 
     if (!ids.length) {
@@ -296,8 +399,6 @@ export async function listProducts(options: Record<string, any>) {
       ordered = [...ordered].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     }
 
-    const skipValue = (Number(page) - 1) * Number(limit);
-    const takeValue = Number(limit);
     return ordered.slice(skipValue, skipValue + takeValue);
   }
 
@@ -351,12 +452,8 @@ export async function listProducts(options: Record<string, any>) {
     andConditions.push({ pricePkr: { lte: maxPriceValue } });
   }
 
-  // Handle search query. This is an OR block that must be combined with other AND filters.
-  const orConditions: any[] = [];
-  if (effectiveQuery && effectiveQuery.trim()) {
-    orConditions.push({ name: { contains: effectiveQuery, mode: "insensitive" } });
-    orConditions.push({ description: { contains: effectiveQuery, mode: "insensitive" } });
-    orConditions.push({ subCategory: { contains: effectiveQuery, mode: "insensitive" } });
+  for (const token of effectiveSearchTokens) {
+    andConditions.push(buildSearchTokenCondition(token));
   }
 
   // Determine sort order
@@ -379,14 +476,6 @@ export async function listProducts(options: Record<string, any>) {
 
   // Compose final where clause from AND / OR pieces
   if (andConditions.length) where.AND = andConditions;
-  if (orConditions.length) {
-    // Combine search OR as an AND element so it is applied together with other filters
-    where.AND = where.AND || [];
-    where.AND.push({ OR: orConditions });
-  }
-
-  const skipValue = (Number(page) - 1) * Number(limit);
-  const takeValue = Number(limit);
 
   return prisma.product.findMany({
     where,

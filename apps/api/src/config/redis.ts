@@ -29,19 +29,33 @@ export function parseRedisConnectionOptions(redisUrl: string): RedisOptions {
 
 export function getRedisClient(): any {
   if (!redisClient) {
-    // @ts-ignore - ioredis constructor types
-    redisClient = new Redis(env.redisUrl, parseRedisConnectionOptions(env.redisUrl));
+    try {
+      // @ts-ignore - ioredis constructor types
+      redisClient = new Redis(env.redisUrl, parseRedisConnectionOptions(env.redisUrl));
 
-    redisClient.on("error", (error: any) => {
-      const now = Date.now();
-      if (now - lastRedisErrorAt < 10000) return;
-      lastRedisErrorAt = now;
-      console.warn("[redis] client error", { message: error.message });
-    });
+      // Suppress connection errors to prevent process crash
+      redisClient.on("error", (error: any) => {
+        // Silently handle Redis errors - rate limiting will gracefully degrade
+      });
 
-    redisClient.on("end", () => {
-      console.warn("[redis] connection ended");
-    });
+      redisClient.on("end", () => {
+        // Silently handle connection end
+      });
+
+      redisClient.on("close", () => {
+        // Silently handle close event
+      });
+
+      redisClient.on("reconnecting", () => {
+        // Silently handle reconnecting event
+      });
+    } catch (error) {
+      console.debug("[redis] failed to initialize client (will operate without rate limiting)", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+      // Return null to indicate no Redis available - rate limiting middleware will handle gracefully
+      redisClient = null;
+    }
   }
 
   return redisClient;

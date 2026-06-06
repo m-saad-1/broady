@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useFieldArray, useForm, useWatch } from "react-hook-form";
+import { useFieldArray, useForm, useWatch, type Resolver } from "react-hook-form";
 import {
   createProduct,
   createProductContentTemplate,
@@ -52,6 +52,7 @@ type ProductEditorFormProps = {
   initialValues?: Partial<ProductFormValues>;
   cancelHref: string;
   onCompleted?: () => void;
+  onCancel?: () => void;
 };
 
 const emptyTemplateLibrary: TemplateLibraryState = {
@@ -68,6 +69,7 @@ export function ProductEditorForm({
   initialValues,
   cancelHref,
   onCompleted,
+  onCancel,
 }: ProductEditorFormProps) {
   const pushToast = useToastStore((state) => state.pushToast);
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -91,7 +93,7 @@ export function ProductEditorForm({
   }, [initialValues, scope]);
 
   const form = useForm<ProductFormValues>({
-    resolver: zodResolver(scope === "admin" ? adminProductFormSchema : productFormSchema) as any,
+    resolver: zodResolver(scope === "admin" ? adminProductFormSchema : productFormSchema) as unknown as Resolver<ProductFormValues>,
     defaultValues,
     mode: "onBlur",
     reValidateMode: "onChange",
@@ -113,6 +115,7 @@ export function ProductEditorForm({
   });
 
   const selectedImageUrl = useWatch({ control, name: "imageUrl" });
+  const discountPercentageValue = useWatch({ control, name: "discountPercentage" });
   const shippingChargesValue = useWatch({ control, name: "shippingCharges" });
   const sizeGuideTemplateId = useWatch({ control, name: "sizeGuideTemplateId" });
   const deliveriesTemplateId = useWatch({ control, name: "deliveriesReturnsTemplateId" });
@@ -128,6 +131,24 @@ export function ProductEditorForm({
         : "Submit for Approval";
 
   const pendingLabel = mode === "edit" ? "Saving..." : scope === "admin" ? "Creating..." : "Submitting...";
+  const imageFrameUrls = useMemo(() => {
+    const urls = [...(defaultValues.imageUrls || []), ...uploadedImageUrls, selectedImageUrl || ""]
+      .map((url) => (url || "").trim())
+      .filter(Boolean);
+    return Array.from(new Set(urls));
+  }, [defaultValues.imageUrls, selectedImageUrl, uploadedImageUrls]);
+
+  const selectedImageIndex = imageFrameUrls.findIndex((url) => url.toLowerCase() === (selectedImageUrl || "").toLowerCase());
+
+  const selectImageByOffset = (offset: number) => {
+    if (!imageFrameUrls.length) return;
+    const currentIndex = selectedImageIndex >= 0 ? selectedImageIndex : 0;
+    const nextIndex = (currentIndex + offset + imageFrameUrls.length) % imageFrameUrls.length;
+    const nextUrl = imageFrameUrls[nextIndex];
+    if (nextUrl) {
+      setValue("imageUrl", nextUrl, { shouldDirty: true, shouldValidate: true });
+    }
+  };
 
   const loadReferenceData = useCallback(async () => {
     setIsLoadingReferenceData(true);
@@ -168,7 +189,7 @@ export function ProductEditorForm({
 
   useEffect(() => {
     reset(defaultValues);
-    setUploadedImageUrls(defaultValues.imageUrl ? [defaultValues.imageUrl] : []);
+    setUploadedImageUrls(defaultValues.imageUrls?.length ? defaultValues.imageUrls : defaultValues.imageUrl ? [defaultValues.imageUrl] : []);
     setShowShippingCharges(Boolean(defaultValues.shippingCharges?.trim()));
     setShowSizeGuideImage(Boolean(defaultValues.sizeGuideImageUrl?.trim()));
     setSubmitFeedback(null);
@@ -358,7 +379,7 @@ export function ProductEditorForm({
 
   const resetToInitial = () => {
     reset(defaultValues);
-    setUploadedImageUrls(defaultValues.imageUrl ? [defaultValues.imageUrl] : []);
+    setUploadedImageUrls(defaultValues.imageUrls?.length ? defaultValues.imageUrls : defaultValues.imageUrl ? [defaultValues.imageUrl] : []);
     setShowShippingCharges(Boolean(defaultValues.shippingCharges?.trim()));
     setShowSizeGuideImage(Boolean(defaultValues.sizeGuideImageUrl?.trim()));
     setSubmitFeedback(null);
@@ -460,7 +481,7 @@ export function ProductEditorForm({
               min={1}
               register={register}
               errors={errors}
-              disabled={isSubmitting || !!useWatch({ control, name: "discountPercentage" })}
+              disabled={isSubmitting || Boolean(discountPercentageValue)}
             />
             <TextField<ProductFormValues>
               name="currency"
@@ -607,6 +628,16 @@ export function ProductEditorForm({
             />
             <TextField<ProductFormValues>
               className="md:col-span-2"
+              name="tags"
+              label="Tags"
+              description="Comma-separated search tags, for example: embroidered, summer, cotton"
+              placeholder="embroidered, summer, cotton"
+              register={register}
+              errors={errors}
+              disabled={isSubmitting}
+            />
+            <TextField<ProductFormValues>
+              className="md:col-span-2"
               name="imageUrl"
               label="Primary Image URL"
               required
@@ -632,28 +663,53 @@ export function ProductEditorForm({
 
             {selectedImageUrl ? (
               <div className="rounded border border-zinc-200 p-2">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">Selected image preview</p>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">Selected image preview</p>
+                  {imageFrameUrls.length > 1 ? (
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => selectImageByOffset(-1)}
+                        disabled={isSubmitting}
+                        className="h-8 border border-zinc-300 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] disabled:opacity-50"
+                      >
+                        Prev
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => selectImageByOffset(1)}
+                        disabled={isSubmitting}
+                        className="h-8 border border-zinc-300 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] disabled:opacity-50"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
                 <div className="relative h-40 w-full overflow-hidden border border-zinc-200">
                   <Image src={resolveMediaUrl(selectedImageUrl)} alt="Selected product" fill className="object-cover" unoptimized />
                 </div>
               </div>
             ) : null}
 
-            {uploadedImageUrls.length ? (
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {uploadedImageUrls.map((url) => (
+            {imageFrameUrls.length ? (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">Product images</p>
+                <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                {imageFrameUrls.map((url, index) => (
                   <button
                     key={url}
                     type="button"
                     onClick={() => setValue("imageUrl", url, { shouldDirty: true, shouldValidate: true })}
                     className={`border p-2 text-left text-xs ${selectedImageUrl === url ? "border-black bg-zinc-50" : "border-zinc-300"}`}
                   >
-                    <div className="relative h-24 w-full overflow-hidden border border-zinc-200">
-                      <Image src={resolveMediaUrl(url)} alt="Uploaded product" fill className="object-cover" unoptimized />
+                    <div className="relative h-20 w-full overflow-hidden border border-zinc-200">
+                      <Image src={resolveMediaUrl(url)} alt={`Product image ${index + 1}`} fill className="object-cover" unoptimized />
                     </div>
-                    <span className="mt-2 block truncate uppercase tracking-[0.08em]">Use this image</span>
+                    <span className="mt-2 block truncate uppercase tracking-[0.08em]">{selectedImageUrl === url ? "Primary" : "Make primary"}</span>
                   </button>
                 ))}
+                </div>
               </div>
             ) : null}
           </div>
@@ -674,14 +730,6 @@ export function ProductEditorForm({
               name="materialDetails"
               label="Material Details"
               placeholder="Lightweight woven fabric"
-              register={register}
-              errors={errors}
-              disabled={isSubmitting}
-            />
-            <TextField<ProductFormValues>
-              name="fitDetails"
-              label="Fit Details"
-              placeholder="Regular fit"
               register={register}
               errors={errors}
               disabled={isSubmitting}
@@ -1184,9 +1232,20 @@ export function ProductEditorForm({
           >
             Reset
           </button>
-          <Link href={cancelHref} className="inline-flex h-10 items-center border border-zinc-300 px-4 text-xs font-semibold uppercase tracking-[0.12em]">
-            Back to Products
-          </Link>
+          {onCancel ? (
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={isSubmitting}
+              className="inline-flex h-10 items-center border border-zinc-300 px-4 text-xs font-semibold uppercase tracking-[0.12em] disabled:opacity-50"
+            >
+              Back to Products
+            </button>
+          ) : (
+            <Link href={cancelHref} className="inline-flex h-10 items-center border border-zinc-300 px-4 text-xs font-semibold uppercase tracking-[0.12em]">
+              Back to Products
+            </Link>
+          )}
         </div>
       </form>
     </section>

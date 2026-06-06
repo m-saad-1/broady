@@ -24,7 +24,7 @@ export const productImageUrlSchema = z
   });
 
 const optionalTemplateIdSchema = z.preprocess(
-  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  (value) => (value === null || (typeof value === "string" && value.trim() === "") ? undefined : value),
   z.string().trim().min(1).optional(),
 );
 
@@ -37,6 +37,22 @@ const optionalPercentageSchema = z.preprocess(
   (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
   z.coerce.number().min(0).max(100).optional(),
 );
+
+const optionalTextSchema = z
+  .preprocess((value) => (value === null ? undefined : value), z.string().trim().optional())
+  .transform((value) => (value && value.length ? value : undefined));
+
+const optionalStringArraySchema = z
+  .array(z.preprocess((value) => (value === null ? "" : value), z.string().trim().min(1)))
+  .optional();
+
+function hasAnyValue(value: Record<string, unknown>) {
+  return Object.values(value).some((entry) => {
+    if (entry === undefined || entry === null) return false;
+    if (Array.isArray(entry)) return entry.length > 0;
+    return String(entry).trim() !== "";
+  });
+}
 
 export const productSizeGuideSchema = z.object({
   imageUrl: productImageUrlSchema.optional(),
@@ -56,27 +72,21 @@ export const productSizeGuideSchema = z.object({
 );
 
 export const productDeliveriesReturnsSchema = z.object({
-  deliveryTime: z.string().trim().min(2),
-  returnPolicy: z.string().trim().min(2),
-  refundConditions: z.string().trim().min(2),
-});
+  deliveryTime: optionalTextSchema,
+  returnPolicy: optionalTextSchema,
+  refundConditions: optionalTextSchema,
+}).partial().refine(hasAnyValue, { message: "Deliveries and returns requires at least one detail." });
 
 export const productShippingDeliverySchema = z.object({
-  regions: z.array(z.string().trim().min(1)).min(1),
-  estimatedDeliveryTime: z.string().trim().min(2),
-  charges: z.string().trim().optional(),
-});
+  regions: optionalStringArraySchema,
+  estimatedDeliveryTime: optionalTextSchema,
+  charges: optionalTextSchema,
+}).partial().refine(hasAnyValue, { message: "Shipping and delivery requires at least one detail." });
 
 export const productFabricCareSchema = z.object({
-  fabricType: z.string().trim().min(2),
-  careInstructions: z.array(z.string().trim().min(1)).min(1),
-});
-
-const optionalTextSchema = z
-  .string()
-  .trim()
-  .optional()
-  .transform((value) => (value && value.length ? value : undefined));
+  fabricType: optionalTextSchema,
+  careInstructions: optionalStringArraySchema,
+}).partial().refine(hasAnyValue, { message: "Fabric and care requires at least one detail." });
 
 const optionalAssetUrlSchema = z
   .string()
