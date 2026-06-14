@@ -133,6 +133,23 @@ export const notificationRules: Record<NotificationEventName, NotificationEventR
     ],
     priority: "HIGH",
   },
+  suborder_shipment_returned: {
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+      {
+        audience: notificationAudience.brandMembers,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+      {
+        audience: notificationAudience.admin,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+    ],
+    priority: "HIGH",
+  },
   suborder_returned: {
     audienceRules: [
       {
@@ -181,6 +198,70 @@ export const notificationRules: Record<NotificationEventName, NotificationEventR
           notificationChannelPreference.push,
           notificationChannelPreference.whatsapp,
         ],
+      },
+      {
+        audience: notificationAudience.admin,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+    ],
+    priority: "HIGH",
+  },
+  cancellation_request_created: {
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+      {
+        audience: notificationAudience.brandMembers,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+      {
+        audience: notificationAudience.admin,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+    ],
+    priority: "HIGH",
+  },
+  cancellation_request_approved: {
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+      {
+        audience: notificationAudience.brandMembers,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+      {
+        audience: notificationAudience.admin,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+    ],
+    priority: "HIGH",
+  },
+  cancellation_request_rejected: {
+    audienceRules: [
+      {
+        audience: notificationAudience.user,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+      {
+        audience: notificationAudience.brandMembers,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.push],
+      },
+      {
+        audience: notificationAudience.admin,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
+      },
+    ],
+    priority: "HIGH",
+  },
+  cancellation_request_expired: {
+    audienceRules: [
+      {
+        audience: notificationAudience.brandMembers,
+        channels: [notificationChannelPreference.dashboard, notificationChannelPreference.email, notificationChannelPreference.push],
       },
       {
         audience: notificationAudience.admin,

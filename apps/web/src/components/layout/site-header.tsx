@@ -38,7 +38,7 @@ import { getNotificationHref } from "@/lib/notification-routing";
 import { useAuthStore } from "@/stores/auth-store";
 import { useCartStore } from "@/stores/cart-store";
 import { useWishlistStore } from "@/stores/wishlist-store";
-import { maskOrderId } from "@/lib/notification-utils";
+import { getOrderIdDisplay, maskNotificationMessage } from "@/lib/notification-utils";
 import type { NotificationItem, Product, SearchSuggestion } from "@/types/marketplace";
 
 function getCartKey(item: { product: Product; selectedColor?: string; selectedSize?: string }) {
@@ -58,8 +58,7 @@ type CatalogFilters = {
   q?: string;
   topCategory?: string;
   juniorCategory?: string;
-  productType?: string;
-  subCategory?: string;
+  category?: string;
   size?: string;
   correctedFrom?: string;
 };
@@ -70,16 +69,16 @@ type CatalogCard = {
 };
 
 const MEN_WOMEN_MENU_ITEMS: CatalogCard[] = [
-  { label: "Shirts", filters: { q: "Shirts", productType: "Top" } },
-  { label: "T-Shirts", filters: { q: "T-Shirts", productType: "Top", subCategory: "T-Shirts" } },
-  { label: "Jackets", filters: { q: "Jackets", productType: "Top" } },
-  { label: "Polo", filters: { q: "Polo Shirts", productType: "Top", subCategory: "Polo Shirts" } },
-  { label: "Jeans", filters: { q: "Jeans", productType: "Bottom", subCategory: "Jeans" } },
-  { label: "Sneakers", filters: { q: "Sneakers", productType: "Footwear", subCategory: "Sneakers" } },
-  { label: "Boots", filters: { q: "Boots", productType: "Footwear", subCategory: "Boots" } },
-  { label: "Bags", filters: { q: "Bags", productType: "Accessories", subCategory: "Bags" } },
-  { label: "Belts", filters: { q: "Belts", productType: "Accessories", subCategory: "Belts" } },
-  { label: "Jewelry", filters: { q: "Jewelry", productType: "Accessories", subCategory: "Jewelry" } },
+  { label: "Shirts", filters: { q: "Shirts", category: "Shirts" } },
+  { label: "T-Shirts", filters: { q: "T-Shirts", category: "T-Shirts" } },
+  { label: "Jackets", filters: { q: "Jackets", category: "Jackets" } },
+  { label: "Polo", filters: { q: "Polo", category: "Polo" } },
+  { label: "Jeans", filters: { q: "Jeans", category: "Jeans" } },
+  { label: "Sneakers", filters: { q: "Sneakers", category: "Sneakers" } },
+  { label: "Boots", filters: { q: "Boots", category: "Boots" } },
+  { label: "Bags", filters: { q: "Bags", category: "Bags" } },
+  { label: "Belts", filters: { q: "Belts", category: "Belts" } },
+  { label: "Jewelry", filters: { q: "Jewelry", category: "Jewelry" } },
 ];
 
 const primaryNavItems = [
@@ -108,8 +107,7 @@ const starterSearchSuggestions: SearchSuggestion[] = [
     kind: "query",
     gender: "Men",
     topCategory: "Men",
-    productType: "Top",
-    subCategory: "Polo Shirts",
+    subCategory: "Polo",
     color: "black",
   },
   {
@@ -117,7 +115,6 @@ const starterSearchSuggestions: SearchSuggestion[] = [
     label: "Baggy jeans",
     query: "baggy jeans",
     kind: "query",
-    productType: "Bottom",
     subCategory: "Jeans",
   },
   {
@@ -128,7 +125,6 @@ const starterSearchSuggestions: SearchSuggestion[] = [
     gender: "Juniors",
     topCategory: "Junior Girls",
     juniorCategory: "Junior Girls",
-    productType: "Bottom",
     subCategory: "Jeans",
   },
   {
@@ -138,7 +134,6 @@ const starterSearchSuggestions: SearchSuggestion[] = [
     kind: "query",
     gender: "Men",
     topCategory: "Men",
-    productType: "Bottom",
     subCategory: "Jeans",
   },
   {
@@ -147,7 +142,6 @@ const starterSearchSuggestions: SearchSuggestion[] = [
     query: "junior jeans",
     kind: "query",
     gender: "Juniors",
-    productType: "Bottom",
     subCategory: "Jeans",
   },
   {
@@ -157,7 +151,6 @@ const starterSearchSuggestions: SearchSuggestion[] = [
     kind: "query",
     gender: "Women",
     topCategory: "Women",
-    productType: "Top",
     subCategory: "Jackets",
   },
   {
@@ -165,7 +158,6 @@ const starterSearchSuggestions: SearchSuggestion[] = [
     label: "Sneakers",
     query: "sneakers",
     kind: "query",
-    productType: "Footwear",
     subCategory: "Sneakers",
   },
   {
@@ -173,7 +165,6 @@ const starterSearchSuggestions: SearchSuggestion[] = [
     label: "Bags",
     query: "bags",
     kind: "query",
-    productType: "Accessories",
     subCategory: "Bags",
   },
 ];
@@ -188,7 +179,6 @@ function suggestionFromQuery(query: string, idPrefix: string): SearchSuggestion 
     kind: "query",
     topCategory: inferred.topCategory as SearchSuggestion["topCategory"],
     juniorCategory: inferred.juniorCategory as SearchSuggestion["juniorCategory"],
-    productType: inferred.productType as SearchSuggestion["productType"],
     subCategory: inferred.subCategory,
     size: inferred.size,
   };
@@ -275,8 +265,7 @@ function buildCatalogHref(filters: CatalogFilters) {
   if (filters.q) params.set("q", filters.q);
   if (filters.topCategory) params.set("topCategory", filters.topCategory);
   if (filters.juniorCategory) params.set("juniorCategory", filters.juniorCategory);
-  if (filters.productType) params.set("productType", filters.productType);
-  if (filters.subCategory) params.set("subCategory", filters.subCategory);
+  if (filters.category) params.set("category", filters.category);
   if (filters.size) params.set("size", filters.size);
   if (filters.correctedFrom) params.set("correctedFrom", filters.correctedFrom);
 
@@ -454,13 +443,17 @@ export function SiteHeader() {
     });
   };
 
-  const handleSearchSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
+  const submitSearch = () => {
     if (activeSuggestionIndex >= 0 && visibleSearchSuggestions[activeSuggestionIndex]) {
       applySuggestion(visibleSearchSuggestions[activeSuggestionIndex] as SearchSuggestion);
     } else {
       void navigateToCatalogFromQuery(searchTerm);
     }
+  };
+
+  const handleSearchSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    submitSearch();
   };
 
   const handleSearchKeyDown = (event: React.KeyboardEvent) => {
@@ -479,7 +472,8 @@ export function SiteHeader() {
       }
       setActiveSuggestionIndex((prev) => Math.max(prev - 1, 0));
     } else if (event.key === "Enter") {
-      handleSearchSubmit(event as any);
+      event.preventDefault();
+      submitSearch();
     } else if (event.key === "Escape") {
       closeSearch();
     }
@@ -493,8 +487,7 @@ export function SiteHeader() {
       q: baseFilters.q || item.query,
       topCategory: scopedTopCategory,
       juniorCategory: baseFilters.juniorCategory,
-      productType: baseFilters.productType,
-      subCategory: baseFilters.subCategory,
+      category: baseFilters.subCategory,
       size: baseFilters.size,
     });
     closeSearch();
@@ -1037,7 +1030,7 @@ export function SiteHeader() {
                                   <li key={sub}>
                                     <button
                                       type="button"
-                                      onClick={() => navigateToCatalog({ topCategory: group, subCategory: sub })}
+                                      onClick={() => navigateToCatalog({ topCategory: group, category: sub })}
                                       className="text-sm uppercase tracking-[0.08em] text-zinc-700 hover:underline"
                                     >
                                       {sub}
@@ -1300,21 +1293,27 @@ export function SiteHeader() {
                 <Link
                   key={item.id}
                   href={getNotificationHref(item, user?.role)}
-                  onClick={() => setNotificationsOpen(false)}
+                  onClick={() => {
+                    setSessionNewNotificationIds((current) => {
+                      const next = new Set(current);
+                      next.delete(item.id);
+                      return next;
+                    });
+                    setNotificationsOpen(false);
+                  }}
                   className="block border border-zinc-200 p-3 text-sm hover:border-black hover:bg-zinc-50 transition"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1">
                       <p className="font-semibold uppercase tracking-[0.08em]">{item.title}</p>
                       <p className="mt-1 text-zinc-600">
-                        {/* Replace order ID with masked version in message */}
-                        {item.order?.id
-                          ? item.message.replace(
-                              new RegExp(`\\b${item.order.id}\\b`, 'g'),
-                              maskOrderId(item.order.id)
-                            )
-                          : item.message}
+                        {maskNotificationMessage(item.message, item.order?.id)}
                       </p>
+                      {item.order?.id ? (
+                        <p className="mt-2 text-[11px] uppercase tracking-[0.12em] text-zinc-500">
+                          Order {getOrderIdDisplay(item.order.id)}
+                        </p>
+                      ) : null}
                     </div>
                     {sessionNewNotificationIds.has(item.id) && (
                       <span className="whitespace-nowrap rounded bg-black px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-white">

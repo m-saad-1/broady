@@ -8,16 +8,34 @@ import { getOrderStatusLabel } from "@/lib/order-status";
 import { useToastStore } from "@/stores/toast-store";
 import type { AdminBrandDashboardRecord } from "@/types/marketplace";
 
-type OrderFilter = "ALL" | "NEW" | "PENDING" | "CONFIRMED" | "SHIPPED" | "OUT_FOR_DELIVERY" | "DELIVERY_FAILED" | "DELIVERED" | "RETURNED" | "CANCELLED";
+type OrderFilter =
+  | "ALL"
+  | "NEW"
+  | "PENDING"
+  | "CONFIRMED"
+  | "PROCESSING"
+  | "PACKED"
+  | "READY_FOR_PICKUP"
+  | "SHIPPED"
+  | "OUT_FOR_DELIVERY"
+  | "DELIVERY_FAILED"
+  | "SHIPMENT_RETURNED"
+  | "DELIVERED"
+  | "RETURNED"
+  | "CANCELLED";
 
 const filterOptions: Array<{ key: OrderFilter; label: string }> = [
   { key: "ALL", label: "All" },
   { key: "NEW", label: "New" },
   { key: "PENDING", label: "Pending" },
   { key: "CONFIRMED", label: "Confirmed" },
+  { key: "PROCESSING", label: "Processing" },
+  { key: "PACKED", label: "Packed" },
+  { key: "READY_FOR_PICKUP", label: "Ready for Pickup" },
   { key: "SHIPPED", label: "Shipped" },
   { key: "OUT_FOR_DELIVERY", label: "Out for Delivery" },
   { key: "DELIVERY_FAILED", label: "Delivery Failed" },
+  { key: "SHIPMENT_RETURNED", label: "Shipment Returned" },
   { key: "DELIVERED", label: "Delivered" },
   { key: "RETURNED", label: "Returned" },
   { key: "CANCELLED", label: "Cancelled" },

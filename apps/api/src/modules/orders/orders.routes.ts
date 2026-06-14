@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { OrderStatus, PaymentStatus, Prisma, UserActivityEventType } from "@prisma/client";
+import { OrderStatus, PaymentSessionStatus, PaymentStatus, Prisma, UserActivityEventType } from "@prisma/client";
 import crypto from "node:crypto";
 import { z } from "zod";
 import { env } from "../../config/env.js";
@@ -11,13 +11,32 @@ import { notificationEventNames } from "../notifications/notification.events.js"
 import { queueNotificationEvent } from "../notifications/notification.service.js";
 import {
   DELIVERY_FAILURE_REASONS,
-  buildBrandFailureMessage,
   buildCustomerFailureMessage,
   calculateNextAttemptDate,
   describeFailureReason,
   getDeliveryFailurePolicy,
   normalizeDeliveryFailureReasonInput,
 } from "./deliveryFailure.service.js";
+import {
+  AUTO_CANCELLABLE_STATUSES,
+  BRAND_FULFILLMENT_STATUSES,
+  CANCELLATION_REQUEST_STATUSES,
+  SUBORDER_TRANSITIONS,
+  calculateRefundItems,
+  createRefundRecord,
+  deriveParentOrderStatus as deriveLifecycleParentOrderStatus,
+  getCancellationMode,
+  getRefundMethodForPayment,
+  recordCodRefusalIfNeeded,
+  shouldCreateRefundForPayment,
+  writeStatusHistory,
+} from "./order-lifecycle.service.js";
+import {
+  deriveExchangeResolutionForReason,
+  deriveExchangeType,
+  inferReturnRequestType,
+  normalizeReturnRequestForApi,
+} from "./return-workflow.js";
 import { trackUserActivity } from "../recommendations/recommendation.service.js";
 
 const router = Router();
@@ -26,6 +45,8 @@ const [orderPlacementIpLimit, orderPlacementUserLimit] = createUserAndIpRateLimi
 const cancelReasonCodeSchema = z.enum([
   "CHANGED_MIND",
   "ORDERED_BY_MISTAKE",
+  "WRONG_SIZE_SELECTED",
+  "WRONG_COLOR_SELECTED",
   "FOUND_BETTER_PRICE",
   "DELIVERY_TOO_SLOW",
   "PAYMENT_ISSUE",
@@ -34,8 +55,12 @@ const cancelReasonCodeSchema = z.enum([
 
 const returnReasonCodeSchema = z.enum([
   "DAMAGED_ITEM",
+  "DEFECTIVE_PRODUCT",
   "WRONG_ITEM",
+  "WRONG_SIZE",
+  "WRONG_COLOR",
   "SIZE_ISSUE",
+  "DIFFERENT_FROM_IMAGES",
   "QUALITY_ISSUE",
   "CHANGED_MIND",
   "OTHER",
@@ -44,6 +69,8 @@ const returnReasonCodeSchema = z.enum([
 const cancelReasonLabelByCode: Record<z.infer<typeof cancelReasonCodeSchema>, string> = {
   CHANGED_MIND: "Changed my mind",
   ORDERED_BY_MISTAKE: "Ordered by mistake",
+  WRONG_SIZE_SELECTED: "Wrong size selected",
+  WRONG_COLOR_SELECTED: "Wrong color selected",
   FOUND_BETTER_PRICE: "Found a better price",
   DELIVERY_TOO_SLOW: "Delivery is taking too long",
   PAYMENT_ISSUE: "Payment issue",
@@ -55,32 +82,23 @@ const brandOrderStatusSchema = z.enum([
   "PENDING",
   "CONFIRMED",
   "PROCESSING",
+  "PACKED",
+  "READY_FOR_PICKUP",
   "SHIPPED",
   "OUT_FOR_DELIVERY",
   "DELIVERY_FAILED",
   "DELIVERED",
   "ADDRESS_CORRECTION_REQUIRED",
   "READY_FOR_REDELIVERY",
+  "SHIPMENT_RETURNED",
   "RETURNED",
   "CANCELED",
   "CANCELLED",
 ]);
-const orderTransitionMap: Record<OrderStatus, OrderStatus[]> = {
-  PENDING: ["CONFIRMED"],
-  CONFIRMED: ["PROCESSING"],
-  PROCESSING: ["SHIPPED"],
-  PACKED: ["SHIPPED"],
-  PARTIALLY_SHIPPED: ["SHIPPED"],
-  SHIPPED: ["OUT_FOR_DELIVERY"],
-  OUT_FOR_DELIVERY: ["DELIVERY_FAILED", "DELIVERED"],
-  DELIVERY_FAILED: ["OUT_FOR_DELIVERY", "RETURNED", "ADDRESS_CORRECTION_REQUIRED"],
-  ADDRESS_CORRECTION_REQUIRED: ["READY_FOR_REDELIVERY", "RETURNED"],
-  READY_FOR_REDELIVERY: ["OUT_FOR_DELIVERY", "RETURNED"],
-  RETURNED: ["CANCELED"],
-  DELIVERED: [],
-  CANCELED: [],
-};
+const orderTransitionMap: Record<OrderStatus, OrderStatus[]> = SUBORDER_TRANSITIONS;
 const MAX_DELIVERY_ATTEMPTS = 3;
+const PAYMENT_RETRY_WINDOW_MS = 30 * 60 * 1000;
+const DEMO_PAYMENT_GATEWAY = "DEMO_GATEWAY";
 
 type OrderLifecycleEventName =
   | typeof notificationEventNames.orderPlaced
@@ -89,6 +107,7 @@ type OrderLifecycleEventName =
   | typeof notificationEventNames.orderShipped
   | typeof notificationEventNames.orderDeliveryFailed
   | typeof notificationEventNames.orderAddressCorrectionRequired
+  | typeof notificationEventNames.orderShipmentReturned
   | typeof notificationEventNames.orderReturned
   | typeof notificationEventNames.orderDelivered
   | typeof notificationEventNames.orderCancelled;
@@ -121,6 +140,19 @@ function composeCancellationReason(reasonCode?: z.infer<typeof cancelReasonCodeS
   }
 
   return fallback;
+}
+
+function mapCustomerCancellationReasonCode(reasonCode?: z.infer<typeof cancelReasonCodeSchema>) {
+  if (!reasonCode || reasonCode === "DELIVERY_TOO_SLOW") return "DELIVERY_TIME_TOO_LONG" as const;
+  if (reasonCode === "PAYMENT_ISSUE") return "OTHER" as const;
+  return reasonCode;
+}
+
+function getCancellationRequestDeadlines(now = new Date()) {
+  return {
+    expiresAt: new Date(now.getTime() + 4 * 60 * 60 * 1000),
+    autoApproveAt: new Date(now.getTime() + 8 * 60 * 60 * 1000),
+  };
 }
 
 function extractCustomerVisibleNote(note?: string | null) {
@@ -156,27 +188,41 @@ function getAutoEstimatedDelivery(status: OrderStatus, now: Date): Date | null {
 }
 
 
-const ORDER_ACTION_WINDOW_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_RETURN_WINDOW_DAYS = 7;
+const NON_RETURNABLE_CATEGORY_PATTERNS = [
+  /innerwear/i,
+  /underwear/i,
+  /undergarment/i,
+  /clearance/i,
+  /\bsale\b/i,
+  /custom/i,
+  /personal/i,
+  /earring/i,
+];
 
-function isWithinOrderActionWindow(createdAt: Date) {
-  return Date.now() - createdAt.getTime() <= ORDER_ACTION_WINDOW_MS;
+function isDefaultNonReturnableProduct(product: {
+  topCategory?: string | null;
+  subCategory?: string | null;
+  type?: string | null;
+  label?: string | null;
+  tags?: string[] | null;
+}) {
+  const values = [product.topCategory, product.subCategory, product.type, product.label, ...(product.tags || [])]
+    .filter(Boolean)
+    .join(" ");
+  return NON_RETURNABLE_CATEGORY_PATTERNS.some((pattern) => pattern.test(values));
+}
+
+function getDeliveredAt(subOrder: { updatedAt: Date; statusLogs?: Array<{ status: OrderStatus; createdAt: Date }> }) {
+  return subOrder.statusLogs?.find((log) => log.status === OrderStatus.DELIVERED)?.createdAt || subOrder.updatedAt;
+}
+
+function addDays(date: Date, days: number) {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
 function deriveParentOrderStatus(subOrderStatuses: OrderStatus[]): OrderStatus {
-  if (subOrderStatuses.length === 0) return OrderStatus.PENDING;
-  if (subOrderStatuses.every((status) => status === OrderStatus.CANCELED)) return OrderStatus.CANCELED;
-  if (subOrderStatuses.every((status) => status === OrderStatus.DELIVERED)) return OrderStatus.DELIVERED;
-  if (subOrderStatuses.every((status) => status === OrderStatus.RETURNED || status === OrderStatus.CANCELED)) return OrderStatus.RETURNED;
-  if (subOrderStatuses.some((status) => status === OrderStatus.RETURNED)) return OrderStatus.PARTIALLY_SHIPPED;
-  if (subOrderStatuses.some((status) => status === OrderStatus.ADDRESS_CORRECTION_REQUIRED)) return OrderStatus.ADDRESS_CORRECTION_REQUIRED;
-  if (subOrderStatuses.some((status) => status === OrderStatus.READY_FOR_REDELIVERY)) return OrderStatus.READY_FOR_REDELIVERY;
-  if (subOrderStatuses.some((status) => status === OrderStatus.DELIVERY_FAILED)) return OrderStatus.DELIVERY_FAILED;
-  if (subOrderStatuses.some((status) => status === OrderStatus.OUT_FOR_DELIVERY)) return OrderStatus.OUT_FOR_DELIVERY;
-  if (subOrderStatuses.some((status) => status === OrderStatus.SHIPPED || status === OrderStatus.PACKED || status === OrderStatus.PARTIALLY_SHIPPED)) return OrderStatus.SHIPPED;
-  if (subOrderStatuses.every((status) => status === OrderStatus.PROCESSING)) return OrderStatus.PROCESSING;
-  if (subOrderStatuses.some((status) => status === OrderStatus.PROCESSING)) return OrderStatus.PROCESSING;
-  if (subOrderStatuses.every((status) => status === OrderStatus.CONFIRMED)) return OrderStatus.CONFIRMED;
-  return OrderStatus.PENDING;
+  return deriveLifecycleParentOrderStatus(subOrderStatuses);
 }
 
 function buildSubOrderUpdateNote(status: OrderStatus, brandName: string, parentStatus: OrderStatus, explicitNote?: string) {
@@ -187,6 +233,10 @@ function buildSubOrderUpdateNote(status: OrderStatus, brandName: string, parentS
       return `Your ${brandName} item has been confirmed.`;
     case OrderStatus.PROCESSING:
       return `Your ${brandName} item is being processed.`;
+    case OrderStatus.PACKED:
+      return `Your ${brandName} item has been packed.`;
+    case OrderStatus.READY_FOR_PICKUP:
+      return `Your ${brandName} item is ready for courier pickup.`;
     case OrderStatus.SHIPPED:
       return `Your ${brandName} item has been shipped.`;
     case OrderStatus.OUT_FOR_DELIVERY:
@@ -202,6 +252,7 @@ function buildSubOrderUpdateNote(status: OrderStatus, brandName: string, parentS
         ? "Your order has been fully delivered."
         : `Your ${brandName} item has been delivered.`;
     case OrderStatus.RETURNED:
+    case OrderStatus.SHIPMENT_RETURNED:
       return `Your ${brandName} item has been returned.`;
     case OrderStatus.CANCELED:
       return `Your ${brandName} item has been canceled.`;
@@ -216,6 +267,7 @@ function resolveOrderEventName(status: OrderStatus): OrderLifecycleEventName {
       return notificationEventNames.orderConfirmed;
     case OrderStatus.PROCESSING:
     case OrderStatus.PACKED:
+    case OrderStatus.READY_FOR_PICKUP:
     case OrderStatus.PARTIALLY_SHIPPED:
       return notificationEventNames.orderProcessing;
     case OrderStatus.SHIPPED:
@@ -226,6 +278,8 @@ function resolveOrderEventName(status: OrderStatus): OrderLifecycleEventName {
       return notificationEventNames.orderDeliveryFailed;
     case OrderStatus.ADDRESS_CORRECTION_REQUIRED:
       return notificationEventNames.orderAddressCorrectionRequired;
+    case OrderStatus.SHIPMENT_RETURNED:
+      return notificationEventNames.orderShipmentReturned;
     case OrderStatus.RETURNED:
       return notificationEventNames.orderReturned;
     case OrderStatus.DELIVERED:
@@ -248,18 +302,122 @@ function normalizePaymentSignaturePayload(input: {
   return `${input.orderId}:${input.paymentMethod}:${input.gatewayTransactionId}:${input.amountPkr}:${input.status}`;
 }
 
+function normalizeWebhookSignature(signature?: string) {
+  const value = signature?.trim() || "";
+  return value.startsWith("sha256=") ? value.slice("sha256=".length) : value;
+}
+
 function isValidPaymentWebhookSignature(payload: ReturnType<typeof normalizePaymentSignaturePayload>, signature?: string) {
-  if (!env.paymentWebhookSecret) {
-    return env.nodeEnv !== "production";
-  }
+  const normalizedSignature = normalizeWebhookSignature(signature);
+  if (!normalizedSignature) return false;
 
-  if (!signature) return false;
-
-  const digest = crypto.createHmac("sha256", env.paymentWebhookSecret).update(payload).digest("hex");
+  const secret = env.paymentWebhookSecret || env.demoGatewaySecret;
+  const digest = crypto.createHmac("sha256", secret).update(payload).digest("hex");
   const expected = Buffer.from(digest);
-  const actual = Buffer.from(signature);
+  const actual = Buffer.from(normalizedSignature);
   if (expected.length !== actual.length) return false;
   return crypto.timingSafeEqual(expected, actual);
+}
+
+function signDemoGatewayPayload(payload: ReturnType<typeof normalizePaymentSignaturePayload>) {
+  return crypto.createHmac("sha256", env.demoGatewaySecret).update(payload).digest("hex");
+}
+
+function buildDemoPaymentRedirect(sessionId: string) {
+  return `${env.webAppUrl.replace(/\/$/, "")}/checkout/demo-payment?sessionId=${encodeURIComponent(sessionId)}`;
+}
+
+function buildGatewayTransactionId(orderId: string, attemptNumber: number) {
+  return `demo_${orderId}_${attemptNumber}_${Date.now()}`;
+}
+
+async function expirePaymentSessionIfNeeded(sessionId: string) {
+  const session = await prisma.paymentSession.findUnique({
+    where: { id: sessionId },
+  });
+
+  if (!session) return null;
+  if (session.status !== PaymentSessionStatus.PENDING) return session;
+  if (session.expiresAt.getTime() > Date.now()) return session;
+
+  return prisma.paymentSession.update({
+    where: { id: sessionId },
+    data: {
+      status: PaymentSessionStatus.EXPIRED,
+      failedAt: new Date(),
+      lastErrorReason: "Payment session expired",
+    },
+  });
+}
+
+async function createPaymentSession(input: {
+  orderId: string;
+  userId: string;
+  paymentMethod: "JAZZCASH" | "EASYPAISA";
+}) {
+  const existingSessions = await prisma.paymentSession.findMany({
+    where: { orderId: input.orderId },
+    orderBy: { createdAt: "asc" },
+    select: { attemptNumber: true },
+  });
+
+  const attemptNumber = existingSessions.length + 1;
+  const createdAt = new Date();
+  const expiresAt = new Date(createdAt.getTime() + PAYMENT_RETRY_WINDOW_MS);
+
+  const created = await prisma.paymentSession.create({
+    data: {
+      orderId: input.orderId,
+      userId: input.userId,
+      paymentMethod: input.paymentMethod,
+      gateway: DEMO_PAYMENT_GATEWAY,
+      gatewayTransactionId: buildGatewayTransactionId(input.orderId, attemptNumber),
+      status: PaymentSessionStatus.PENDING,
+      redirectUrl: buildDemoPaymentRedirect("pending"),
+      expiresAt,
+      attemptNumber,
+    },
+  });
+
+  return prisma.paymentSession.update({
+    where: { id: created.id },
+    data: {
+      redirectUrl: buildDemoPaymentRedirect(created.id),
+    },
+  });
+}
+
+async function attachPaymentRetryMetadata<T extends { id: string; paymentMethod: "COD" | "JAZZCASH" | "EASYPAISA"; paymentStatus: PaymentStatus }>(
+  order: T,
+) {
+  if (order.paymentMethod === "COD") {
+    return {
+      ...order,
+      paymentRetryEligible: false,
+      paymentRetryExpiresAt: null,
+    };
+  }
+
+  const firstSession = await prisma.paymentSession.findFirst({
+    where: { orderId: order.id },
+    orderBy: { createdAt: "asc" },
+    select: { createdAt: true },
+  });
+
+  if (!firstSession) {
+    return {
+      ...order,
+      paymentRetryEligible: false,
+      paymentRetryExpiresAt: null,
+    };
+  }
+
+  const paymentRetryExpiresAt = new Date(firstSession.createdAt.getTime() + PAYMENT_RETRY_WINDOW_MS);
+  return {
+    ...order,
+    paymentRetryEligible: order.paymentStatus !== PaymentStatus.COMPLETED && paymentRetryExpiresAt.getTime() > Date.now(),
+    paymentRetryExpiresAt,
+  };
 }
 
 async function restockOrderItems(tx: Prisma.TransactionClient, items: Array<{ productId: string; quantity: number }>) {
@@ -291,7 +449,7 @@ router.post("/payments/webhook", async (req, res) => {
       paymentMethod: paymentMethodSchema,
       gatewayTransactionId: z.string().trim().min(3).max(160),
       amountPkr: z.number().int().positive(),
-      status: z.enum(["VERIFIED", "SUCCESS", "FAILED"]),
+      status: z.enum(["VERIFIED", "SUCCESS", "FAILED", "CANCELLED", "TIMEOUT"]),
       reason: z.string().trim().max(240).optional(),
     })
     .safeParse(req.body);
@@ -301,7 +459,7 @@ router.post("/payments/webhook", async (req, res) => {
   }
 
   const signaturePayload = normalizePaymentSignaturePayload(parsed.data);
-  const signature = String(req.header("x-broady-payment-signature") || req.body?.signature || "");
+  const signature = String(req.header("x-broady-signature") || req.header("x-broady-payment-signature") || req.body?.signature || "");
   if (!isValidPaymentWebhookSignature(signaturePayload, signature)) {
     return res.status(401).json({ message: "Invalid payment webhook signature" });
   }
@@ -311,6 +469,10 @@ router.post("/payments/webhook", async (req, res) => {
     include: {
       subOrders: { include: { brand: true, items: true } },
       paymentTransactions: {
+        where: { gatewayTransactionId: parsed.data.gatewayTransactionId },
+        take: 1,
+      },
+      paymentSessions: {
         where: { gatewayTransactionId: parsed.data.gatewayTransactionId },
         take: 1,
       },
@@ -333,6 +495,15 @@ router.post("/payments/webhook", async (req, res) => {
   }
 
   const paymentVerified = parsed.data.status === "VERIFIED" || parsed.data.status === "SUCCESS";
+  const matchedSession = order.paymentSessions[0] || null;
+  const resolvedSessionStatus =
+    parsed.data.status === "SUCCESS" || parsed.data.status === "VERIFIED"
+      ? PaymentSessionStatus.COMPLETED
+      : parsed.data.status === "FAILED"
+        ? PaymentSessionStatus.FAILED
+        : parsed.data.status === "CANCELLED"
+          ? PaymentSessionStatus.CANCELLED
+          : PaymentSessionStatus.TIMEOUT;
 
   const updated = await prisma.$transaction(async (tx) => {
     await tx.paymentTransaction.create({
@@ -340,47 +511,36 @@ router.post("/payments/webhook", async (req, res) => {
         orderId: order.id,
         gateway: parsed.data.paymentMethod,
         gatewayTransactionId: parsed.data.gatewayTransactionId,
-        status: paymentVerified ? "VERIFIED" : "FAILED",
+        status: parsed.data.status,
         amountPkr: parsed.data.amountPkr,
         rawPayload: req.body as Prisma.InputJsonValue,
       },
     });
 
+    if (matchedSession) {
+      await tx.paymentSession.update({
+        where: { id: matchedSession.id },
+        data: {
+          status: resolvedSessionStatus,
+          completedAt: paymentVerified ? new Date() : matchedSession.completedAt,
+          failedAt: paymentVerified ? matchedSession.failedAt : new Date(),
+          lastErrorReason: paymentVerified ? null : parsed.data.reason || `Payment ${parsed.data.status.toLowerCase()}`,
+        },
+      });
+    }
+
     if (!paymentVerified) {
       await tx.order.update({
         where: { id: order.id },
-        data: { paymentStatus: PaymentStatus.FAILED, status: OrderStatus.CANCELED },
+        data: { paymentStatus: PaymentStatus.FAILED, status: OrderStatus.PENDING },
       });
-
-      await tx.subOrder.updateMany({
-        where: { orderId: order.id, status: OrderStatus.PENDING },
-        data: { status: OrderStatus.CANCELED },
-      });
-
-      await restockOrderItems(
-        tx,
-        order.subOrders
-          .filter((entry) => entry.status === OrderStatus.PENDING)
-          .flatMap((entry) => entry.items.map((item) => ({ productId: item.productId, quantity: item.quantity }))),
-      );
-
-      for (const subOrder of order.subOrders.filter((entry) => entry.status === OrderStatus.PENDING)) {
-        await tx.subOrderStatusLog.create({
-          data: {
-            subOrderId: subOrder.id,
-            status: OrderStatus.CANCELED,
-            updatedBy: "SYSTEM",
-            note: parsed.data.reason || "Payment failed before order confirmation",
-          },
-        });
-      }
 
       await tx.orderStatusLog.create({
         data: {
           orderId: order.id,
-          status: OrderStatus.CANCELED,
+          status: OrderStatus.PENDING,
           updatedBy: "SYSTEM",
-          note: parsed.data.reason || "Payment failed before order confirmation",
+          note: parsed.data.reason || "Payment failed; order remains pending for retry",
         },
       });
 
@@ -391,7 +551,7 @@ router.post("/payments/webhook", async (req, res) => {
       where: { id: order.id },
       data: {
         status: OrderStatus.CONFIRMED,
-        paymentStatus: PaymentStatus.HELD,
+        paymentStatus: PaymentStatus.COMPLETED,
       },
     });
 
@@ -446,17 +606,193 @@ router.post("/payments/webhook", async (req, res) => {
       paymentMethod: order.paymentMethod,
       reason: parsed.data.reason,
     });
-    queueNotificationEvent({
-      name: notificationEventNames.orderCancelled,
-      orderId: order.id,
-      userId: order.userId,
-      changedByRole: "SYSTEM",
-      note: parsed.data.reason || "Payment failed before order confirmation.",
-      notifyAdmin: true,
-    });
   }
 
   return res.json({ data: { accepted: true, orderId: updated.id, status: updated.status, paymentStatus: updated.paymentStatus } });
+});
+
+router.post("/payments/demo/:orderId/result", requireAuth, async (req, res) => {
+  const payload = z
+    .object({
+      sessionId: z.string().trim().min(3),
+      result: z.enum(["SUCCESS", "FAILED", "CANCELLED", "TIMEOUT"]),
+      paymentMethod: paymentMethodSchema.optional(),
+      reason: z.string().trim().max(240).optional(),
+    })
+    .safeParse(req.body || {});
+
+  if (!payload.success) {
+    return res.status(400).json({ message: "Invalid demo payment payload", issues: payload.error.flatten() });
+  }
+
+  const order = await prisma.order.findUnique({
+    where: { id: String(req.params.orderId) },
+    select: {
+      id: true,
+      userId: true,
+      paymentMethod: true,
+      totalPkr: true,
+    },
+  });
+
+  if (!order) return res.status(404).json({ message: "Order not found" });
+  if (order.userId !== req.auth!.userId) return res.status(403).json({ message: "You do not have access to this payment session" });
+  if (order.paymentMethod === "COD") return res.status(409).json({ message: "COD orders do not use the demo gateway" });
+  if (payload.data.paymentMethod && payload.data.paymentMethod !== order.paymentMethod) {
+    return res.status(409).json({ message: "Payment method does not match order" });
+  }
+
+  const session = await expirePaymentSessionIfNeeded(payload.data.sessionId);
+  if (!session || session.orderId !== order.id || session.userId !== req.auth!.userId) {
+    return res.status(404).json({ message: "Payment session not found" });
+  }
+  if (session.status !== PaymentSessionStatus.PENDING) {
+    return res.status(409).json({ message: "This payment session is no longer active." });
+  }
+
+  const callbackPayload = {
+    orderId: order.id,
+    paymentMethod: order.paymentMethod,
+    gatewayTransactionId: session.gatewayTransactionId,
+    amountPkr: order.totalPkr,
+    status: payload.data.result,
+    reason: payload.data.reason || (payload.data.result === "SUCCESS" ? "Demo payment succeeded" : `Demo payment ${payload.data.result.toLowerCase()}`),
+  };
+  const signaturePayload = normalizePaymentSignaturePayload(callbackPayload);
+  const signature = `sha256=${signDemoGatewayPayload(signaturePayload)}`;
+  const webhookUrl = `${req.protocol}://${req.get("host")}/api/orders/payments/webhook`;
+
+  const webhookResponse = await fetch(webhookUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Broady-Signature": signature,
+    },
+    body: JSON.stringify(callbackPayload),
+  });
+  const webhookBody = await webhookResponse.json().catch(() => ({ message: "Webhook response was not JSON" }));
+
+  return res.status(webhookResponse.status).json({
+    data: {
+      sessionId: session.id,
+      callback: callbackPayload,
+      webhook: webhookBody,
+    },
+  });
+});
+
+router.get("/payment-sessions/:sessionId", requireAuth, async (req, res) => {
+  const session = await expirePaymentSessionIfNeeded(String(req.params.sessionId));
+  if (!session || session.userId !== req.auth!.userId) {
+    return res.status(404).json({ message: "Payment session not found" });
+  }
+
+  const order = await prisma.order.findFirst({
+    where: {
+      id: session.orderId,
+      userId: req.auth!.userId,
+    },
+    include: {
+      items: {
+        include: {
+          product: true,
+          brand: true,
+        },
+      },
+    },
+  });
+
+  if (!order) {
+    return res.status(404).json({ message: "Order not found" });
+  }
+
+  const firstSession = await prisma.paymentSession.findFirst({
+    where: { orderId: order.id },
+    orderBy: { createdAt: "asc" },
+    select: { createdAt: true },
+  });
+
+  const retryExpiresAt = firstSession
+    ? new Date(firstSession.createdAt.getTime() + PAYMENT_RETRY_WINDOW_MS)
+    : session.expiresAt;
+
+  return res.json({
+    data: {
+      ...session,
+      retryEligible: order.paymentStatus !== PaymentStatus.COMPLETED && retryExpiresAt.getTime() > Date.now(),
+      retryExpiresAt,
+      order,
+    },
+  });
+});
+
+router.post("/me/:orderId/retry-payment", requireAuth, async (req, res) => {
+  const order = await prisma.order.findFirst({
+    where: {
+      id: String(req.params.orderId),
+      userId: req.auth!.userId,
+    },
+    include: {
+      paymentTransactions: true,
+      paymentSessions: {
+        orderBy: { createdAt: "asc" },
+      },
+      subOrders: {
+        select: { status: true },
+      },
+    },
+  });
+
+  if (!order) return res.status(404).json({ message: "Order not found" });
+  if (order.paymentMethod === "COD") return res.status(409).json({ message: "COD orders do not need payment retry." });
+  if (order.paymentStatus === PaymentStatus.COMPLETED || order.paymentTransactions.some((entry) => entry.status === "SUCCESS" || entry.status === "VERIFIED")) {
+    return res.status(409).json({ message: "This order has already been paid." });
+  }
+  if (order.subOrders.some((subOrder) => subOrder.status !== OrderStatus.PENDING)) {
+    return res.status(409).json({ message: "Payment retry is only available while all vendor groups remain pending." });
+  }
+
+  const firstSession = order.paymentSessions[0];
+  if (!firstSession) {
+    return res.status(409).json({ message: "No initial payment session was found for this order." });
+  }
+
+  const retryExpiresAt = new Date(firstSession.createdAt.getTime() + PAYMENT_RETRY_WINDOW_MS);
+  if (retryExpiresAt.getTime() <= Date.now()) {
+    return res.status(409).json({ message: "The 30-minute retry window has expired for this order." });
+  }
+
+  const latestSession = order.paymentSessions[order.paymentSessions.length - 1];
+  if (latestSession && latestSession.status === PaymentSessionStatus.PENDING && latestSession.expiresAt.getTime() > Date.now()) {
+    return res.json({
+      data: {
+        sessionId: latestSession.id,
+        redirectUrl: latestSession.redirectUrl,
+        retryExpiresAt,
+      },
+    });
+  }
+
+  const session = await createPaymentSession({
+    orderId: order.id,
+    userId: order.userId,
+    paymentMethod: order.paymentMethod,
+  });
+
+  queueNotificationEvent({
+    name: notificationEventNames.paymentInitiated,
+    orderId: order.id,
+    userId: order.userId,
+    paymentMethod: order.paymentMethod,
+  });
+
+  return res.status(201).json({
+    data: {
+      sessionId: session.id,
+      redirectUrl: session.redirectUrl,
+      retryExpiresAt,
+    },
+  });
 });
 
 router.post("/", requireAuth, orderPlacementIpLimit, orderPlacementUserLimit, async (req, res) => {
@@ -687,11 +1023,15 @@ router.post("/", requireAuth, orderPlacementIpLimit, orderPlacementUserLimit, as
     throw error;
   }
 
-  // Integration point for JazzCash/Easypaisa checkout redirect or payment intent.
-  const paymentRedirect =
+  const paymentSession =
     parsed.data.paymentMethod === "COD"
       ? null
-      : `https://payments.example.com/${parsed.data.paymentMethod.toLowerCase()}/init/${order.id}`;
+      : await createPaymentSession({
+        orderId: order.id,
+        userId: order.userId,
+        paymentMethod: parsed.data.paymentMethod,
+      });
+  const paymentRedirect = paymentSession?.redirectUrl || null;
 
   queueNotificationEvent({
     name: notificationEventNames.orderPlaced,
@@ -765,7 +1105,12 @@ router.post("/", requireAuth, orderPlacementIpLimit, orderPlacementUserLimit, as
     })),
   );
 
-  return res.status(201).json({ data: order, paymentRedirect });
+  return res.status(201).json({
+    data: order,
+    paymentRedirect,
+    paymentSessionId: paymentSession?.id || null,
+    paymentRetryExpiresAt: paymentSession?.expiresAt || null,
+  });
 });
 
 router.patch("/:orderId/status", requireAuth, async (req, res) => {
@@ -820,17 +1165,11 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
     return res.status(403).json({ message: "Forbidden" });
   }
 
-  const brandAllowedStatuses = new Set<OrderStatus>([
-    OrderStatus.PROCESSING,
-    OrderStatus.SHIPPED,
-    OrderStatus.OUT_FOR_DELIVERY,
-    OrderStatus.DELIVERY_FAILED,
-    OrderStatus.DELIVERED,
-  ]);
-  const adminOnlyStatuses = new Set<OrderStatus>([OrderStatus.RETURNED, OrderStatus.CANCELED]);
+  const brandAllowedStatuses = BRAND_FULFILLMENT_STATUSES;
+  const adminOnlyStatuses = new Set<OrderStatus>([OrderStatus.SHIPMENT_RETURNED, OrderStatus.RETURNED, OrderStatus.CANCELED]);
 
   if (!actingAsPlatformAdmin && adminOnlyStatuses.has(status)) {
-    return res.status(403).json({ message: "Only admins or system automation can finalize returned or cancelled vendor groups." });
+    return res.status(403).json({ message: "Only admins or system automation can finalize shipment-returned or cancelled vendor groups." });
   }
 
   if (!actingAsPlatformAdmin && !brandAllowedStatuses.has(status)) {
@@ -899,7 +1238,7 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
     if (failureReasonKey === "INCORRECT_ADDRESS") {
       effectiveStatus = OrderStatus.ADDRESS_CORRECTION_REQUIRED;
     } else if (isFinalDeliveryFailure) {
-      effectiveStatus = OrderStatus.RETURNED;
+      effectiveStatus = OrderStatus.SHIPMENT_RETURNED;
     }
   }
 
@@ -945,10 +1284,10 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
         nextAttemptDate:
           status === OrderStatus.DELIVERY_FAILED
             ? nextAttemptDate
-            : status === OrderStatus.OUT_FOR_DELIVERY || status === OrderStatus.DELIVERED || effectiveStatus === OrderStatus.RETURNED
+            : status === OrderStatus.OUT_FOR_DELIVERY || status === OrderStatus.DELIVERED || effectiveStatus === OrderStatus.SHIPMENT_RETURNED
               ? null
               : undefined,
-        finalDeliveryFailureAt: isFinalDeliveryFailure || status === OrderStatus.RETURNED ? now : undefined,
+        finalDeliveryFailureAt: isFinalDeliveryFailure || status === OrderStatus.SHIPMENT_RETURNED ? now : undefined,
         refundProcessedAt: effectiveStatus === OrderStatus.CANCELED && order.paymentMethod !== "COD" ? now : undefined,
       },
     });
@@ -989,6 +1328,51 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
       },
     });
 
+    await writeStatusHistory(tx, {
+      subOrderId: targetSubOrder.id,
+      oldStatus: targetSubOrder.status,
+      newStatus: effectiveStatus,
+      changedByRole: actingAsPlatformAdmin ? "ADMIN" : "BRAND",
+      changedById: req.auth!.userId,
+      reason: status === OrderStatus.DELIVERY_FAILED ? failureReasonKey : undefined,
+      note: parsed.data.note || parsed.data.customerNote || undefined,
+    });
+
+    await recordCodRefusalIfNeeded(tx, {
+      userId: order.userId,
+      paymentMethod: order.paymentMethod,
+      failureReason: status === OrderStatus.DELIVERY_FAILED ? failureReasonKey : null,
+      now,
+    });
+
+    if (effectiveStatus === OrderStatus.SHIPMENT_RETURNED && shouldCreateRefundForPayment(order.paymentMethod)) {
+      const existingRefund = await tx.refundRequest.findFirst({
+        where: {
+          subOrderId: targetSubOrder.id,
+          reasonCode: "DELIVERY_FAILURE",
+          status: { in: ["PENDING", "APPROVED", "PROCESSING"] },
+        },
+        select: { id: true },
+      });
+
+      if (!existingRefund) {
+        const refund = calculateRefundItems(targetSubOrder.items);
+        if (refund.amountPkr > 0) {
+          await createRefundRecord(tx, {
+            orderId: order.id,
+            subOrderId: targetSubOrder.id,
+            requestedByRole: "SYSTEM",
+            reasonCode: "DELIVERY_FAILURE",
+            reasonText: describeFailureReason(failureReasonKey, parsed.data.failureReasonMessage),
+            method: getRefundMethodForPayment(order.paymentMethod),
+            amountPkr: refund.amountPkr,
+            items: refund.refundItems,
+            note: "Auto-created after shipment returned from delivery failure.",
+          });
+        }
+      }
+    }
+
     const refreshedSubOrders = await tx.subOrder.findMany({
       where: { orderId: order.id },
       select: { status: true, trackingId: true },
@@ -1003,7 +1387,7 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
           : null;
 
     const allTerminalAfterReturn = refreshedSubOrders.every(
-      (subOrder) => subOrder.status === OrderStatus.RETURNED || subOrder.status === OrderStatus.CANCELED,
+      (subOrder) => subOrder.status === OrderStatus.SHIPMENT_RETURNED || subOrder.status === OrderStatus.CANCELED,
     );
     const nextPaymentStatus =
       nextParentStatus === OrderStatus.DELIVERED && order.paymentMethod === "COD"
@@ -1102,7 +1486,7 @@ router.patch("/:orderId/status", requireAuth, async (req, res) => {
 
     if (isFinalDeliveryFailure) {
       queueNotificationEvent({
-        name: notificationEventNames.orderReturned,
+        name: notificationEventNames.orderShipmentReturned,
         orderId: order.id,
         subOrderId: targetSubOrder.id,
         userId: order.userId,
@@ -1174,70 +1558,135 @@ router.post("/me/:orderId/cancel", requireAuth, async (req, res) => {
 
   if (!order) return res.status(404).json({ message: "Order not found" });
 
-  if (!isWithinOrderActionWindow(order.createdAt)) {
-    return res.status(409).json({ message: "Cancel window has expired for this order." });
-  }
-
-  const blockingStatuses: OrderStatus[] = [
-    OrderStatus.PROCESSING,
-    OrderStatus.SHIPPED,
-    OrderStatus.OUT_FOR_DELIVERY,
-    OrderStatus.DELIVERY_FAILED,
-    OrderStatus.DELIVERED,
-    OrderStatus.RETURNED,
-  ];
-  if (order.subOrders.some((subOrder) => blockingStatuses.includes(subOrder.status))) {
-    return res.status(409).json({ message: "This order can no longer be canceled." });
+  const blockedSubOrder = order.subOrders.find((subOrder) => getCancellationMode(subOrder.status) === "BLOCKED" || getCancellationMode(subOrder.status) === "ADMIN_ONLY");
+  if (blockedSubOrder) {
+    return res.status(409).json({ message: "This order can no longer be cancelled normally. Use the delivery or return flow." });
   }
 
   const canceled = await prisma.$transaction(async (tx) => {
-    await tx.subOrder.updateMany({
-      where: {
-        orderId: order.id,
-        status: { not: OrderStatus.CANCELED },
-      },
-      data: { status: OrderStatus.CANCELED },
+    const cancellationRequests: Array<{ id: string; subOrderId: string }> = [];
+    for (const subOrder of order.subOrders) {
+      if (subOrder.status === OrderStatus.CANCELED) continue;
+
+      if (AUTO_CANCELLABLE_STATUSES.has(subOrder.status)) {
+        await tx.subOrder.update({
+          where: { id: subOrder.id },
+          data: { status: OrderStatus.CANCELED },
+        });
+
+        await restockOrderItems(
+          tx,
+          subOrder.items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+        );
+
+        await tx.subOrderStatusLog.create({
+          data: {
+            subOrderId: subOrder.id,
+            status: OrderStatus.CANCELED,
+            updatedBy: "USER",
+            updatedById: req.auth!.userId,
+            note: composeStatusNote(cancellationReason || "Vendor group cancelled by customer"),
+          },
+        });
+
+        await writeStatusHistory(tx, {
+          subOrderId: subOrder.id,
+          oldStatus: subOrder.status,
+          newStatus: OrderStatus.CANCELED,
+          changedByRole: "USER",
+          changedById: req.auth!.userId,
+          reason: mapCustomerCancellationReasonCode(payload.data.reasonCode),
+          note: cancellationReason || "Vendor group cancelled by customer",
+        });
+
+        if (shouldCreateRefundForPayment(order.paymentMethod)) {
+          const refund = calculateRefundItems(subOrder.items);
+          if (refund.amountPkr > 0) {
+            await createRefundRecord(tx, {
+              orderId: order.id,
+              subOrderId: subOrder.id,
+              requestedByRole: "USER",
+              requestedById: req.auth!.userId,
+              reasonCode: "CUSTOMER_CANCELLATION",
+              reasonText: cancellationReason,
+              method: getRefundMethodForPayment(order.paymentMethod),
+              amountPkr: refund.amountPkr,
+              items: refund.refundItems,
+              note: "Auto-created after customer cancellation.",
+            });
+          }
+        }
+
+        continue;
+      }
+
+      if (CANCELLATION_REQUEST_STATUSES.has(subOrder.status)) {
+        const existing = await tx.cancellationRequest.findFirst({
+          where: {
+            subOrderId: subOrder.id,
+            status: { in: ["REQUESTED"] },
+          },
+          select: { id: true, subOrderId: true },
+        });
+
+        if (existing) {
+          cancellationRequests.push(existing);
+          continue;
+        }
+
+        const deadlines = getCancellationRequestDeadlines();
+        const request = await tx.cancellationRequest.create({
+          data: {
+            orderId: order.id,
+            subOrderId: subOrder.id,
+            brandId: subOrder.brandId,
+            requestedByRole: "USER",
+            requestedById: req.auth!.userId,
+            reasonCode: mapCustomerCancellationReasonCode(payload.data.reasonCode),
+            reasonText: cancellationReason || null,
+            expiresAt: deadlines.expiresAt,
+            autoApproveAt: deadlines.autoApproveAt,
+          },
+          select: { id: true, subOrderId: true },
+        });
+
+        await tx.cancellationHistory.create({
+          data: {
+            cancellationRequestId: request.id,
+            action: "CREATED",
+            performedByRole: "USER",
+            performedById: req.auth!.userId,
+            note: cancellationReason || null,
+          },
+        });
+
+        cancellationRequests.push(request);
+      }
+    }
+
+    const refreshedSubOrders = await tx.subOrder.findMany({
+      where: { orderId: order.id },
+      select: { status: true, trackingId: true },
     });
 
-    const activeItems = order.subOrders
-      .filter((subOrder) => subOrder.status !== OrderStatus.CANCELED)
-      .flatMap((subOrder) => subOrder.items)
-      .map((item) => ({ productId: item.productId, quantity: item.quantity }));
+    const nextParentStatus = deriveParentOrderStatus(refreshedSubOrders.map((subOrder) => subOrder.status));
 
     await tx.order.update({
       where: { id: order.id },
-      data: { status: OrderStatus.CANCELED },
+      data: { status: nextParentStatus },
     });
-
-    await restockOrderItems(
-      tx,
-      activeItems,
-    );
-
-    for (const subOrder of order.subOrders) {
-      if (subOrder.status === OrderStatus.CANCELED) continue;
-      await tx.subOrderStatusLog.create({
-        data: {
-          subOrderId: subOrder.id,
-          status: OrderStatus.CANCELED,
-          updatedBy: "SYSTEM",
-          updatedById: req.auth!.userId,
-          note: composeStatusNote(cancellationReason || "Vendor group canceled by customer"),
-        },
-      });
-    }
 
     await tx.orderStatusLog.create({
       data: {
         orderId: order.id,
-        status: OrderStatus.CANCELED,
-        updatedBy: "SYSTEM",
+        status: nextParentStatus,
+        updatedBy: "USER",
         updatedById: req.auth!.userId,
-        note: composeStatusNote(cancellationReason || "Order canceled by customer"),
+        note: composeStatusNote(cancellationReason || "Order cancellation requested by customer"),
       },
     });
 
-    return tx.order.findUniqueOrThrow({
+    const nextOrder = await tx.order.findUniqueOrThrow({
       where: { id: order.id },
       include: {
         user: { select: { id: true, email: true, fullName: true } },
@@ -1253,6 +1702,8 @@ router.post("/me/:orderId/cancel", requireAuth, async (req, res) => {
         statusLogs: { orderBy: { createdAt: "desc" } },
       },
     });
+
+    return { ...nextOrder, cancellationRequests };
   });
 
   queueNotificationEvent({
@@ -1264,7 +1715,7 @@ router.post("/me/:orderId/cancel", requireAuth, async (req, res) => {
     notifyAdmin: false,
   });
 
-  for (const subOrder of order.subOrders.filter((entry) => entry.status !== OrderStatus.CANCELED)) {
+  for (const subOrder of order.subOrders.filter((entry) => AUTO_CANCELLABLE_STATUSES.has(entry.status))) {
     queueNotificationEvent({
       name: notificationEventNames.orderCancelled,
       orderId: order.id,
@@ -1274,6 +1725,20 @@ router.post("/me/:orderId/cancel", requireAuth, async (req, res) => {
       brandName: subOrder.brand?.name,
       changedByRole: "USER",
       note: cancellationReason || `${subOrder.brand?.name || "Brand"} vendor group canceled by customer`,
+      notifyAdmin: true,
+    });
+  }
+
+  for (const subOrder of order.subOrders.filter((entry) => CANCELLATION_REQUEST_STATUSES.has(entry.status))) {
+    queueNotificationEvent({
+      name: notificationEventNames.cancellationRequestCreated,
+      orderId: order.id,
+      subOrderId: subOrder.id,
+      userId: order.userId,
+      brandId: subOrder.brandId,
+      brandName: subOrder.brand?.name,
+      changedByRole: "USER",
+      note: cancellationReason || "Customer requested cancellation.",
       notifyAdmin: true,
     });
   }
@@ -1344,17 +1809,77 @@ router.post("/me/:orderId/sub-orders/:subOrderId/cancel", requireAuth, async (re
   });
 
   if (!order) return res.status(404).json({ message: "Order not found" });
-  if (!isWithinOrderActionWindow(order.createdAt)) {
-    return res.status(409).json({ message: "Cancel window has expired for this order." });
-  }
 
   const targetSubOrder = order.subOrders.find((subOrder) => subOrder.id === String(req.params.subOrderId));
   if (!targetSubOrder) {
     return res.status(404).json({ message: "Vendor group not found" });
   }
 
-  if (["PROCESSING", "SHIPPED", "OUT_FOR_DELIVERY", "DELIVERY_FAILED", "DELIVERED", "RETURNED"].includes(targetSubOrder.status)) {
-    return res.status(409).json({ message: "This vendor group can no longer be canceled." });
+  const cancellationMode = getCancellationMode(targetSubOrder.status);
+  if (cancellationMode === "BLOCKED" || cancellationMode === "ADMIN_ONLY") {
+    return res.status(409).json({ message: "This vendor group can no longer be cancelled normally. Use the delivery or return flow." });
+  }
+
+  if (cancellationMode === "TERMINAL") {
+    return res.status(409).json({ message: "This vendor group is already cancelled." });
+  }
+
+  if (cancellationMode === "REQUEST") {
+    const request = await prisma.$transaction(async (tx) => {
+      const existing = await tx.cancellationRequest.findFirst({
+        where: {
+          subOrderId: targetSubOrder.id,
+          status: { in: ["REQUESTED"] },
+        },
+        include: { history: { orderBy: { createdAt: "desc" } } },
+      });
+
+      if (existing) return existing;
+
+      const deadlines = getCancellationRequestDeadlines();
+      const created = await tx.cancellationRequest.create({
+        data: {
+          orderId: order.id,
+          subOrderId: targetSubOrder.id,
+          brandId: targetSubOrder.brandId,
+          requestedByRole: "USER",
+          requestedById: req.auth!.userId,
+          reasonCode: mapCustomerCancellationReasonCode(payload.data.reasonCode),
+          reasonText: cancellationReason || null,
+          expiresAt: deadlines.expiresAt,
+          autoApproveAt: deadlines.autoApproveAt,
+        },
+      });
+
+      await tx.cancellationHistory.create({
+        data: {
+          cancellationRequestId: created.id,
+          action: "CREATED",
+          performedByRole: "USER",
+          performedById: req.auth!.userId,
+          note: cancellationReason || null,
+        },
+      });
+
+      return tx.cancellationRequest.findUniqueOrThrow({
+        where: { id: created.id },
+        include: { history: { orderBy: { createdAt: "desc" } } },
+      });
+    });
+
+    queueNotificationEvent({
+      name: notificationEventNames.cancellationRequestCreated,
+      orderId: order.id,
+      subOrderId: targetSubOrder.id,
+      userId: order.userId,
+      brandId: targetSubOrder.brandId,
+      brandName: targetSubOrder.brand.name,
+      changedByRole: "USER",
+      note: cancellationReason || "Customer requested cancellation.",
+      notifyAdmin: true,
+    });
+
+    return res.status(202).json({ data: { ...order, cancellationRequest: request } });
   }
 
   const canceled = await prisma.$transaction(async (tx) => {
@@ -1373,11 +1898,39 @@ router.post("/me/:orderId/sub-orders/:subOrderId/cancel", requireAuth, async (re
         data: {
           subOrderId: targetSubOrder.id,
           status: OrderStatus.CANCELED,
-          updatedBy: "SYSTEM",
+          updatedBy: "USER",
           updatedById: req.auth!.userId,
-          note: composeStatusNote(cancellationReason || "Vendor group canceled by customer"),
+          note: composeStatusNote(cancellationReason || "Vendor group cancelled by customer"),
         },
       });
+
+      await writeStatusHistory(tx, {
+        subOrderId: targetSubOrder.id,
+        oldStatus: targetSubOrder.status,
+        newStatus: OrderStatus.CANCELED,
+        changedByRole: "USER",
+        changedById: req.auth!.userId,
+        reason: mapCustomerCancellationReasonCode(payload.data.reasonCode),
+        note: cancellationReason || "Vendor group cancelled by customer",
+      });
+
+      if (shouldCreateRefundForPayment(order.paymentMethod)) {
+        const refund = calculateRefundItems(targetSubOrder.items);
+        if (refund.amountPkr > 0) {
+          await createRefundRecord(tx, {
+            orderId: order.id,
+            subOrderId: targetSubOrder.id,
+            requestedByRole: "USER",
+            requestedById: req.auth!.userId,
+            reasonCode: "CUSTOMER_CANCELLATION",
+            reasonText: cancellationReason,
+            method: getRefundMethodForPayment(order.paymentMethod),
+            amountPkr: refund.amountPkr,
+            items: refund.refundItems,
+            note: "Auto-created after customer cancellation.",
+          });
+        }
+      }
     }
 
     const refreshedSubOrders = await tx.subOrder.findMany({
@@ -1405,9 +1958,9 @@ router.post("/me/:orderId/sub-orders/:subOrderId/cancel", requireAuth, async (re
       data: {
         orderId: order.id,
         status: nextParentStatus,
-        updatedBy: "SYSTEM",
+        updatedBy: "USER",
         updatedById: req.auth!.userId,
-        note: composeStatusNote(cancellationReason || `Vendor group (${targetSubOrder.brand.name}) canceled by customer`),
+        note: composeStatusNote(cancellationReason || `Vendor group (${targetSubOrder.brand.name}) cancelled by customer`),
       },
     });
 
@@ -1474,6 +2027,27 @@ router.post("/me/:orderId/sub-orders/:subOrderId/return", requireAuth, async (re
     .object({
       reasonCode: returnReasonCodeSchema,
       reasonText: z.string().trim().max(500).optional(),
+      customerNote: z.string().trim().max(500).optional(),
+      evidenceImageUrls: z.array(z.string().trim().url().max(500)).max(5).optional(),
+      preferredResolution: z
+        .enum([
+          "REFUND",
+          "EXCHANGE_SIZE",
+          "EXCHANGE_COLOR",
+          "EXCHANGE_DAMAGED_REPLACEMENT",
+          "EXCHANGE_WRONG_ITEM_REPLACEMENT",
+          "EXCHANGE_OTHER",
+          "STORE_CREDIT",
+        ])
+        .optional(),
+      orderItemIds: z.array(z.string().trim().min(3)).min(1).optional(),
+      requestedVariantSummary: z.string().trim().max(500).optional(),
+      requestedExchangeType: z.enum(["SIZE", "COLOR", "DAMAGED_REPLACEMENT", "WRONG_ITEM_REPLACEMENT", "OTHER"]).optional(),
+      requestedReplacementVariantId: z.string().trim().min(3).max(120).optional(),
+      requestedReplacementSize: z.string().trim().max(80).optional(),
+      requestedReplacementColor: z.string().trim().max(80).optional(),
+      requestType: z.enum(["RETURN", "EXCHANGE"]).optional(),
+      customerRefundPreference: z.string().trim().max(80).optional(),
     })
     .safeParse(req.body || {});
 
@@ -1488,7 +2062,17 @@ router.post("/me/:orderId/sub-orders/:subOrderId/return", requireAuth, async (re
   const order = await prisma.order.findFirst({
     where: { id: String(req.params.orderId), userId: req.auth!.userId },
     include: {
-      subOrders: { include: { brand: true } },
+      subOrders: {
+        include: {
+          brand: true,
+          statusLogs: { orderBy: { createdAt: "desc" } },
+          items: {
+            include: {
+              product: { include: { shipping: true } },
+            },
+          },
+        },
+      },
     },
   });
 
@@ -1499,28 +2083,103 @@ router.post("/me/:orderId/sub-orders/:subOrderId/return", requireAuth, async (re
     return res.status(409).json({ message: "Return is only available after delivery." });
   }
 
+  const evidenceRequiredReasons = new Set<z.infer<typeof returnReasonCodeSchema>>([
+    "DAMAGED_ITEM",
+    "DEFECTIVE_PRODUCT",
+    "WRONG_ITEM",
+    "WRONG_SIZE",
+    "WRONG_COLOR",
+  ]);
+  if (evidenceRequiredReasons.has(payload.data.reasonCode) && !payload.data.evidenceImageUrls?.length) {
+    return res.status(400).json({ message: "Evidence images are required for damaged, defective, or wrong item claims." });
+  }
+
+  const selectedItems = payload.data.orderItemIds?.length
+    ? targetSubOrder.items.filter((item) => payload.data.orderItemIds!.includes(item.id))
+    : targetSubOrder.items;
+
+  if (!selectedItems.length) {
+    return res.status(400).json({ message: "No valid order items were selected for this request." });
+  }
+
+  if (payload.data.orderItemIds?.length && selectedItems.length !== payload.data.orderItemIds.length) {
+    return res.status(400).json({ message: "One or more selected items are not part of this vendor group." });
+  }
+
+  const nonReturnableItem = selectedItems.find((item) => {
+    const product = item.product;
+    if (product.shipping?.returnAvailable === false) return true;
+    return isDefaultNonReturnableProduct(product);
+  });
+  if (nonReturnableItem) {
+    return res.status(409).json({ message: "One or more selected products are non-returnable." });
+  }
+
+  const itemReturnWindows = selectedItems.map((item) => item.product.shipping?.returnWindowDays).filter((value): value is number => typeof value === "number" && value > 0);
+  const returnWindowDays = itemReturnWindows.length ? Math.min(...itemReturnWindows) : targetSubOrder.brand.returnWindowDays || DEFAULT_RETURN_WINDOW_DAYS;
+  const returnDeadline = addDays(getDeliveredAt(targetSubOrder), returnWindowDays);
+  if (Date.now() > returnDeadline.getTime()) {
+    return res.status(409).json({ message: "Return window has expired for one or more selected items." });
+  }
+
   const db = prisma as any;
-  const existingOpenReturn = await db.returnRequest.findFirst({
+  const selectedOrderItemIds = selectedItems.map((item) => item.id);
+  const existingOpenReturns = await db.returnRequest.findMany({
     where: {
       orderId: order.id,
       subOrderId: targetSubOrder.id,
-      status: { notIn: ["REJECTED", "COMPLETED"] },
+      status: { notIn: ["REJECTED", "ADMIN_REJECTED", "COMPLETED", "EXCHANGE_COMPLETED"] },
     },
-    select: { id: true, status: true },
+    select: { id: true, status: true, orderItemIds: true },
+  });
+  const existingOpenReturn = existingOpenReturns.find((request: { orderItemIds?: string[] | null }) => {
+    const requestItemIds = request.orderItemIds?.length ? request.orderItemIds : targetSubOrder.items.map((item) => item.id);
+    return requestItemIds.some((itemId: string) => selectedOrderItemIds.includes(itemId));
   });
   if (existingOpenReturn) {
-    return res.status(409).json({ message: "A return request is already active for this vendor group." });
+    return res.status(409).json({ message: "A return or exchange request is already active for one or more selected items." });
+  }
+
+  const requestType = inferReturnRequestType({
+    requestType: payload.data.requestType,
+    preferredResolution: payload.data.preferredResolution,
+  });
+  const preferredResolution =
+    requestType === "EXCHANGE"
+      ? payload.data.preferredResolution?.startsWith("EXCHANGE")
+        ? payload.data.preferredResolution
+        : deriveExchangeResolutionForReason(payload.data.reasonCode)
+      : payload.data.preferredResolution?.startsWith("EXCHANGE")
+        ? "REFUND"
+        : payload.data.preferredResolution || "REFUND";
+
+  if (requestType === "EXCHANGE" && !payload.data.requestedVariantSummary?.trim() && !payload.data.requestedExchangeType) {
+    return res.status(400).json({ message: "Exchange requests must include the requested replacement summary or exchange type." });
   }
 
   const created = await prisma.$transaction(async (tx) => {
     const dbTx = tx as any;
+    const selectedOrderItemIds = payload.data.orderItemIds?.length
+      ? targetSubOrder.items.filter((item) => payload.data.orderItemIds!.includes(item.id)).map((item) => item.id)
+      : targetSubOrder.items.map((item) => item.id);
     const returnRequest = await dbTx.returnRequest.create({
       data: {
         orderId: order.id,
         subOrderId: targetSubOrder.id,
         userId: req.auth!.userId,
+        orderItemIds: selectedOrderItemIds,
+        requestType,
         reasonCode: payload.data.reasonCode,
         reasonText: payload.data.reasonText?.trim() || null,
+        customerNote: payload.data.customerNote?.trim() || payload.data.reasonText?.trim() || null,
+        evidenceImageUrls: payload.data.evidenceImageUrls || [],
+        preferredResolution,
+        requestedExchangeType: payload.data.requestedExchangeType || deriveExchangeType(preferredResolution) || null,
+        requestedVariantSummary: payload.data.requestedVariantSummary?.trim() || null,
+        requestedReplacementVariantId: payload.data.requestedReplacementVariantId?.trim() || null,
+        requestedReplacementSize: payload.data.requestedReplacementSize?.trim() || null,
+        requestedReplacementColor: payload.data.requestedReplacementColor?.trim() || null,
+        customerRefundPreference: payload.data.customerRefundPreference?.trim() || null,
         status: "REQUESTED",
       },
     });
@@ -1535,9 +2194,30 @@ router.post("/me/:orderId/sub-orders/:subOrderId/return", requireAuth, async (re
       },
     });
 
+    await dbTx.returnHistory.create({
+      data: {
+        returnRequestId: returnRequest.id,
+        oldStatus: null,
+        newStatus: "REQUESTED",
+        performedByRole: "USER",
+        performedById: req.auth!.userId,
+        note: payload.data.customerNote?.trim() || payload.data.reasonText?.trim() || payload.data.reasonCode,
+      },
+    });
+
     return dbTx.returnRequest.findUniqueOrThrow({
       where: { id: returnRequest.id },
-      include: { statusLogs: { orderBy: { createdAt: "desc" } } },
+      include: {
+        order: { select: { id: true, userId: true, paymentMethod: true, paymentStatus: true, totalPkr: true, createdAt: true } },
+        subOrder: {
+          include: {
+            brand: { select: { id: true, name: true } },
+            items: { include: { product: { select: { id: true, name: true, imageUrl: true } } } },
+          },
+        },
+        statusLogs: { orderBy: { createdAt: "asc" } },
+        history: { orderBy: { createdAt: "asc" } },
+      },
     });
   });
 
@@ -1549,12 +2229,12 @@ router.post("/me/:orderId/sub-orders/:subOrderId/return", requireAuth, async (re
     brandId: targetSubOrder.brandId,
     brandName: targetSubOrder.brand.name,
     changedByRole: "USER",
-    note: `Return requested (${payload.data.reasonCode})${payload.data.reasonText ? `: ${payload.data.reasonText}` : ""}`,
+    note: `${requestType === "EXCHANGE" ? "Exchange" : "Return"} requested (${payload.data.reasonCode})${payload.data.reasonText ? `: ${payload.data.reasonText}` : ""}`,
     notifyAdmin: true,
   });
 
   const returnedItems = await prisma.orderItem.findMany({
-    where: { subOrderId: targetSubOrder.id },
+    where: { id: { in: selectedOrderItemIds } },
     include: { product: true },
   });
 
@@ -1583,7 +2263,223 @@ router.post("/me/:orderId/sub-orders/:subOrderId/return", requireAuth, async (re
     }),
   );
 
-  return res.status(201).json({ data: created });
+  return res.status(201).json({ data: normalizeReturnRequestForApi(created) });
+});
+
+router.patch("/me/:orderId/sub-orders/:subOrderId/return-requests/:returnRequestId/evidence", requireAuth, async (req, res) => {
+  const payload = z
+    .object({
+      evidenceImageUrls: z.array(z.string().trim().url().max(500)).min(1).max(5),
+      customerNote: z.string().trim().max(500).optional(),
+    })
+    .safeParse(req.body || {});
+
+  if (!payload.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: payload.error.flatten() });
+  }
+
+  const db = prisma as any;
+  const request = await db.returnRequest.findFirst({
+    where: {
+      id: String(req.params.returnRequestId),
+      orderId: String(req.params.orderId),
+      subOrderId: String(req.params.subOrderId),
+      userId: req.auth!.userId,
+    },
+    include: {
+      order: { select: { id: true, userId: true, paymentMethod: true, paymentStatus: true, totalPkr: true, createdAt: true } },
+      subOrder: {
+        include: {
+          brand: { select: { id: true, name: true } },
+          items: { include: { product: { select: { id: true, name: true, imageUrl: true } } } },
+        },
+      },
+      refundRequests: { orderBy: { createdAt: "desc" } },
+    },
+  });
+
+  if (!request) {
+    return res.status(404).json({ message: "Return request not found" });
+  }
+
+  if (request.status !== "NEED_MORE_EVIDENCE") {
+    return res.status(409).json({ message: "Additional evidence can be uploaded only when more evidence is requested." });
+  }
+
+  const mergedEvidence = Array.from(new Set([...(request.evidenceImageUrls || []), ...payload.data.evidenceImageUrls]));
+  const note = payload.data.customerNote?.trim() || "Customer uploaded additional evidence.";
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const dbTx = tx as any;
+    const next = await dbTx.returnRequest.update({
+      where: { id: request.id },
+      data: {
+        status: "BRAND_REVIEWING",
+        evidenceImageUrls: mergedEvidence,
+        customerNote: payload.data.customerNote?.trim() || request.customerNote,
+      },
+      include: {
+        order: { select: { id: true, userId: true, paymentMethod: true, paymentStatus: true, totalPkr: true, createdAt: true } },
+        subOrder: {
+          include: {
+            brand: { select: { id: true, name: true } },
+            items: { include: { product: { select: { id: true, name: true, imageUrl: true } } } },
+          },
+        },
+        statusLogs: { orderBy: { createdAt: "asc" } },
+        history: { orderBy: { createdAt: "asc" } },
+        refundRequests: { orderBy: { createdAt: "desc" } },
+      },
+    });
+
+    await dbTx.returnStatusLog.create({
+      data: {
+        returnRequestId: request.id,
+        status: "BRAND_REVIEWING",
+        updatedBy: "USER",
+        updatedById: req.auth!.userId,
+        note,
+      },
+    });
+
+    await dbTx.returnHistory.create({
+      data: {
+        returnRequestId: request.id,
+        oldStatus: "NEED_MORE_EVIDENCE",
+        newStatus: "BRAND_REVIEWING",
+        performedByRole: "USER",
+        performedById: req.auth!.userId,
+        note,
+      },
+    });
+
+    return next;
+  });
+
+  queueNotificationEvent({
+    name: notificationEventNames.returnStateUpdated,
+    orderId: request.orderId,
+    subOrderId: request.subOrderId,
+    userId: request.order.userId,
+    brandId: request.subOrder.brandId,
+    brandName: request.subOrder.brand.name,
+    changedByRole: "USER",
+    note,
+    notifyAdmin: true,
+  });
+
+  return res.json({ data: normalizeReturnRequestForApi(updated) });
+});
+
+router.get("/me/:orderId/sub-orders/:subOrderId/cancellation-requests", requireAuth, async (req, res) => {
+  const requests = await prisma.cancellationRequest.findMany({
+    where: {
+      orderId: String(req.params.orderId),
+      subOrderId: String(req.params.subOrderId),
+      order: { userId: req.auth!.userId },
+    },
+    include: {
+      order: { select: { id: true, userId: true, paymentMethod: true, paymentStatus: true, createdAt: true } },
+      subOrder: {
+        include: {
+          brand: { select: { id: true, name: true } },
+          items: {
+            select: {
+              id: true,
+              quantity: true,
+              selectedColor: true,
+              selectedSize: true,
+              unitPricePkr: true,
+              product: { select: { id: true, name: true, imageUrl: true } },
+            },
+          },
+        },
+      },
+      history: { orderBy: { createdAt: "asc" } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return res.json({ data: requests });
+});
+
+router.get("/me/:orderId/sub-orders/:subOrderId/return-requests", requireAuth, async (req, res) => {
+  const db = prisma as any;
+  const requests = await db.returnRequest.findMany({
+    where: {
+      orderId: String(req.params.orderId),
+      subOrderId: String(req.params.subOrderId),
+      userId: req.auth!.userId,
+    },
+    include: {
+      order: { select: { id: true, userId: true, paymentMethod: true, paymentStatus: true, totalPkr: true, createdAt: true } },
+      subOrder: {
+        include: {
+          brand: { select: { id: true, name: true } },
+          items: { include: { product: { select: { id: true, name: true, imageUrl: true } } } },
+        },
+      },
+      statusLogs: { orderBy: { createdAt: "asc" } },
+      history: { orderBy: { createdAt: "asc" } },
+      refundRequests: {
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          status: true,
+          amountPkr: true,
+          adjustedAmountPkr: true,
+          method: true,
+          completedAt: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return res.json({ data: requests.map((request: any) => normalizeReturnRequestForApi(request)) });
+});
+
+router.get("/me/:orderId/sub-orders/:subOrderId/refund-requests", requireAuth, async (req, res) => {
+  const db = prisma as any;
+  const requests = await db.refundRequest.findMany({
+    where: {
+      orderId: String(req.params.orderId),
+      subOrderId: String(req.params.subOrderId),
+      order: { userId: req.auth!.userId },
+    },
+    include: {
+      order: { select: { id: true, userId: true, paymentMethod: true, paymentStatus: true, totalPkr: true, createdAt: true } },
+      subOrder: {
+        include: {
+          brand: { select: { id: true, name: true } },
+          items: { include: { product: { select: { id: true, name: true, imageUrl: true } } } },
+        },
+      },
+      returnRequest: {
+        include: {
+          statusLogs: { orderBy: { createdAt: "asc" } },
+          history: { orderBy: { createdAt: "asc" } },
+        },
+      },
+      items: {
+        include: {
+          orderItem: {
+            include: {
+              product: { select: { id: true, name: true, imageUrl: true } },
+            },
+          },
+        },
+      },
+      statusLogs: { orderBy: { createdAt: "asc" } },
+      history: { orderBy: { createdAt: "asc" } },
+      walletTransactions: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return res.json({ data: requests });
 });
 
 router.post("/me/:orderId/reorder", requireAuth, async (req, res) => {
@@ -1810,6 +2706,24 @@ router.get("/me", requireAuth, async (req, res) => {
           brand: true,
           items: { include: { product: true } },
           statusLogs: { orderBy: { createdAt: "desc" } },
+          returnRequests: {
+            select: {
+              id: true,
+              status: true,
+              requestType: true,
+              preferredResolution: true,
+              reasonCode: true,
+              reasonText: true,
+              customerNote: true,
+              orderItemIds: true,
+              replacementStatus: true,
+              replacementUnavailable: true,
+              convertedToRefund: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+            orderBy: { createdAt: "desc" },
+          },
         },
         orderBy: { createdAt: "asc" },
       },
@@ -1818,8 +2732,10 @@ router.get("/me", requireAuth, async (req, res) => {
     orderBy: { createdAt: "desc" },
   });
 
+  const ordersWithPaymentRetry = await Promise.all(orders.map((order) => attachPaymentRetryMetadata(order)));
+
   return res.json({
-    data: orders.map((order) => ({
+    data: ordersWithPaymentRetry.map((order) => ({
       ...order,
       statusLogs: order.statusLogs.map((log) => ({
         ...log,
@@ -1843,6 +2759,24 @@ router.get("/me/:orderId", requireAuth, async (req, res) => {
           brand: true,
           items: { include: { product: true } },
           statusLogs: { orderBy: { createdAt: "desc" } },
+          returnRequests: {
+            select: {
+              id: true,
+              status: true,
+              requestType: true,
+              preferredResolution: true,
+              reasonCode: true,
+              reasonText: true,
+              customerNote: true,
+              orderItemIds: true,
+              replacementStatus: true,
+              replacementUnavailable: true,
+              convertedToRefund: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+            orderBy: { createdAt: "desc" },
+          },
         },
         orderBy: { createdAt: "asc" },
       },
@@ -1851,11 +2785,12 @@ router.get("/me/:orderId", requireAuth, async (req, res) => {
   });
 
   if (!order) return res.status(404).json({ message: "Order not found" });
+  const orderWithPaymentRetry = await attachPaymentRetryMetadata(order);
 
   return res.json({
     data: {
-      ...order,
-      statusLogs: order.statusLogs.map((log) => ({
+      ...orderWithPaymentRetry,
+      statusLogs: orderWithPaymentRetry.statusLogs.map((log) => ({
         ...log,
         note: extractCustomerVisibleNote(log.note) || (log.updatedBy === "SYSTEM" ? log.note : null),
       })),

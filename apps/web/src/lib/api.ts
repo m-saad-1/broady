@@ -10,9 +10,13 @@ import type {
   BrandDashboardOrder,
   BrandDashboardOverview,
   BrandWithProducts,
+  AdminOperationsRecord,
   CartItem,
+  CodAbuseUserRecord,
+  CancellationRequestRecord,
   NotificationItem,
   NotificationPreference,
+  CatalogFilterOptions,
   ProductContentTemplate,
   ProductDeliveriesReturns,
   ProductFabricCare,
@@ -26,15 +30,19 @@ import type {
   Product,
   ProductReview,
   ProductReviewsResponse,
+  RefundRequestRecord,
   ReviewReport,
   ReviewReportReason,
   ReviewReportStatus,
   SearchSuggestion,
+  PaymentSessionRecord,
   User,
   UserOrder,
+  UserWallet,
   UserPaymentMethod,
   UserPaymentType,
   UserAddress,
+  ReturnRequestRecord,
 } from "@/types/marketplace";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
@@ -272,11 +280,18 @@ export async function getProducts(params?: Record<string, string>): Promise<Prod
   const hasActiveFilters = Boolean(
     params?.q ||
       params?.brand ||
+      params?.brandId ||
       params?.topCategory ||
       params?.juniorCategory ||
+      params?.gender ||
+      params?.division ||
+      params?.category ||
+      params?.subType ||
       params?.productType ||
       params?.subCategory ||
       params?.size ||
+      params?.colors ||
+      params?.color ||
       params?.minPrice ||
       params?.maxPrice,
   );
@@ -410,6 +425,8 @@ type CreateOrderPayload = {
 type CreateOrderResponse = {
   data: { id: string };
   paymentRedirect?: string | null;
+  paymentSessionId?: string | null;
+  paymentRetryExpiresAt?: string | null;
 };
 
 export async function createOrder(payload: CreateOrderPayload): Promise<CreateOrderResponse> {
@@ -433,6 +450,27 @@ export async function getUserOrder(orderId: string): Promise<UserOrder> {
   return response.data;
 }
 
+export async function getUserCancellationRequests(orderId: string, subOrderId: string): Promise<CancellationRequestRecord[]> {
+  const response = await authFetch<ApiEnvelope<CancellationRequestRecord[]>>(`/orders/me/${orderId}/sub-orders/${subOrderId}/cancellation-requests`, {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function getUserReturnRequests(orderId: string, subOrderId: string): Promise<ReturnRequestRecord[]> {
+  const response = await authFetch<ApiEnvelope<ReturnRequestRecord[]>>(`/orders/me/${orderId}/sub-orders/${subOrderId}/return-requests`, {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function getUserRefundRequests(orderId: string, subOrderId: string): Promise<RefundRequestRecord[]> {
+  const response = await authFetch<ApiEnvelope<RefundRequestRecord[]>>(`/orders/me/${orderId}/sub-orders/${subOrderId}/refund-requests`, {
+    method: "GET",
+  });
+  return response.data;
+}
+
 export async function updateUserOrderAddress(orderId: string, deliveryAddress: string): Promise<UserOrder> {
   const response = await authFetch<ApiEnvelope<UserOrder>>(`/orders/me/${orderId}/address`, {
     method: "PATCH",
@@ -441,7 +479,24 @@ export async function updateUserOrderAddress(orderId: string, deliveryAddress: s
   return response.data;
 }
 
-export type CancelReasonCode = "CHANGED_MIND" | "ORDERED_BY_MISTAKE" | "FOUND_BETTER_PRICE" | "DELIVERY_TOO_SLOW" | "PAYMENT_ISSUE" | "OTHER";
+export type CancelReasonCode =
+  | "CHANGED_MIND"
+  | "ORDERED_BY_MISTAKE"
+  | "WRONG_SIZE_SELECTED"
+  | "WRONG_COLOR_SELECTED"
+  | "FOUND_BETTER_PRICE"
+  | "DELIVERY_TOO_SLOW"
+  | "PAYMENT_ISSUE"
+  | "OTHER";
+
+export type BrandCancelReasonCode =
+  | "OUT_OF_STOCK"
+  | "ITEM_DAMAGED"
+  | "WRONG_PRICE_LISTED"
+  | "CANNOT_FULFILL_ORDER"
+  | "ADDRESS_NOT_SERVICEABLE"
+  | "DUPLICATE_ORDER_ISSUE"
+  | "OTHER";
 
 export type CancelPayload = {
   reasonCode: CancelReasonCode;
@@ -504,6 +559,96 @@ export async function reorderUserSubOrder(orderId: string, subOrderId: string): 
       product: normalizeProduct(item.product),
     })),
   };
+}
+
+export async function getPaymentSession(sessionId: string): Promise<PaymentSessionRecord> {
+  const response = await authFetch<ApiEnvelope<PaymentSessionRecord>>(`/orders/payment-sessions/${sessionId}`, {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function submitDemoPaymentResult(
+  orderId: string,
+  payload: {
+    sessionId: string;
+    result: "SUCCESS" | "FAILED" | "CANCELLED" | "TIMEOUT";
+    paymentMethod?: "COD" | "JAZZCASH" | "EASYPAISA";
+    reason?: string;
+  },
+): Promise<{ sessionId: string }> {
+  const response = await authFetch<ApiEnvelope<{ sessionId: string }>>(`/orders/payments/demo/${orderId}/result`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function retryUserOrderPayment(orderId: string): Promise<{ sessionId: string; redirectUrl: string; retryExpiresAt?: string | null }> {
+  const response = await authFetch<ApiEnvelope<{ sessionId: string; redirectUrl: string; retryExpiresAt?: string | null }>>(`/orders/me/${orderId}/retry-payment`, {
+    method: "POST",
+  });
+  return response.data;
+}
+
+export async function getCatalogFilterOptions(params?: Record<string, string>): Promise<CatalogFilterOptions> {
+  const query = params ? `?${new URLSearchParams(params).toString()}` : "";
+
+  try {
+    return await safeFetch<CatalogFilterOptions>(`/products/filter-options${query}`);
+  } catch {
+    return {
+      brands: [],
+      divisions: [],
+      categories: [],
+      subTypes: [],
+      sizes: [],
+      colors: [],
+      priceRange: { min: 0, max: 0 },
+    };
+  }
+}
+
+export type ReturnReasonCode =
+  | "DAMAGED_ITEM"
+  | "DEFECTIVE_PRODUCT"
+  | "WRONG_ITEM"
+  | "WRONG_SIZE"
+  | "WRONG_COLOR"
+  | "DIFFERENT_FROM_IMAGES"
+  | "QUALITY_ISSUE"
+  | "CHANGED_MIND"
+  | "OTHER";
+
+export type ReturnRequestPayload = {
+  reasonCode: ReturnReasonCode;
+  reasonText?: string;
+  customerNote?: string;
+  evidenceImageUrls?: string[];
+  preferredResolution?:
+    | "REFUND"
+    | "EXCHANGE_SIZE"
+    | "EXCHANGE_COLOR"
+    | "EXCHANGE_DAMAGED_REPLACEMENT"
+    | "EXCHANGE_WRONG_ITEM_REPLACEMENT"
+    | "EXCHANGE_OTHER"
+    | "STORE_CREDIT";
+  orderItemIds?: string[];
+  requestedVariantSummary?: string;
+  requestedExchangeType?: "SIZE" | "COLOR" | "DAMAGED_REPLACEMENT" | "WRONG_ITEM_REPLACEMENT" | "OTHER";
+  requestedReplacementVariantId?: string;
+  requestedReplacementSize?: string;
+  requestedReplacementColor?: string;
+  requestType?: "RETURN" | "EXCHANGE";
+  customerRefundPreference?: string;
+};
+
+export async function createUserSubOrderReturnRequest(orderId: string, subOrderId: string, payload: ReturnRequestPayload): Promise<ReturnRequestRecord> {
+  const response = await authFetch<ApiEnvelope<ReturnRequestRecord>>(`/orders/me/${orderId}/sub-orders/${subOrderId}/return`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
 }
 
 export type TrackUserBehaviorEventPayload = {
@@ -778,7 +923,7 @@ export async function getAdminIngestionPendingProductById(productId: string): Pr
 
 export async function fixAdminIngestionProduct(
   productId: string,
-  payload: Partial<Pick<Product, "name" | "description" | "topCategory" | "subCategory" | "color" | "pricePkr" | "stock" | "sizes" | "tags" | "imageUrl">>,
+  payload: Partial<Pick<Product, "name" | "description" | "gender" | "topCategory" | "subCategory" | "division" | "category" | "subType" | "color" | "pricePkr" | "stock" | "sizes" | "tags" | "imageUrl">>,
 ): Promise<Product> {
   const response = await authFetch<ApiEnvelope<Product>>(`/admin/ingestion/products/${productId}/fix`, {
     method: "PATCH",
@@ -858,7 +1003,7 @@ export async function getBrandPendingFixProductById(productId: string): Promise<
 
 export async function fixBrandIngestionProduct(
   productId: string,
-  payload: Partial<Pick<Product, "name" | "description" | "topCategory" | "subCategory" | "color" | "pricePkr" | "stock" | "sizes" | "tags" | "imageUrl">>,
+  payload: Partial<Pick<Product, "name" | "description" | "gender" | "topCategory" | "subCategory" | "division" | "category" | "subType" | "color" | "pricePkr" | "stock" | "sizes" | "tags" | "imageUrl">>,
 ): Promise<Product> {
   const response = await authFetch<ApiEnvelope<Product>>(`/brand-dashboard/ingestion/products/${productId}/fix`, {
     method: "PATCH",
@@ -1088,6 +1233,11 @@ export async function getPaymentMethods(): Promise<UserPaymentMethod[]> {
   return response.data;
 }
 
+export async function getUserWallet(): Promise<UserWallet> {
+  const response = await authFetch<ApiEnvelope<UserWallet>>("/users/wallet", { method: "GET" });
+  return response.data;
+}
+
 type PaymentMethodPayload = {
   type: UserPaymentType;
   label: string;
@@ -1237,11 +1387,173 @@ export async function updateBrandOrderStatus(
 
 export async function cancelBrandOrder(
   orderId: string,
-  payload: { reasonCode: "OUT_OF_STOCK" | "ITEM_DAMAGED"; note?: string; orderItemIds?: string[] },
+  payload: { reasonCode: BrandCancelReasonCode; note?: string; orderItemIds?: string[] },
 ): Promise<{ success: boolean }> {
   const response = await authFetch<ApiEnvelope<{ success: boolean }>>(`/brand-dashboard/orders/${orderId}/cancel`, {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function getBrandCancellationRequests(): Promise<CancellationRequestRecord[]> {
+  const response = await authFetch<ApiEnvelope<CancellationRequestRecord[]>>("/brand-dashboard/cancellation-requests", {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function respondBrandCancellationRequest(
+  requestId: string,
+  payload: { responseCode: string; note?: string; trackingEvidence?: string; evidenceUrl?: string },
+): Promise<CancellationRequestRecord> {
+  const response = await authFetch<ApiEnvelope<CancellationRequestRecord>>(`/brand-dashboard/cancellation-requests/${requestId}/respond`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function getBrandReturnRequests(): Promise<ReturnRequestRecord[]> {
+  const response = await authFetch<ApiEnvelope<ReturnRequestRecord[]>>("/brand-dashboard/return-requests", {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function getBrandReturnRequest(returnRequestId: string): Promise<ReturnRequestRecord> {
+  const response = await authFetch<ApiEnvelope<ReturnRequestRecord>>(`/brand-dashboard/return-requests/${returnRequestId}`, {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function getBrandRefundRequests(): Promise<RefundRequestRecord[]> {
+  const response = await authFetch<ApiEnvelope<RefundRequestRecord[]>>("/brand-dashboard/refund-requests", {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function submitBrandReturnRecommendation(
+  returnRequestId: string,
+  payload: {
+    recommendation: "APPROVE" | "REJECT" | "NEED_MORE_EVIDENCE";
+    recommendationNote?: string;
+    note?: string;
+    conditionNote?: string;
+    damageNote?: string;
+    brandEvidenceUrls?: string[];
+    rejectReason?: string;
+    canFulfillReplacement?: boolean;
+    replacementAvailable?: boolean;
+    replacementUnavailableReason?: string;
+    replacementVariantId?: string;
+    replacementSku?: string;
+    replacementColor?: string;
+    replacementSize?: string;
+  },
+): Promise<ReturnRequestRecord> {
+  const response = await authFetch<ApiEnvelope<ReturnRequestRecord>>(`/brand-dashboard/return-requests/${returnRequestId}/recommendation`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function confirmBrandReturnReceipt(
+  returnRequestId: string,
+  payload: {
+    outcome: "APPROVED" | "DISPUTED";
+    conditionNote: string;
+    damageNote?: string;
+    disputeReason?: string;
+    evidenceUrls?: string[];
+    receivedAt?: string;
+  },
+): Promise<ReturnRequestRecord> {
+  const response = await authFetch<ApiEnvelope<ReturnRequestRecord>>(`/brand-dashboard/return-requests/${returnRequestId}/receipt`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function updateBrandReturnLogistics(
+  returnRequestId: string,
+  payload: {
+    status: "RETURN_ARRANGED" | "RETURN_IN_TRANSIT";
+    returnCourier?: string;
+    returnTrackingNumber?: string;
+    returnInstructions?: string;
+    expectedReturnDate?: string;
+    returnNote?: string;
+  },
+): Promise<ReturnRequestRecord> {
+  const response = await authFetch<ApiEnvelope<ReturnRequestRecord>>(`/brand-dashboard/return-requests/${returnRequestId}/return-logistics`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function inspectBrandReturnCondition(
+  returnRequestId: string,
+  payload: {
+    outcome: "APPROVED" | "DISPUTED";
+    conditionNote: string;
+    damageNote?: string;
+    disputeReason?: string;
+    evidenceUrls?: string[];
+  },
+): Promise<ReturnRequestRecord> {
+  const response = await authFetch<ApiEnvelope<ReturnRequestRecord>>(`/brand-dashboard/return-requests/${returnRequestId}/condition`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function updateBrandReplacementShipment(
+  returnRequestId: string,
+  payload: {
+    status:
+      | "REPLACEMENT_PROCESSING"
+      | "REPLACEMENT_PACKED"
+      | "REPLACEMENT_READY_FOR_PICKUP"
+      | "REPLACEMENT_SHIPPED"
+      | "REPLACEMENT_OUT_FOR_DELIVERY"
+      | "REPLACEMENT_DELIVERY_FAILED"
+      | "REPLACEMENT_ADDRESS_CORRECTION_REQUIRED"
+      | "REPLACEMENT_READY_FOR_REDELIVERY"
+      | "REPLACEMENT_SHIPMENT_RETURNED"
+      | "REPLACEMENT_DELIVERED";
+    replacementTrackingNo?: string;
+    replacementCourier?: string;
+    replacementDispatchDate?: string;
+    replacementEstimatedDelivery?: string;
+    replacementShipmentNote?: string;
+    replacementFailureReason?: string;
+    replacementFailureReasonMessage?: string;
+  },
+): Promise<ReturnRequestRecord> {
+  const response = await authFetch<ApiEnvelope<ReturnRequestRecord>>(`/brand-dashboard/return-requests/${returnRequestId}/replacement-shipment`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function markBrandReplacementProcessing(returnRequestId: string): Promise<ReturnRequestRecord> {
+  const response = await authFetch<ApiEnvelope<ReturnRequestRecord>>(`/brand-dashboard/return-requests/${returnRequestId}/replacement-processing`, {
+    method: "PATCH",
+  });
+  return response.data;
+}
+
+export async function markBrandReplacementDelivered(returnRequestId: string): Promise<ReturnRequestRecord> {
+  const response = await authFetch<ApiEnvelope<ReturnRequestRecord>>(`/brand-dashboard/return-requests/${returnRequestId}/replacement-delivered`, {
+    method: "PATCH",
   });
   return response.data;
 }
@@ -1255,6 +1567,151 @@ export async function updateAdminOrderStatus(
     body: JSON.stringify(payload),
   });
   return response.data;
+}
+
+export async function getAdminOperations(options?: { onlyEscalated?: boolean; refundStatus?: string; returnStatus?: string }): Promise<AdminOperationsRecord> {
+  const params = new URLSearchParams();
+  if (options?.onlyEscalated) params.set("onlyEscalated", "true");
+  if (options?.refundStatus) params.set("refundStatus", options.refundStatus);
+  if (options?.returnStatus) params.set("returnStatus", options.returnStatus);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  const response = await authFetch<ApiEnvelope<AdminOperationsRecord>>(`/admin/operations${query}`, {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function getAdminCancellationRequests(status?: string): Promise<CancellationRequestRecord[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  const response = await authFetch<ApiEnvelope<CancellationRequestRecord[]>>(`/admin/cancellation-requests${query}`, {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function decideAdminCancellationRequest(
+  requestId: string,
+  payload: { status: "APPROVED" | "REJECTED"; note?: string; refundMethod?: string },
+): Promise<CancellationRequestRecord> {
+  const response = await authFetch<ApiEnvelope<CancellationRequestRecord>>(`/admin/cancellation-requests/${requestId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function updateAdminRefundRequestStatus(
+  refundRequestId: string,
+  payload: {
+    action:
+      | "APPROVE_REFUND"
+      | "REJECT_REFUND"
+      | "RETRY_FAILED_REFUND"
+      | "MARK_MANUAL_REFUND_COMPLETED"
+      | "MARK_GATEWAY_REFUND_COMPLETED"
+      | "MARK_GATEWAY_REFUND_FAILED";
+    note?: string;
+    method?: string;
+    adjustedAmountPkr?: number;
+    gatewayRefundId?: string;
+  },
+): Promise<RefundRequestRecord> {
+  const response = await authFetch<ApiEnvelope<RefundRequestRecord>>(`/admin/refund-requests/${refundRequestId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function updateAdminReturnRequestStatus(
+  returnRequestId: string,
+  payload: {
+    status: string;
+    note?: string;
+    pickupTracking?: string;
+    pickupCourier?: string;
+    pickupDate?: string;
+    pickupAddress?: string;
+    returnTrackingNumber?: string;
+    rejectedReason?: string;
+  },
+): Promise<ReturnRequestRecord> {
+  const response = await authFetch<ApiEnvelope<ReturnRequestRecord>>(`/admin/return-requests/${returnRequestId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function getAdminRefundRequest(refundRequestId: string): Promise<RefundRequestRecord> {
+  const response = await authFetch<ApiEnvelope<RefundRequestRecord>>(`/admin/refund-requests/${refundRequestId}`, {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function getAdminReturnRequest(returnRequestId: string): Promise<ReturnRequestRecord> {
+  const response = await authFetch<ApiEnvelope<ReturnRequestRecord>>(`/admin/return-requests/${returnRequestId}`, {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function uploadUserReturnRequestEvidence(
+  orderId: string,
+  subOrderId: string,
+  returnRequestId: string,
+  payload: { evidenceImageUrls: string[]; customerNote?: string },
+): Promise<ReturnRequestRecord> {
+  const response = await authFetch<ApiEnvelope<ReturnRequestRecord>>(
+    `/orders/me/${orderId}/sub-orders/${subOrderId}/return-requests/${returnRequestId}/evidence`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
+  return response.data;
+}
+
+export async function convertAdminExchangeToRefund(
+  returnRequestId: string,
+  payload: { note: string },
+): Promise<ReturnRequestRecord> {
+  const response = await authFetch<ApiEnvelope<ReturnRequestRecord>>(`/admin/return-requests/${returnRequestId}/convert-to-refund`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function getCodAbuseUsers(): Promise<CodAbuseUserRecord[]> {
+  const response = await authFetch<ApiEnvelope<CodAbuseUserRecord[]>>("/admin/cod-abuse-users", {
+    method: "GET",
+  });
+  return response.data;
+}
+
+export async function updateCodAbuseUser(
+  userId: string,
+  payload: { action: "CLEAR_FLAG" | "UNDER_REVIEW" | "RESTRICT_COD" | "BLOCK_COD" | "REQUIRE_PREPAYMENT"; note: string },
+): Promise<void> {
+  await authFetch(`/admin/cod-abuse-users/${userId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function sendAdminDeliveryReminder(subOrderId: string): Promise<void> {
+  await authFetch(`/admin/sub-orders/${subOrderId}/send-reminder`, {
+    method: "POST",
+  });
+}
+
+export async function forceAdminShipmentReturned(subOrderId: string, note: string): Promise<void> {
+  await authFetch(`/admin/sub-orders/${subOrderId}/force-shipment-returned`, {
+    method: "PATCH",
+    body: JSON.stringify({ note }),
+  });
 }
 
 export async function getBrandDashboardProducts(): Promise<Product[]> {

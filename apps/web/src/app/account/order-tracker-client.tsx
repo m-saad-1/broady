@@ -7,14 +7,28 @@ import { getTrackingUrl } from "@broady/shared";
 import { ProductImage } from "@/components/ui/product-image";
 import { getUserOrders, reorderUserSubOrder } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/media-url";
-import { getOrderStatusLabel, getOrderStatusTone } from "@/lib/order-status";
 import { getCancelledOrderItemIds } from "@/lib/order-cancellation";
+import { getOrderStatusLabel, getOrderStatusTone } from "@/lib/order-status";
+import {
+  formatOperatorReturnStatus,
+  formatReturnReasonLabel,
+  getDisplayReturnStatus,
+  getReturnRequestItems,
+  getReturnRequestType,
+} from "@/lib/return-workflow";
 import { formatPkr } from "@/lib/utils";
 import { useCartStore } from "@/stores/cart-store";
 import type { UserOrder } from "@/types/marketplace";
 
 type OrderTrackerClientProps = {
   compact?: boolean;
+};
+
+type MainTab = "OPEN" | "DELIVERED" | "RETURNS" | "EXCHANGE" | "CANCELED";
+
+type RequestListItem = NonNullable<UserOrder["subOrders"][number]["returnRequests"]>[number] & {
+  order: UserOrder;
+  subOrder: UserOrder["subOrders"][number];
 };
 
 function formatDateTime(value: string) {
@@ -39,7 +53,7 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
   const [refreshing, setRefreshing] = useState(false);
   const [hasAccess, setHasAccess] = useState(true);
   const [reorderingSubOrderId, setReorderingSubOrderId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"OPEN" | "DELIVERED" | "CANCELED" | "RETURNED">("OPEN");
+  const [activeTab, setActiveTab] = useState<MainTab>("OPEN");
 
   const loadOrders = useCallback(async (mode: "initial" | "refresh" = "initial") => {
     if (mode === "initial") setLoading(true);
@@ -68,11 +82,12 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
       if (group.status === "CANCELED") return activeTab === "CANCELED" ? group.items : [];
       if (activeTab === "CANCELED") return group.items.filter((item) => cancelledIds.has(item.id));
       if (activeTab === "OPEN") {
-        if (["DELIVERED", "CANCELED", "RETURNED"].includes(group.status)) return [];
+        if (["DELIVERED", "CANCELED", "RETURNED", "SHIPMENT_RETURNED"].includes(group.status)) return [];
         return group.items.filter((item) => !cancelledIds.has(item.id));
       }
-      if (activeTab === "DELIVERED") return group.status === "DELIVERED" ? group.items.filter((item) => !cancelledIds.has(item.id)) : [];
-      if (activeTab === "RETURNED") return group.status === "RETURNED" ? group.items.filter((item) => !cancelledIds.has(item.id)) : [];
+      if (activeTab === "DELIVERED") {
+        return group.status === "DELIVERED" ? group.items.filter((item) => !cancelledIds.has(item.id)) : [];
+      }
       return [];
     };
 
@@ -80,9 +95,10 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
       if (activeTab === "CANCELED") {
         return group.status === "CANCELED" || getCancelledOrderItemIds(group.statusLogs).size > 0;
       }
-      if (activeTab === "OPEN") return !["DELIVERED", "CANCELED", "RETURNED"].includes(group.status) && getVisibleItems(group).length > 0;
+      if (activeTab === "OPEN") {
+        return !["DELIVERED", "CANCELED", "RETURNED", "SHIPMENT_RETURNED"].includes(group.status) && getVisibleItems(group).length > 0;
+      }
       if (activeTab === "DELIVERED") return group.status === "DELIVERED";
-      if (activeTab === "RETURNED") return group.status === "RETURNED";
       return false;
     };
 
@@ -100,6 +116,26 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
       .filter((entry) => entry.groups.length > 0)
       .sort((a, b) => new Date(b.order.createdAt).getTime() - new Date(a.order.createdAt).getTime());
   }, [orders, activeTab]);
+
+  const displayedRequests = useMemo(() => {
+    if (activeTab !== "RETURNS" && activeTab !== "EXCHANGE") return [] as Array<{ order: UserOrder; requests: RequestListItem[] }>;
+
+    const requestType = activeTab === "RETURNS" ? "RETURN" : "EXCHANGE";
+
+    return orders
+      .map((order) => ({
+        order,
+        requests: (order.subOrders || [])
+          .flatMap((subOrder) =>
+            (subOrder.returnRequests || [])
+              .filter((request) => getReturnRequestType(request) === requestType)
+              .map((request) => ({ ...request, order, subOrder })),
+          )
+          .sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()),
+      }))
+      .filter((entry) => entry.requests.length > 0)
+      .sort((a, b) => new Date(b.order.createdAt).getTime() - new Date(a.order.createdAt).getTime());
+  }, [activeTab, orders]);
 
   const handleReorderSubOrder = useCallback(
     async (orderId: string, subOrderId: string) => {
@@ -176,7 +212,7 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
       <div className="flex flex-wrap items-end justify-between gap-4 border-b border-zinc-300 pb-3">
         <div className="space-y-1">
           <h2 className="font-heading text-3xl uppercase tracking-[0.06em]">Orders & Tracking</h2>
-          <p className="text-sm text-zinc-600">All brand shipments grouped under each parent order.</p>
+          <p className="text-sm text-zinc-600">Track active orders, deliveries, returns, and exchanges from one place.</p>
         </div>
         <button type="button" onClick={() => void loadOrders("refresh")} className="text-xs font-semibold uppercase tracking-[0.15em] text-zinc-600">
           {refreshing ? "Refreshing..." : "Refresh"}
@@ -184,12 +220,12 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
       </div>
 
       <div className="flex flex-wrap gap-2 border-b border-zinc-200">
-        {(["OPEN", "DELIVERED", "CANCELED", "RETURNED"] as const).map((tab) => (
+        {(["OPEN", "DELIVERED", "RETURNS", "EXCHANGE", "CANCELED"] as const).map((tab) => (
           <button
             key={tab}
             type="button"
             onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] transition-colors border-b-2 ${
+            className={`border-b-2 px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] transition-colors ${
               activeTab === tab ? "border-black text-black" : "border-transparent text-zinc-500 hover:text-black"
             }`}
           >
@@ -198,8 +234,106 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
         ))}
       </div>
 
-      {displayedOrders.length === 0 ? (
-        <div className="border border-zinc-300 p-8 text-center bg-zinc-50">
+      {activeTab === "RETURNS" || activeTab === "EXCHANGE" ? (
+        displayedRequests.length === 0 ? (
+          <div className="border border-zinc-300 bg-zinc-50 p-8 text-center">
+            <p className="text-sm text-zinc-600">No {activeTab.toLowerCase()} requests found.</p>
+          </div>
+        ) : (
+          <div className="grid gap-4">
+            {displayedRequests.map(({ order, requests }) => (
+              <article key={order.id} className="border border-zinc-300 bg-white p-5">
+                <div className="flex flex-wrap items-start justify-between gap-2 border-b border-zinc-200 pb-3">
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-[0.08em]">Order #{formatShortOrderId(order.id)}</p>
+                    <p className="mt-1 text-xs text-zinc-600">
+                      {formatDateTime(order.createdAt)} | {requests.length} request(s)
+                    </p>
+                  </div>
+                  <p className="text-sm font-semibold">{formatPkr(order.totalPkr)}</p>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {requests.map((request) => {
+                    const requestType = getReturnRequestType(request);
+                    const displayStatus = getDisplayReturnStatus(request);
+                    const requestItems = getReturnRequestItems({
+                      orderItemIds: request.orderItemIds,
+                      subOrder: { items: request.subOrder.items },
+                    });
+                    const requestPath =
+                      requestType === "EXCHANGE"
+                        ? `/account/orders/${order.id}/groups/${request.subOrder.id}/exchange/${request.id}`
+                        : `/account/orders/${order.id}/groups/${request.subOrder.id}/return/${request.id}`;
+
+                    return (
+                      <section key={request.id} className="border border-zinc-200 p-3">
+                        <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.1em]">{request.subOrder.brand?.name || "Brand"}</p>
+                            <p className="mt-1 text-xs text-zinc-600">Request ID: {request.id}</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <p className="inline-flex border border-zinc-300 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-700">
+                              {requestType === "EXCHANGE" ? "Exchange" : "Return"}
+                            </p>
+                            <p className="inline-flex border border-zinc-300 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-700">
+                              {formatOperatorReturnStatus(displayStatus, requestType)}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          {requestItems.map((item) => (
+                            <div key={item.id} className="flex items-center gap-3 border border-zinc-100 p-2">
+                              <div className="relative h-14 w-12 flex-none overflow-hidden border border-zinc-200 bg-zinc-50">
+                                <ProductImage
+                                  src={resolveMediaUrl(item.product?.imageUrl)}
+                                  alt={item.product?.name || "Product"}
+                                  fill
+                                  sizes="48px"
+                                  className="object-cover"
+                                />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-xs font-semibold">{item.product?.name}</p>
+                                <p className="mt-1 text-[11px] text-zinc-600">
+                                  Color: {item.selectedColor || "N/A"} | Size: {item.selectedSize || "N/A"}
+                                </p>
+                              </div>
+                              <p className="text-xs font-semibold">{formatPkr(item.unitPricePkr || 0)}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="mt-3 space-y-1 text-xs text-zinc-600">
+                          <p>Reason: {formatReturnReasonLabel(request.reasonCode, request.reasonText)}</p>
+                          {request.customerNote ? <p>Note: {request.customerNote}</p> : null}
+                          <p>Submitted: {formatDateTime(request.createdAt)}</p>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <Link href={requestPath} className="inline-flex h-8 items-center border border-black bg-black px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
+                            Open Details
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => router.push(requestPath)}
+                            className="h-8 border border-zinc-300 px-3 text-[10px] font-semibold uppercase tracking-[0.12em]"
+                          >
+                            Track Request
+                          </button>
+                        </div>
+                      </section>
+                    );
+                  })}
+                </div>
+              </article>
+            ))}
+          </div>
+        )
+      ) : displayedOrders.length === 0 ? (
+        <div className="border border-zinc-300 bg-zinc-50 p-8 text-center">
           <p className="text-sm text-zinc-600">No {activeTab.toLowerCase()} items found.</p>
         </div>
       ) : (
@@ -209,7 +343,7 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
               <div className="flex flex-wrap items-start justify-between gap-2 border-b border-zinc-200 pb-3">
                 <div>
                   <p className="text-sm font-semibold uppercase tracking-[0.08em]">Order #{formatShortOrderId(order.id)}</p>
-                <p className="mt-1 text-xs text-zinc-600">{formatDateTime(order.createdAt)} | {groups.length} brand group(s)</p>
+                  <p className="mt-1 text-xs text-zinc-600">{formatDateTime(order.createdAt)} | {groups.length} brand group(s)</p>
                 </div>
                 <p className="text-sm font-semibold">{formatPkr(order.totalPkr)}</p>
               </div>
@@ -228,31 +362,38 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
                       {subOrder.visibleItems.map((item) => {
                         const isCancelled = subOrder.status === "CANCELED" || subOrder.cancelledItemIds.has(item.id);
                         return (
-                        <div key={item.id} className={`flex items-center gap-3 border p-2 ${isCancelled ? "border-red-100 bg-red-50" : "border-zinc-100"}`}>
-                          <div className="relative h-14 w-12 flex-none overflow-hidden border border-zinc-200 bg-zinc-50">
-                            <ProductImage
-                              src={resolveMediaUrl(item.product?.imageUrl)}
-                              alt={item.product?.name || "Product"}
-                              fill
-                              sizes="48px"
-                              className="object-cover"
-                            />
+                          <div key={item.id} className={`flex items-center gap-3 border p-2 ${isCancelled ? "border-red-100 bg-red-50" : "border-zinc-100"}`}>
+                            <div className="relative h-14 w-12 flex-none overflow-hidden border border-zinc-200 bg-zinc-50">
+                              <ProductImage
+                                src={resolveMediaUrl(item.product?.imageUrl)}
+                                alt={item.product?.name || "Product"}
+                                fill
+                                sizes="48px"
+                                className="object-cover"
+                              />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-semibold">{item.product?.name}</p>
+                              <p className="mt-1 text-[11px] text-zinc-600">
+                                Color: {item.selectedColor || "N/A"} | Size: {item.selectedSize || "N/A"}
+                              </p>
+                            </div>
+                            {isCancelled ? <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-red-700">Cancelled</span> : null}
+                            <p className="text-xs font-semibold">{formatPkr(item.unitPricePkr)}</p>
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-xs font-semibold">{item.product?.name}</p>
-                            <p className="mt-1 text-[11px] text-zinc-600">Color: {item.selectedColor || "N/A"} | Size: {item.selectedSize || "N/A"}</p>
-                          </div>
-                          {isCancelled ? <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-red-700">Cancelled</span> : null}
-                          <p className="text-xs font-semibold">{formatPkr(item.unitPricePkr)}</p>
-                        </div>
                         );
                       })}
                     </div>
 
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <button type="button" onClick={() => router.push(`/account/orders/${subOrder.orderId}/groups/${subOrder.id}`)} className="h-8 border border-black bg-black px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
-                        Track
+                        Open Tracking
                       </button>
+                      {["CANCELED", "RETURNED", "SHIPMENT_RETURNED"].includes(subOrder.status) || subOrder.refundProcessedAt ? (
+                        <button type="button" onClick={() => router.push(`/account/orders/${subOrder.orderId}/groups/${subOrder.id}/refund`)} className="h-8 border border-zinc-300 px-3 text-[10px] font-semibold uppercase tracking-[0.12em]">
+                          Refund Tracking
+                        </button>
+                      ) : null}
                       {subOrder.trackingId && subOrder.courierName && getTrackingUrl(subOrder.courierName, subOrder.trackingId) ? (
                         <a href={getTrackingUrl(subOrder.courierName, subOrder.trackingId) || undefined} target="_blank" rel="noopener noreferrer" className="inline-flex h-8 items-center border border-emerald-600 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-700">
                           Track Shipment

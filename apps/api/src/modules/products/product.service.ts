@@ -4,7 +4,6 @@ import { productBaseSchema } from "./product.validation.js";
 import {
   correctSearchInput,
   normalizeSearchInput,
-  expandCatalogTopCategory,
   tokenizeSearchQuery,
 } from "./products.search-utils.js";
 import {
@@ -12,6 +11,7 @@ import {
   runMeilisearchProductSearch,
 } from "./products.meilisearch-search.js";
 import { z } from "zod";
+import { resolveBroadyTaxonomy } from "./product-taxonomy.js";
 
 type ProductCreateData = z.infer<typeof productBaseSchema>;
 
@@ -66,6 +66,59 @@ function containsToken(field: string, token: string) {
   return { [field]: { contains: token, mode: "insensitive" } };
 }
 
+function normalizeQueryValues(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => normalizeQueryValues(entry));
+  }
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function mapTopCategoryToGenderValues(topCategory?: string, juniorCategory?: string) {
+  if (!topCategory) return [] as string[];
+  if (topCategory === "Juniors") {
+    if (juniorCategory === "Junior Girls" || juniorCategory === "Toddler Girls") return ["girls"];
+    if (juniorCategory === "Junior Boys" || juniorCategory === "Toddler Boys") return ["boys"];
+    return ["boys", "girls"];
+  }
+  if (topCategory === "Women") return ["women"];
+  if (topCategory === "Men") return ["men"];
+  if (topCategory === "Junior Girls" || topCategory === "Toddler Girls") return ["girls"];
+  if (topCategory === "Junior Boys" || topCategory === "Toddler Boys") return ["boys"];
+  return [];
+}
+
+function resolveTaxonomyPayload(data: Partial<ProductCreateData>) {
+  const taxonomy = resolveBroadyTaxonomy({
+    name: data.name,
+    rawGender: data.gender,
+    rawTopCategory: data.topCategory,
+    rawCategory: data.category || data.subCategory || data.type,
+    rawSubCategory: data.subType || data.subCategory,
+    productUrl: data.productUrl,
+    sizes: data.sizes,
+  });
+
+  return {
+    gender: taxonomy.gender || "women",
+    division: data.division || taxonomy.division || "top",
+    category: data.category || taxonomy.category || "top",
+    subType: data.subType || taxonomy.subType || undefined,
+    subTypeConfidence: data.subTypeConfidence || taxonomy.subTypeConfidence,
+    mappingStatus: data.mappingStatus || taxonomy.mappingStatus,
+    resolutionSource: data.resolutionSource || taxonomy.resolutionSource,
+    pageContext: data.pageContext || taxonomy.pageContext,
+    topCategory: data.topCategory || taxonomy.topCategory,
+    subCategory: data.subCategory || taxonomy.legacySubCategory,
+    type: data.type || taxonomy.legacyProductType,
+  };
+}
+
 function buildSearchTokenCondition(token: string) {
   const variants = tokenVariants(token);
 
@@ -77,6 +130,9 @@ function buildSearchTokenCondition(token: string) {
       containsToken("description", token),
       containsToken("searchDocument", token),
       containsToken("gender", token),
+      containsToken("division", token),
+      containsToken("category", token),
+      containsToken("subType", token),
       containsToken("type", token),
       containsToken("color", token),
       containsToken("fit", token),
@@ -203,17 +259,19 @@ export async function createProduct(
 
   const { productData, detail, shipping, seo } = splitStructuredProductPayload(validation.data);
   const pricing = normalizePricing(validation.data);
+  const taxonomy = resolveTaxonomyPayload(validation.data);
 
   const product = await prisma.product.create({
     data: {
-    ...productData,
-    brandId,
-    ...pricing,
-    currency: productData.currency || "PKR",
-    visibility: productData.visibility || "visible",
-    source: options?.source || productData.source || "manual",
-    approvalStatus: options?.approvalStatus || "APPROVED",
-    isActive: options?.isActive ?? productData.isActive ?? true,
+      ...productData,
+      ...taxonomy,
+      brandId,
+      ...pricing,
+      currency: productData.currency || "PKR",
+      visibility: productData.visibility || "visible",
+      source: options?.source || productData.source || "manual",
+      approvalStatus: options?.approvalStatus || "APPROVED",
+      isActive: options?.isActive ?? productData.isActive ?? true,
     },
   });
 
@@ -266,11 +324,16 @@ export async function updateProduct(id: string, data: Partial<ProductCreateData>
       validation.data.salePrice !== undefined ||
       validation.data.discountPercentage !== undefined;
     const pricing = shouldReprice ? normalizePricing(validation.data, existingProduct.actualPrice) : {};
+    const taxonomy = resolveTaxonomyPayload({
+      ...(existingProduct as Partial<ProductCreateData>),
+      ...validation.data,
+    });
 
     await prisma.product.update({
         where: { id },
         data: {
           ...productData,
+          ...taxonomy,
           ...pricing,
         },
     });
@@ -289,16 +352,128 @@ export async function deleteProduct(id: string) {
   });
 }
 
+export async function getProductFilterOptions(options: Record<string, any>) {
+  const {
+    brandId,
+    brand,
+    gender,
+    topCategory,
+    juniorCategory,
+    division,
+    category,
+    subType,
+    size,
+    colors,
+    color,
+    minPrice,
+    maxPrice,
+  } = options;
+
+  const where: any = {
+    approvalStatus: "APPROVED",
+    isActive: true,
+    deletedAt: null,
+  };
+  const andConditions: any[] = [];
+  const effectiveBrandIds = normalizeQueryValues(brandId ?? brand);
+  const effectiveGenderValues = Array.from(
+    new Set([
+      ...normalizeQueryValues(gender).map((value) => value.toLowerCase()),
+      ...mapTopCategoryToGenderValues(typeof topCategory === "string" ? topCategory : undefined, typeof juniorCategory === "string" ? juniorCategory : undefined),
+    ]),
+  ).filter((value) => ["men", "women", "boys", "girls"].includes(value));
+  const effectiveDivisionValues = normalizeQueryValues(division).map((value) => value.toLowerCase());
+  const effectiveCategoryValues = normalizeQueryValues(category).map((value) => value.toLowerCase());
+  const effectiveSubTypeValues = normalizeQueryValues(subType).map((value) => value.toLowerCase());
+  const effectiveSize = typeof size === "string" && size ? size : undefined;
+  const effectiveColor = typeof color === "string" && color ? color : undefined;
+  const effectiveColorValues = normalizeQueryValues(colors);
+
+  if (effectiveBrandIds.length === 1) {
+    where.brandId = effectiveBrandIds[0];
+  } else if (effectiveBrandIds.length > 1) {
+    where.brandId = { in: effectiveBrandIds };
+  }
+  if (effectiveGenderValues.length) {
+    andConditions.push({ gender: { in: effectiveGenderValues } });
+  }
+  if (effectiveDivisionValues.length) {
+    andConditions.push({ division: effectiveDivisionValues.length === 1 ? { equals: effectiveDivisionValues[0], mode: "insensitive" } : { in: effectiveDivisionValues } });
+  }
+  if (effectiveCategoryValues.length) {
+    andConditions.push({ category: effectiveCategoryValues.length === 1 ? { equals: effectiveCategoryValues[0], mode: "insensitive" } : { in: effectiveCategoryValues } });
+  }
+  if (effectiveSubTypeValues.length) {
+    andConditions.push({ subType: effectiveSubTypeValues.length === 1 ? { equals: effectiveSubTypeValues[0], mode: "insensitive" } : { in: effectiveSubTypeValues } });
+  }
+  if (effectiveSize) {
+    andConditions.push({ sizes: { has: effectiveSize } });
+  }
+  if (effectiveColor) {
+    andConditions.push({ color: { contains: effectiveColor, mode: "insensitive" } });
+  }
+  if (effectiveColorValues.length) {
+    andConditions.push({ variants: { some: { deletedAt: null, color: { in: effectiveColorValues } } } });
+  }
+  const minPriceValue = typeof minPrice === "string" ? Number(minPrice) : minPrice;
+  const maxPriceValue = typeof maxPrice === "string" ? Number(maxPrice) : maxPrice;
+  if (Number.isFinite(minPriceValue)) andConditions.push({ pricePkr: { gte: minPriceValue } });
+  if (Number.isFinite(maxPriceValue)) andConditions.push({ pricePkr: { lte: maxPriceValue } });
+  if (andConditions.length) where.AND = andConditions;
+
+  const [products, brands] = await Promise.all([
+    prisma.product.findMany({
+      where,
+      select: {
+        division: true,
+        category: true,
+        subType: true,
+        sizes: true,
+        color: true,
+        pricePkr: true,
+        brandId: true,
+        brand: { select: { id: true, name: true, slug: true } },
+      },
+    }),
+    prisma.brand.findMany({ select: { id: true, name: true, slug: true } }),
+  ]);
+
+  const divisionOptions = Array.from(new Set(products.map((product) => product.division).filter(Boolean))).sort();
+  const categoryOptions = Array.from(new Set(products.map((product) => product.category).filter(Boolean))).sort();
+  const subTypeOptions = Array.from(new Set(products.map((product) => product.subType).filter(Boolean))).sort();
+  const sizeOptions = Array.from(new Set(products.flatMap((product) => product.sizes || []).filter(Boolean))).sort();
+  const colorOptions = Array.from(new Set(products.map((product) => product.color).filter(Boolean))).sort();
+  const availableBrandIds = new Set(products.map((product) => product.brandId));
+
+  return {
+    brands: brands.filter((item) => availableBrandIds.has(item.id)),
+    divisions: divisionOptions,
+    categories: categoryOptions,
+    subTypes: subTypeOptions,
+    sizes: sizeOptions,
+    colors: colorOptions,
+    priceRange: {
+      min: products.length ? Math.min(...products.map((product) => product.pricePkr)) : 0,
+      max: products.length ? Math.max(...products.map((product) => product.pricePkr)) : 0,
+    },
+  };
+}
+
 export async function listProducts(options: Record<string, any>) {
   const {
     brandId,
+    brand,
     topCategory,
     juniorCategory,
     gender,
+    division,
+    category,
+    subType,
     productType,
     subCategory,
     size,
     color,
+    colors,
     minPrice,
     maxPrice,
     sort = "latest",
@@ -314,30 +489,30 @@ export async function listProducts(options: Record<string, any>) {
 
   const resolvedTopCategory = typeof topCategory === "string" && topCategory ? topCategory : undefined;
   const resolvedJuniorCategory = typeof juniorCategory === "string" && juniorCategory ? juniorCategory : undefined;
-  const resolvedGender =
-    typeof gender === "string" && gender
-      ? gender
-      : resolvedTopCategory === "Juniors" ||
-          ["Toddler Boys", "Toddler Girls", "Junior Boys", "Junior Girls"].includes(resolvedTopCategory || "")
-        ? "Juniors"
-        : resolvedTopCategory;
-
-  const effectiveJuniorCategory =
-    resolvedJuniorCategory ||
-    (["Toddler Boys", "Toddler Girls", "Junior Boys", "Junior Girls"].includes(resolvedTopCategory || "")
-      ? resolvedTopCategory
-      : undefined);
+  const effectiveBrandIds = normalizeQueryValues(brandId ?? brand);
+  const effectiveGenderValues = Array.from(
+    new Set([
+      ...normalizeQueryValues(gender).map((value) => value.toLowerCase()),
+      ...mapTopCategoryToGenderValues(resolvedTopCategory, resolvedJuniorCategory),
+    ]),
+  ).filter((value) => ["men", "women", "boys", "girls"].includes(value));
+  const effectiveDivisionValues = normalizeQueryValues(division).map((value) => value.toLowerCase());
+  const effectiveCategoryValues = normalizeQueryValues(category).map((value) => value.toLowerCase());
+  const effectiveSubTypeValues = normalizeQueryValues(subType).map((value) => value.toLowerCase());
   const effectiveType = typeof productType === "string" && productType ? productType : undefined;
   const effectiveSubCategory = typeof subCategory === "string" && subCategory ? subCategory : undefined;
   const effectiveSize = typeof size === "string" && size ? size : undefined;
   const effectiveColor = typeof color === "string" && color ? color : undefined;
+  const effectiveColorValues = normalizeQueryValues(colors);
 
   const minPriceValue = typeof minPrice === "string" ? Number(minPrice) : minPrice;
   const maxPriceValue = typeof maxPrice === "string" ? Number(maxPrice) : maxPrice;
 
   const hasAnyFilters =
-    Boolean(resolvedGender) ||
-    Boolean(effectiveJuniorCategory) ||
+    Boolean(effectiveGenderValues.length) ||
+    Boolean(effectiveDivisionValues.length) ||
+    Boolean(effectiveCategoryValues.length) ||
+    Boolean(effectiveSubTypeValues.length) ||
     Boolean(effectiveType) ||
     Boolean(effectiveSubCategory) ||
     Boolean(effectiveSize) ||
@@ -357,10 +532,10 @@ export async function listProducts(options: Record<string, any>) {
 
   if (isMeilisearchProductSearchEnabled()) {
     const ids = await runMeilisearchProductSearch(effectiveQuery, {
-      brandId,
-      gender: resolvedGender,
+      brandId: effectiveBrandIds[0] || brandId,
+      gender: effectiveGenderValues[0],
       topCategory: resolvedTopCategory,
-      juniorCategory: effectiveJuniorCategory || undefined,
+      juniorCategory: resolvedJuniorCategory || undefined,
       productType: effectiveType,
       subCategory: effectiveSubCategory,
       size: effectiveSize,
@@ -409,40 +584,58 @@ export async function listProducts(options: Record<string, any>) {
   };
   const andConditions: any[] = [];
 
-  // Handle brand filter
-  if (brandId) {
-    where.brandId = brandId;
+  if (effectiveBrandIds.length === 1) {
+    where.brandId = effectiveBrandIds[0];
+  } else if (effectiveBrandIds.length > 1) {
+    where.brandId = { in: effectiveBrandIds };
   }
 
-  // Handle top category filter (case-insensitive). Build AND conditions to avoid
-  // clobbering the search OR later.
-  if (resolvedTopCategory || effectiveJuniorCategory) {
-    const expanded = expandCatalogTopCategory(resolvedTopCategory, effectiveJuniorCategory);
-    if (expanded.length === 1) {
-      andConditions.push({ topCategory: { equals: expanded[0], mode: "insensitive" } });
-    } else if (expanded.length > 1) {
-      andConditions.push({ OR: expanded.map((value) => ({ topCategory: { equals: value, mode: "insensitive" } })) });
-    }
+  if (effectiveGenderValues.length) {
+    andConditions.push({ gender: { in: effectiveGenderValues } });
   }
 
-  // Handle product type filter
+  if (effectiveDivisionValues.length === 1) {
+    andConditions.push({ division: { equals: effectiveDivisionValues[0], mode: "insensitive" } });
+  } else if (effectiveDivisionValues.length > 1) {
+    andConditions.push({ division: { in: effectiveDivisionValues } });
+  }
+
+  if (effectiveCategoryValues.length === 1) {
+    andConditions.push({ category: { equals: effectiveCategoryValues[0], mode: "insensitive" } });
+  } else if (effectiveCategoryValues.length > 1) {
+    andConditions.push({ category: { in: effectiveCategoryValues } });
+  }
+
+  if (effectiveSubTypeValues.length === 1) {
+    andConditions.push({ subType: { equals: effectiveSubTypeValues[0], mode: "insensitive" } });
+  } else if (effectiveSubTypeValues.length > 1) {
+    andConditions.push({ subType: { in: effectiveSubTypeValues } });
+  }
+
   if (effectiveType) {
     andConditions.push({ type: { equals: effectiveType, mode: "insensitive" } });
   }
 
-  // Handle subcategory filter
   if (effectiveSubCategory) {
     andConditions.push({ subCategory: { equals: effectiveSubCategory, mode: "insensitive" } });
   }
 
-  // Handle size filter - check if size is in the sizes array
   if (effectiveSize) {
-    // Prisma's `has` is exact-match. Assume sizes are stored with consistent casing.
     andConditions.push({ sizes: { has: effectiveSize } });
   }
 
   if (effectiveColor) {
     andConditions.push({ color: { contains: effectiveColor, mode: "insensitive" } });
+  }
+  if (effectiveColorValues.length) {
+    andConditions.push({
+      variants: {
+        some: {
+          deletedAt: null,
+          color: { in: effectiveColorValues },
+        },
+      },
+    });
   }
 
   if (Number.isFinite(minPriceValue)) {

@@ -17,6 +17,9 @@ export type ProductSearchDocument = {
   salePrice: number | null;
   discountPercentage: number | null;
   gender: string;
+  division?: string;
+  category?: string;
+  subType?: string | null;
   juniorsGroup?: string;
   color: string;
   productType: string;

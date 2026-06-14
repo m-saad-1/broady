@@ -20,3 +20,11 @@ export function maskOrderId(orderId: string): string {
 export function getOrderIdDisplay(orderId?: string): string {
   return orderId ? maskOrderId(orderId) : "N/A";
 }
+
+export function maskNotificationMessage(message: string, orderId?: string | null): string {
+  if (!orderId) return message;
+
+  const maskedOrderId = maskOrderId(orderId);
+  const escapedOrderId = orderId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return message.replace(new RegExp(`\\b${escapedOrderId}\\b`, "g"), maskedOrderId);
+}

@@ -1,20 +1,14 @@
 import type { SearchSuggestion } from "@/types/marketplace";
 import { correctSearchQuery } from "@/lib/search-fallback";
 
-export const SUBCATEGORY_BY_TYPE: Record<string, string[]> = {
-  Top: ["Shirts", "Polo Shirts", "T-Shirts", "Hoodies", "Jackets"],
-  Bottom: ["Jeans", "Pants", "Trousers", "Skirts"],
-  Footwear: ["Sneakers", "Trainers", "Shoes", "Pumps", "Sandals"],
-  Accessories: ["Caps", "Bags", "Belts", "Watches"],
-};
-
 const SUBCATEGORY_TOKEN_MAP: Record<string, string[]> = {
-  shirt: ["Shirts", "Polo Shirts", "T-Shirts"],
-  shirts: ["Shirts", "Polo Shirts", "T-Shirts"],
+  shirt: ["Shirts"],
+  shirts: ["Shirts"],
   tshirt: ["T-Shirts"],
   tshirts: ["T-Shirts"],
   tee: ["T-Shirts"],
-  polo: ["Polo Shirts"],
+  polo: ["Polo"],
+  polos: ["Polo"],
   hoodie: ["Hoodies"],
   hoodies: ["Hoodies"],
   jacket: ["Jackets"],
@@ -47,26 +41,11 @@ const SUBCATEGORY_TOKEN_MAP: Record<string, string[]> = {
   watches: ["Watches"],
 };
 
-const TYPE_TOKEN_MAP: Record<string, string> = {
-  top: "Top",
-  bottom: "Bottom",
-  footwear: "Footwear",
-  shoes: "Footwear",
-  shoe: "Footwear",
-  sneakers: "Footwear",
-  sneaker: "Footwear",
-  trainers: "Footwear",
-  trainer: "Footwear",
-  accessories: "Accessories",
-  accessory: "Accessories",
-};
-
 const SIZE_TOKENS = new Set(["xs", "s", "m", "l", "xl", "xxl", "xxxl"]);
 
 export type InferredCatalogFilters = {
   topCategory?: string;
   juniorCategory?: string;
-  productType?: string;
   subCategory?: string;
   size?: string;
 };
@@ -114,16 +93,11 @@ export function inferCatalogFiltersFromQuery(query: string): InferredCatalogFilt
     .filter(Boolean)
     .flat()[0];
 
-  const productType = subCategory
-    ? Object.entries(SUBCATEGORY_BY_TYPE).find(([, subs]) => subs.includes(subCategory))?.[0]
-    : tokens.map((token) => TYPE_TOKEN_MAP[token]).find(Boolean);
-
   const size = tokens.find((token) => SIZE_TOKENS.has(token))?.toUpperCase();
 
   return {
     topCategory,
     juniorCategory,
-    productType,
     subCategory,
     size,
   };
@@ -138,7 +112,6 @@ export function buildCatalogFiltersFromSuggestion(suggestion: SearchSuggestion) 
     q: suggestion.query,
     topCategory: resolvedTopCategory,
     juniorCategory: resolvedJunior,
-    productType: suggestion.productType,
     subCategory: suggestion.subCategory,
     size: suggestion.size,
   };

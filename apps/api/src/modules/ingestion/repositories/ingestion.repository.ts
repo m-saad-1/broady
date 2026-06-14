@@ -85,14 +85,14 @@ async function syncStructuredBlocks(productId: string, importJobId: string, prod
         sourceFormat: product.externalSource,
         sourceBrandName: typeof product.metadata?.raw === "object" ? String((product.metadata.raw as any)?.vendor || "") || undefined : undefined,
         rawProductData: product.metadata?.raw as any,
-        mappingStatus: "mapped",
+        mappingStatus: product.mappingStatus,
         lastSyncedAt: new Date(),
       },
       update: {
         importBatchId: importJobId,
         sourceFormat: product.externalSource,
         rawProductData: product.metadata?.raw as any,
-        mappingStatus: "mapped",
+        mappingStatus: product.mappingStatus,
         lastSyncedAt: new Date(),
       },
     }),
@@ -123,6 +123,13 @@ export async function upsertNormalizedProduct(brandId: string, importJobId: stri
           shortDescription: product.shortDescription,
           description: product.description,
           gender: product.gender,
+          division: product.division,
+          category: product.category,
+          subType: product.subType,
+          subTypeConfidence: product.subTypeConfidence,
+          mappingStatus: product.mappingStatus,
+          resolutionSource: product.resolutionSource,
+          pageContext: product.pageContext as any,
           color: product.color,
           type: product.type,
           fit: product.fit,
@@ -164,6 +171,13 @@ export async function upsertNormalizedProduct(brandId: string, importJobId: stri
           shortDescription: product.shortDescription,
           description: product.description,
           gender: product.gender,
+          division: product.division,
+          category: product.category,
+          subType: product.subType,
+          subTypeConfidence: product.subTypeConfidence,
+          mappingStatus: product.mappingStatus,
+          resolutionSource: product.resolutionSource,
+          pageContext: product.pageContext as any,
           color: product.color,
           type: product.type,
           fit: product.fit,
@@ -291,6 +305,19 @@ export async function upsertNormalizedProduct(brandId: string, importJobId: stri
 }
 
 export async function setApprovalState(productId: string, reviewerId: string, status: ProductApprovalState, rejectionReason?: string) {
+  const current = await prisma.product.findUnique({
+    where: { id: productId },
+    select: { mappingStatus: true },
+  });
+
+  if (!current) {
+    throw new Error("Product not found");
+  }
+
+  if (status === "APPROVED" && current.mappingStatus === "unresolved") {
+    throw new Error("Unresolved taxonomy must be fixed before approval");
+  }
+
   await prisma.productApproval.create({
     data: {
       productId,

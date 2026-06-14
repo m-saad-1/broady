@@ -4,6 +4,7 @@ import { prisma } from "../../config/prisma.js";
 import {
   createProduct,
   deleteProduct,
+  getProductFilterOptions,
   getProductById,
   getProductBySlug,
   listProducts,
@@ -141,6 +142,15 @@ router.get("/", async (req, res, next) => {
   try {
     const products = await listProducts(req.query);
     res.json({ data: products });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/filter-options", async (req, res, next) => {
+  try {
+    const options = await getProductFilterOptions(req.query);
+    res.json({ data: options });
   } catch (error) {
     next(error);
   }

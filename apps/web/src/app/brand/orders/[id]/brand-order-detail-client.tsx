@@ -4,13 +4,20 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { ProductImage } from "@/components/ui/product-image";
-import { cancelBrandOrder, getBrandDashboardOrder, updateBrandOrderStatus } from "@/lib/api";
+import { cancelBrandOrder, getBrandDashboardOrder, getBrandReturnRequests, updateBrandOrderStatus, type BrandCancelReasonCode } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/media-url";
 import { getCancelledOrderItemIds } from "@/lib/order-cancellation";
 import { getOrderStatusLabel, getOrderStatusOptions, getOrderStatusTone } from "@/lib/order-status";
+import {
+  formatOperatorReturnStatus,
+  formatReturnReasonLabel,
+  getDisplayReturnStatus,
+  getReturnRequestItems,
+  getReturnRequestType,
+} from "@/lib/return-workflow";
 import { formatPkr } from "@/lib/utils";
 import { useToastStore } from "@/stores/toast-store";
-import type { BrandDashboardOrder, OrderStatus } from "@/types/marketplace";
+import type { BrandDashboardOrder, OrderStatus, ReturnRequestRecord } from "@/types/marketplace";
 
 type BrandOrderDetailClientProps = {
   orderId: string;
@@ -22,6 +29,17 @@ const DELIVERY_FAILURE_REASONS = [
   { code: "PHONE_UNREACHABLE", label: "Phone unreachable" },
   { code: "REFUSED_DELIVERY", label: "Refused delivery" },
   { code: "AREA_NOT_SERVICEABLE", label: "Area not serviceable" },
+  { code: "COURIER_ISSUE", label: "Courier issue" },
+  { code: "OTHER", label: "Other" },
+];
+
+const BRAND_CANCEL_REASON_OPTIONS: Array<{ code: BrandCancelReasonCode; label: string }> = [
+  { code: "OUT_OF_STOCK", label: "Out of stock" },
+  { code: "ITEM_DAMAGED", label: "Item damaged" },
+  { code: "WRONG_PRICE_LISTED", label: "Wrong price listed" },
+  { code: "CANNOT_FULFILL_ORDER", label: "Cannot fulfill order" },
+  { code: "ADDRESS_NOT_SERVICEABLE", label: "Address not serviceable" },
+  { code: "DUPLICATE_ORDER_ISSUE", label: "Duplicate order issue" },
   { code: "OTHER", label: "Other" },
 ];
 
@@ -49,7 +67,8 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
   const [saving, setSaving] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState(false);
   const [openCancelModal, setOpenCancelModal] = useState(false);
-  const [cancelReasonCode, setCancelReasonCode] = useState<"OUT_OF_STOCK" | "ITEM_DAMAGED">("OUT_OF_STOCK");
+  const [returnRequests, setReturnRequests] = useState<ReturnRequestRecord[]>([]);
+  const [cancelReasonCode, setCancelReasonCode] = useState<BrandCancelReasonCode>("OUT_OF_STOCK");
   const [cancelNote, setCancelNote] = useState("");
   const [selectedCancelItemIds, setSelectedCancelItemIds] = useState<string[]>([]);
   const [draft, setDraft] = useState<{
@@ -91,6 +110,24 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
   useEffect(() => {
     void loadOrder();
   }, [loadOrder]);
+
+  useEffect(() => {
+    let mounted = true;
+    void getBrandReturnRequests()
+      .then((items) => {
+        if (mounted) {
+          setReturnRequests(items);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setReturnRequests([]);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const applyUpdate = async () => {
     if (!order || !draft) return;
@@ -142,12 +179,17 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
     return `Order ${order.id} will be updated to ${draft.status}${draft.trackingId ? ` with tracking ${draft.trackingId}` : ""}.`;
   }, [draft, order]);
 
-  const canCancelBeforeShipment = order ? ["PENDING", "CONFIRMED", "PROCESSING"].includes(order.status) : false;
+  const canCancelBeforeShipment = order ? ["PENDING", "CONFIRMED", "PROCESSING", "PACKED", "READY_FOR_PICKUP"].includes(order.status) : false;
+  const cancellationRequiresReview = order ? ["PACKED", "READY_FOR_PICKUP"].includes(order.status) : false;
 
   const applyCancel = async () => {
     if (!order) return;
     if (!selectedCancelItemIds.length) {
       pushToast("Select at least one item to cancel.", "error");
+      return;
+    }
+    if (cancelReasonCode === "OTHER" && !cancelNote.trim()) {
+      pushToast("A note is required when choosing Other.", "error");
       return;
     }
     setSaving(true);
@@ -157,7 +199,7 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
         note: cancelNote.trim() || undefined,
         orderItemIds: selectedCancelItemIds,
       });
-      pushToast("Order canceled successfully.", "success");
+      pushToast(cancellationRequiresReview ? "Cancellation request submitted for Broady review." : "Order canceled successfully.", "success");
       setCancelNote("");
       setOpenCancelModal(false);
       await loadOrder();
@@ -188,6 +230,7 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
   const customerName = order.user?.fullName || "Customer";
   const customerEmail = order.user?.email || "Email unavailable";
   const cancelledItemIds = getCancelledOrderItemIds(order.statusLogs);
+  const matchingReturnRequests = returnRequests.filter((request) => request.orderId === order.id);
 
   return (
     <div className="space-y-8">
@@ -225,8 +268,62 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
         </div>
       </section>
 
+      {matchingReturnRequests.length ? (
+        <section className="space-y-3 border border-zinc-300 bg-zinc-50 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Return / Exchange Requests</p>
+              <p className="text-sm text-zinc-700">Open any request below to continue its dedicated workflow.</p>
+            </div>
+            <Link href="/brand/operations?tab=returns" className="inline-flex h-9 items-center border border-zinc-300 px-3 text-[10px] font-semibold uppercase tracking-[0.12em]">
+              Open Return Queue
+            </Link>
+          </div>
+          <div className="space-y-3">
+            {matchingReturnRequests.map((request) => {
+              const requestType = getReturnRequestType(request);
+              const displayStatus = getDisplayReturnStatus(request);
+              const requestItems = getReturnRequestItems(request);
+              return (
+                <article key={request.id} className="flex flex-wrap items-start justify-between gap-3 border border-zinc-200 bg-white p-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold">{request.id}</p>
+                    <p className="text-sm text-zinc-700">{formatReturnReasonLabel(request.reasonCode, request.reasonText)}</p>
+                    <p className="text-xs text-zinc-500">{requestItems.map((item) => item.product?.name || "Product").join(", ")}</p>
+                    <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">{formatOperatorReturnStatus(displayStatus, requestType)}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <span className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                      requestType === "EXCHANGE"
+                        ? "border-amber-300 bg-amber-100 text-amber-800"
+                        : "border-sky-300 bg-sky-100 text-sky-800"
+                    }`}>
+                      {requestType}
+                    </span>
+                    <Link href={`/brand/operations/returns/${request.id}`} className="inline-flex h-9 items-center border border-black bg-black px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
+                      Open Request Detail
+                    </Link>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+
       <section className="space-y-3 border border-zinc-300 p-5">
         <h2 className="font-heading text-3xl uppercase">Update Order</h2>
+        <div className="flex flex-wrap gap-2">
+          <Link href={`/brand/orders/${order.id}/status`} className="inline-flex h-9 items-center border border-zinc-300 px-3 text-[10px] font-semibold uppercase tracking-[0.12em]">
+            Shipment Status Screen
+          </Link>
+          <Link href={`/brand/orders/${order.id}/cancel`} className="inline-flex h-9 items-center border border-zinc-300 px-3 text-[10px] font-semibold uppercase tracking-[0.12em]">
+            Cancel Screen
+          </Link>
+          <Link href={`/brand/orders/${order.id}/delivery-failure`} className="inline-flex h-9 items-center border border-zinc-300 px-3 text-[10px] font-semibold uppercase tracking-[0.12em]">
+            Delivery Failure Screen
+          </Link>
+        </div>
         <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
           <select
             className={`h-10 border px-3 text-sm ${
@@ -277,7 +374,7 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
                 disabled={saving}
                 className="h-10 border border-red-300 bg-red-50 px-4 text-xs font-semibold uppercase tracking-[0.12em] text-red-700 disabled:opacity-50"
               >
-                Cancel Order
+                {cancellationRequiresReview ? "Request Cancellation" : "Cancel Order"}
               </button>
             ) : null}
             <button
@@ -364,6 +461,12 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
         <div className="space-y-3">
           {order.items.map((item) => {
             const isCancelled = order.status === "CANCELED" || cancelledItemIds.has(item.id);
+            const itemReturnRequest = matchingReturnRequests.find((request) =>
+              getReturnRequestItems(request).some((requestItem) => requestItem.id === item.id),
+            );
+            const itemReturnLabel = itemReturnRequest
+              ? formatOperatorReturnStatus(getDisplayReturnStatus(itemReturnRequest), getReturnRequestType(itemReturnRequest))
+              : null;
             return (
             <article key={item.id} className={`grid gap-4 border-b py-3 md:grid-cols-[80px_1fr_auto] md:items-center ${isCancelled ? "border-red-100 bg-red-50 px-2" : "border-zinc-200"}`}>
               <div className="relative h-20 w-20 overflow-hidden border border-zinc-200 bg-zinc-50">
@@ -384,6 +487,7 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
                   <p className="font-semibold">Color: {item.selectedColor || "Not specified"}</p>
                   <p className="font-semibold">Quantity: {item.quantity}</p>
                   <p className="font-semibold">Price: {formatPkr(item.unitPricePkr)}</p>
+                  {itemReturnLabel ? <p className="font-semibold uppercase tracking-[0.12em] text-emerald-700">{itemReturnLabel}</p> : null}
                   {isCancelled ? <p className="font-semibold uppercase tracking-[0.12em] text-red-700">Cancelled</p> : null}
                 </div>
               </div>
@@ -392,9 +496,19 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
                   Cancelled
                 </span>
               ) : (
-                <Link href={`/product/${item.product.slug}`} className="inline-flex h-9 items-center border border-zinc-300 px-3 text-xs font-semibold uppercase tracking-[0.12em] leading-9 text-center">
-                  Product
-                </Link>
+                <div className="flex flex-wrap gap-2">
+                  {itemReturnRequest ? (
+                    <Link href={`/brand/operations/returns/${itemReturnRequest.id}`} className="inline-flex h-9 items-center border border-zinc-300 px-3 text-xs font-semibold uppercase tracking-[0.12em] leading-9 text-center">
+                      Request
+                    </Link>
+                  ) : null}
+                  <Link href={`/product/${item.product.slug}`} className="inline-flex h-9 items-center border border-zinc-300 px-3 text-xs font-semibold uppercase tracking-[0.12em] leading-9 text-center">
+                    Product
+                  </Link>
+                  <Link href={`/account/orders?orderId=${encodeURIComponent(order.id)}`} className="inline-flex h-9 items-center border border-black bg-black px-3 text-xs font-semibold uppercase tracking-[0.12em] text-white">
+                    Tracking
+                  </Link>
+                </div>
               )}
             </article>
             );
@@ -431,8 +545,12 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
         <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/40 p-4" onClick={() => setOpenCancelModal(false)}>
           <div className="w-full max-w-xl space-y-5 border border-zinc-300 bg-white p-6 shadow-xl" onClick={(event) => event.stopPropagation()}>
             <div className="space-y-1">
-              <h3 className="font-heading text-2xl uppercase">Cancel Order</h3>
-              <p className="text-sm text-zinc-600">Select items and cancellation reason. This is only allowed before shipment.</p>
+              <h3 className="font-heading text-2xl uppercase">{cancellationRequiresReview ? "Request Cancellation" : "Cancel Order"}</h3>
+              <p className="text-sm text-zinc-600">
+                {cancellationRequiresReview
+                  ? "Select items and provide operational context. Broady will review packed or ready-for-pickup cancellations."
+                  : "Select items and cancellation reason. This is only allowed before shipment."}
+              </p>
             </div>
 
             <div className="space-y-3">
@@ -457,10 +575,13 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
               <select
                 className="h-10 border border-zinc-300 bg-white px-3 text-sm"
                 value={cancelReasonCode}
-                onChange={(event) => setCancelReasonCode(event.target.value as "OUT_OF_STOCK" | "ITEM_DAMAGED")}
+                onChange={(event) => setCancelReasonCode(event.target.value as BrandCancelReasonCode)}
               >
-                <option value="OUT_OF_STOCK">Out of stock</option>
-                <option value="ITEM_DAMAGED">Item damaged</option>
+                {BRAND_CANCEL_REASON_OPTIONS.map((reason) => (
+                  <option key={reason.code} value={reason.code}>
+                    {reason.label}
+                  </option>
+                ))}
               </select>
               <input
                 className="h-10 border border-zinc-300 bg-white px-3 text-sm"
@@ -480,7 +601,7 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
                 disabled={saving || selectedCancelItemIds.length === 0}
                 onClick={() => void applyCancel()}
               >
-                {saving ? "Canceling..." : "Confirm Cancel"}
+                {saving ? "Submitting..." : cancellationRequiresReview ? "Submit Request" : "Confirm Cancel"}
               </button>
             </div>
           </div>

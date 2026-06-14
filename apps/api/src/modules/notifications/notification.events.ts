@@ -6,9 +6,14 @@ export const notificationEventNames = {
   orderShipped: "suborder_shipped",
   orderDeliveryFailed: "suborder_delivery_failed",
   orderRetryScheduled: "suborder_retry_scheduled",
+  orderShipmentReturned: "suborder_shipment_returned",
   orderReturned: "suborder_returned",
   orderDelivered: "suborder_delivered",
   orderCancelled: "suborder_cancelled",
+  cancellationRequestCreated: "cancellation_request_created",
+  cancellationRequestApproved: "cancellation_request_approved",
+  cancellationRequestRejected: "cancellation_request_rejected",
+  cancellationRequestExpired: "cancellation_request_expired",
   paymentInitiated: "payment_initiated",
   paymentSuccess: "payment_success",
   paymentFailed: "payment_failed",
@@ -51,9 +56,14 @@ export type NotificationEvent =
         | typeof notificationEventNames.orderShipped
         | typeof notificationEventNames.orderDeliveryFailed
         | typeof notificationEventNames.orderRetryScheduled
+        | typeof notificationEventNames.orderShipmentReturned
         | typeof notificationEventNames.orderReturned
         | typeof notificationEventNames.orderDelivered
         | typeof notificationEventNames.orderCancelled
+        | typeof notificationEventNames.cancellationRequestCreated
+        | typeof notificationEventNames.cancellationRequestApproved
+        | typeof notificationEventNames.cancellationRequestRejected
+        | typeof notificationEventNames.cancellationRequestExpired
         | typeof notificationEventNames.orderAddressCorrectionRequired
         | typeof notificationEventNames.orderAddressUpdated;
       orderId: string;

@@ -77,9 +77,16 @@ function resolveProductImageSrc(imageUrl?: string | null) {
   return resolveMediaUrl(imageUrl);
 }
 
-const SHIPMENT_TIMELINE: Array<{ key: "CONFIRMED" | "PROCESSING" | "SHIPPED" | "OUT_FOR_DELIVERY" | "DELIVERED"; label: string }> = [
+function getDeliveredAt(statusLogs: UserOrder["subOrders"][number]["statusLogs"]) {
+  const deliveredLog = [...statusLogs].reverse().find((log) => log.status === "DELIVERED");
+  return deliveredLog ? new Date(deliveredLog.createdAt) : null;
+}
+
+const SHIPMENT_TIMELINE: Array<{ key: "CONFIRMED" | "PROCESSING" | "PACKED" | "READY_FOR_PICKUP" | "SHIPPED" | "OUT_FOR_DELIVERY" | "DELIVERED"; label: string }> = [
   { key: "CONFIRMED", label: "Confirmed" },
   { key: "PROCESSING", label: "Processing" },
+  { key: "PACKED", label: "Packed" },
+  { key: "READY_FOR_PICKUP", label: "Ready for Pickup" },
   { key: "SHIPPED", label: "Shipped" },
   { key: "OUT_FOR_DELIVERY", label: "Out for Delivery" },
   { key: "DELIVERED", label: "Delivered" },
@@ -108,9 +115,23 @@ export default async function VendorGroupDetailPage({ params }: VendorGroupDetai
     return brandName ? message.includes(brandName) || title.includes(brandName) : true;
   });
   const canWriteReview = group.status === "DELIVERED";
-  const canCancelGroup = ["PENDING", "CONFIRMED"].includes(group.status);
+  const canCancelGroup = ["PENDING", "CONFIRMED", "PROCESSING", "PACKED", "READY_FOR_PICKUP"].includes(group.status);
+  const cancellationRequiresReview = ["PACKED", "READY_FOR_PICKUP"].includes(group.status);
+  const deliveredAt = getDeliveredAt(group.statusLogs);
+  const minReturnWindowDays = group.items
+    .map((item) => item.product.shipping?.returnWindowDays)
+    .filter((value): value is number => typeof value === "number" && value > 0)
+    .sort((a, b) => a - b)[0] || 7;
+  const returnWindowClosed = Boolean(deliveredAt && deliveredAt.getTime() + minReturnWindowDays * 24 * 60 * 60 * 1000 < Date.now());
+  const canReturnGroup = group.status === "DELIVERED" && !returnWindowClosed && group.items.every((item) => item.product.shipping?.returnAvailable !== false);
   const canReorderGroup = ["DELIVERED", "RETURNED", "CANCELED"].includes(group.status);
   const canAddressCorrection = group.status === "ADDRESS_CORRECTION_REQUIRED";
+  const canTrackRefund = ["CANCELED", "RETURNED", "SHIPMENT_RETURNED"].includes(group.status) || Boolean(group.refundProcessedAt);
+  const canRetryPayment =
+    order.paymentMethod !== "COD" &&
+    order.paymentStatus !== "COMPLETED" &&
+    order.paymentRetryEligible === true &&
+    group.status === "PENDING";
   const cancelledItemIds = getCancelledOrderItemIds(group.statusLogs);
   const timelineStatuses = new Set(group.statusLogs.map((log) => log.status));
   const trackingUrl = group.trackingId && group.courierName ? getTrackingUrl(group.courierName, group.trackingId) : null;
@@ -167,11 +188,44 @@ export default async function VendorGroupDetailPage({ params }: VendorGroupDetai
             orderId={order.id}
             subOrderId={group.id}
             brandName={group.brand?.name || "Brand"}
+            items={group.items.map((item) => ({
+              id: item.id,
+              name: item.product.name,
+              quantity: item.quantity,
+              selectedColor: item.selectedColor || undefined,
+              selectedSize: item.selectedSize || undefined,
+              availableColors: item.product.colors || (item.product.color ? [item.product.color] : []),
+              availableSizes: item.product.sizes || [],
+            }))}
             canCancel={canCancelGroup}
+            cancellationRequiresReview={cancellationRequiresReview}
+            canReturn={canReturnGroup}
             canReorder={canReorderGroup}
             canAddressCorrection={canAddressCorrection}
+            canRetryPayment={canRetryPayment}
             currentDeliveryAddress={order.deliveryAddress}
           />
+          {!canCancelGroup && ["SHIPPED", "OUT_FOR_DELIVERY", "DELIVERY_FAILED", "ADDRESS_CORRECTION_REQUIRED", "READY_FOR_REDELIVERY", "SHIPMENT_RETURNED"].includes(group.status) ? (
+            <button type="button" disabled className="mt-3 inline-flex h-10 items-center justify-center border border-zinc-300 px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
+              Cancellation Unavailable
+            </button>
+          ) : null}
+          {group.status === "DELIVERED" && returnWindowClosed ? (
+            <button type="button" disabled className="mt-3 inline-flex h-10 items-center justify-center border border-zinc-300 px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
+              Return window closed
+            </button>
+          ) : null}
+          {!canCancelGroup && !canReorderGroup && !canAddressCorrection && ["SHIPPED", "OUT_FOR_DELIVERY"].includes(group.status) ? (
+            <p className="text-sm text-zinc-600">This item has already been shipped. You can request a return after delivery if eligible.</p>
+          ) : null}
+          {canTrackRefund ? (
+            <Link
+              href={`/account/orders/${order.id}/groups/${group.id}/refund`}
+              className="mt-3 inline-flex h-10 items-center justify-center border border-zinc-300 px-3 text-[11px] font-semibold uppercase tracking-[0.12em] hover:border-black hover:text-black"
+            >
+              Refund Tracking
+            </Link>
+          ) : null}
         </div>
       </section>
 

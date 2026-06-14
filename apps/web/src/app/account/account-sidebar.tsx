@@ -13,6 +13,7 @@ const NAV_LINKS = [
   { href: "/account/wishlist", label: "Wishlist" },
   { href: "/account/notifications", label: "Notifications" },
   { href: "/account/addresses", label: "Addresses" },
+  { href: "/account/wallet", label: "Wallet" },
   { href: "/account/payments", label: "Payment Methods" },
   { href: "/account/profile", label: "Profile Information" },
   { href: "/account/security", label: "Security" },

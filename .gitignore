@@ -34,9 +34,14 @@ Broady_credentials.csv
 build-log.txt
 build-result.txt
 women_artisanal_products_20.json
+scratch.py
 Academic_Task/
 apps/web/public/fallback-*.js
 tools/redis/
+
+# Python local environments and caches
+Data_Scrapping/.venv/
+**/__pycache__/
 
 # Git worktrees
 .worktrees/

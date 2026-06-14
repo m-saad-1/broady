@@ -1,434 +1,202 @@
-# Broady 🛍️
+# Broady
 
-A modern, scalable multi-brand fashion marketplace platform built with a modular monorepo architecture.
+Broady is a modular multi-brand fashion marketplace built as an npm-workspace monorepo. It combines a Next.js storefront and admin interface with an Express, Prisma, and PostgreSQL API, plus asynchronous worker flows for notifications and ingestion.
 
-**Broady** combines a Next.js customer/admin storefront with an Express/Prisma API and an asynchronous notification worker to support event-driven commerce operations at scale.
+The repository is organized for production-style development: domain modules stay isolated, shared contracts live in one package, infrastructure concerns are explicit, and operational docs are kept close to the code.
 
----
+## What This Repo Contains
 
-## 📋 Table of Contents
+- `apps/web`: Next.js App Router customer, account, brand, and admin surfaces.
+- `apps/api`: Express API, Prisma schema/migrations, domain modules, auth, search, ingestion, orders, and notifications.
+- `packages/shared`: cross-app contracts, enums, and DTOs used by both web and API.
+- `docs`: architecture notes, runbooks, feature guides, issue-tracking notes, and repository standards.
 
-- [Problem Statement](#problem-statement)
-- [Architecture Overview](#architecture-overview)
-- [Tech Stack](#tech-stack)
-- [Repository Structure](#repository-structure)
-- [Quick Start](#quick-start)
-- [Development](#development)
-- [API Surface](#api-surface)
-- [Worker Modes](#worker-modes)
-- [Database & Prisma](#database--prisma)
-- [Documentation](#documentation)
-- [Contribution](#contribution)
-- [License](#license)
+Broady follows a private-core strategy. Production business logic, payment internals, split-order orchestration, vendor workflows, and sensitive architecture belong in the private codebase. Any public showcase should use mock APIs, dummy data, and demo-safe flows.
 
----
+## Architecture Snapshot
 
-## 🎯 Problem Statement
+The runtime is split into clear concerns:
 
-Most marketplace implementations become hard to maintain as they scale because business logic, infrastructure code, and product features are coupled together. 
+- Web UI calls the API through client helpers in `apps/web/src/lib`.
+- API routes validate inputs, call services, persist through Prisma, and return stable JSON responses.
+- Domain events enqueue notification work instead of sending messages directly from route handlers.
+- Worker logic resolves recipients, templates, channels, retries, and delivery outcomes.
+- Orders use a parent `Order` plus brand-scoped `SubOrder` model so checkout stays unified while fulfillment is brand-specific.
 
-**Broady** is structured to keep domains isolated with clear separation of concerns:
-- Domain modules encapsulate business logic and data access
-- Infrastructure (auth, middleware, error handling) is decoupled from business rules
-- The notification worker is independent and resilient
-- Shared types live in a dedicated package for contract consistency
+API modules should keep this shape for non-trivial domains:
 
-This architecture enables teams to:
-- Add new features without affecting existing domains
-- Scale specific services independently
-- Write focused, testable code
-- Onboard new developers faster
-
----
-
-## 🏗️ Architecture Overview
-
-Broady follows a **module-oriented monorepo architecture**:
-
-### Workspace Structure
-```
-broady/
-├── apps/
-│   ├── api/              # Express API with domain modules
-│   └── web/              # Next.js customer & admin interface
-├── packages/
-│   └── shared/           # Shared types and contracts
-└── docs/                 # Architecture & operational guides
+```text
+src/modules/<feature>/
+  <feature>.routes.ts
+  <feature>.controller.ts
+  <feature>.service.ts
+  <feature>.repository.ts
+  <feature>.validation.ts
+  <feature>.types.ts
 ```
 
-### Runtime Processes
-The system splits into three independent concerns:
+Routes wire endpoints and middleware. Controllers map requests and responses. Services own business rules. Repositories handle complex data access when needed.
 
-1. **HTTP API Process** (`apps/api/src/server.ts`)
-   - Handles all business logic endpoints
-   - Manages authentication and authorization
-   - Exposes domain APIs and admin endpoints
+## Tech Stack
 
-2. **Notification Worker Process** (`apps/api/src/notification-worker.ts`)
-   - Processes event-driven notifications asynchronously
-   - Can run embedded (in-process) or standalone
-   - Supports Redis, PostgreSQL, or in-memory queue adapters
+| Layer | Stack |
+| --- | --- |
+| Web | Next.js App Router, React, TypeScript, Tailwind CSS |
+| API | Node.js, Express, TypeScript, Zod |
+| Data | PostgreSQL, Prisma |
+| Search | Meilisearch with API fallback search |
+| Queue | Redis/BullMQ with PostgreSQL or memory fallback for notifications |
+| Auth | JWT, cookie token, Bearer token, Prisma-backed sessions, Google OAuth |
+| Monorepo | npm workspaces |
 
-3. **Web Process** (`apps/web`)
-   - Customer storefront (product browsing, checkout)
-   - Admin dashboard (inventory, orders, brand management)
-   - Real-time order status and notifications
+## Quick Start
 
----
-
-## 🛠️ Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| **Frontend** | Next.js App Router, React, Tailwind CSS, Zustand, TanStack Query |
-| **Backend** | Node.js 20+, Express, TypeScript |
-| **Database** | PostgreSQL |
-| **ORM** | Prisma |
-| **Queueing** | Redis + BullMQ (with PostgreSQL/in-memory fallbacks) |
-| **Authentication** | JWT + Session validation + Google OAuth |
-| **Monorepo** | npm workspaces |
-
----
-
-## 📁 Repository Structure
-
-```
-broady/
-├── apps/
-│   ├── api/
-│   │   ├── prisma/                 # Schema and migrations
-│   │   ├── src/
-│   │   │   ├── config/             # Environment and config
-│   │   │   ├── middleware/         # Auth, error handling, logging
-│   │   │   ├── modules/            # Domain business logic
-│   │   │   ├── routes/             # HTTP route definitions
-│   │   │   ├── app.ts              # Express app setup
-│   │   │   ├── server.ts           # HTTP server entry point
-│   │   │   └── notification-worker.ts  # Worker entry point
-│   │   ├── .env.example
-│   │   └── package.json
-│   │
-│   └── web/
-│       ├── src/
-│       │   ├── app/                # Next.js App Router pages
-│       │   ├── components/         # React components
-│       │   ├── lib/                # Utilities and hooks
-│       │   ├── providers/          # Context providers
-│       │   ├── stores/             # Zustand state management
-│       │   └── types/              # Local type definitions
-│       ├── .env.example
-│       └── package.json
-│
-├── packages/
-│   └── shared/
-│       ├── src/
-│       │   └── types/              # Shared contracts and DTOs
-│       └── package.json
-│
-├── docs/
-│   ├── README.md                   # Documentation map
-│   ├── Github_push_strategy.md     # Contribution standards
-│   ├── Order_flow.md               # Order and fulfillment model
-│   └── notification_system.md      # Event-driven architecture
-│
-├── .env.example
-├── .gitignore
-├── package.json
-├── tsconfig.json
-└── README.md (this file)
-```
-
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- **Node.js** 20.x or higher
-- **npm** 10.x or higher
-- **PostgreSQL** (local service)
-- **Redis** (local service, or use PostgreSQL fallback)
-
-> [!IMPORTANT]
-> **Docker is NOT available on this machine.** All infrastructure must run as local services.
-
-### 1. Clone & Install
+Prerequisites: Node.js 20+, npm 10+, PostgreSQL on `localhost:5432`, and Redis or `NOTIFICATION_QUEUE_ADAPTER=postgres`. Docker is not installed on the current development host, so run infrastructure as local services.
 
 ```bash
 git clone https://github.com/m-saad-1/broady.git
 cd broady
 npm install
-```
-
-### 2. Configure Environment
-
-Copy the environment template and adjust values:
-
-```bash
 cp .env.example .env
-```
-
-For API-specific overrides, also review:
-```bash
-cp apps/api/.env.example apps/api/.env
-```
-
-### 3. Start Local Infrastructure
-
-Ensure PostgreSQL and Redis are running, then:
-
-```bash
-npm run db:up
-```
-
-This initializes the database and applies pending migrations.
-
-### 4. Run Applications
-
-**All processes (recommended for development):**
-```bash
+npm run prisma:generate -w @broady/api
+npm run prisma:migrate -w @broady/api
 npm run dev:all
 ```
 
-**Alternative commands:**
-- `npm run dev` – Web + API only
-- `npm run dev:web` – Web app only
-- `npm run dev:api` – API only
-- `npm run dev:worker` – Worker in watch mode
-
-### 5. Verify Setup
-
-- **Web app:** [http://localhost:3000](http://localhost:3000)
-- **API health:** `curl http://localhost:4000/health`
-- **Worker health:** Check logs for "Worker ready"
-
----
-
-## 💻 Development
-
-### Build & Lint
+Open the web app at `http://localhost:3000` and verify the API/database with:
 
 ```bash
-# Lint all workspaces
-npm run lint
-
-# Lint specific workspace
-npm run lint -w @broady/web
-npm run lint -w @broady/api
-
-# Build all workspaces
-npm run build
-
-# Build specific workspace
-npm run build -w @broady/web
-npm run build -w @broady/api
+curl http://localhost:4000/health
 ```
 
-### Database & Migrations
-
-From the `apps/api` workspace:
-
-```bash
-# Generate Prisma client
-npm run prisma:generate -w @broady/api
-
-# Create and apply migrations
-npm run prisma:migrate -w @broady/api
-
-# Seed database with sample data
-npm run prisma:seed -w @broady/api
-```
-
-> [!NOTE]
-> The API automatically runs `prisma migrate deploy` on startup before opening the HTTP port. New migrations are applied automatically.
-
-### Testing Status
-
-Currently, validation is done through:
-- **Linting** – ESLint and TypeScript strict mode
-- **Build checks** – Full workspace compilation
-- **Smoke tests** – Focused integration scripts
-
-A formal test suite is on the roadmap.
-
----
-
-## 📡 API Surface
-
-### Authentication
-```
-POST   /api/auth/register          # Register new user
-POST   /api/auth/login             # User login
-POST   /api/auth/google            # Google OAuth verification
-```
-
-### Catalog
-```
-GET    /api/brands                 # List brands
-GET    /api/products               # List products with filters
-GET    /api/products/:id           # Product details
-```
-
-### Orders
-```
-POST   /api/orders                 # Create order
-GET    /api/orders/:id             # Order details
-GET    /api/orders                 # List user orders
-```
-
-### User Features
-```
-GET    /api/users/notifications    # Fetch user notifications
-```
-
-### Admin Panel
-```
-GET    /api/admin/summary          # Dashboard summary stats
-GET    /api/admin/notifications/worker        # Worker status
-GET    /api/admin/notifications/dead-letters  # Failed jobs
-POST   /api/admin/notifications/dead-letters/:jobId/requeue  # Retry job
-```
-
-For complete API documentation, see `docs/API.md` (if available).
-
----
-
-## ⚙️ Worker Modes
-
-The notification worker supports multiple deployment patterns:
-
-### Embedded Mode (Default)
-Worker runs in the same process as the API:
-```bash
-NOTIFICATION_WORKER_EMBEDDED=true npm run dev:api
-```
-
-### Standalone Mode
-Worker runs as a separate process:
-```bash
-npm run start:worker -w @broady/api
-```
-
-### Configuration
+If Redis is unavailable, set this in `.env` before starting:
 
 ```env
-# Enable/disable embedded worker
-NOTIFICATION_WORKER_EMBEDDED=true|false
-
-# Queue adapter: redis, postgres, or memory
-NOTIFICATION_QUEUE_ADAPTER=redis
-
-# Health check port (0 = disabled)
-NOTIFICATION_WORKER_HEALTH_PORT=4001
+NOTIFICATION_QUEUE_ADAPTER=postgres
 ```
 
----
+## Development Commands
 
-## 📦 Database & Prisma
+Run commands from the repository root unless noted.
 
-### Schema & Migrations
+| Task | Command |
+| --- | --- |
+| Web + API | `npm run dev` |
+| Web + API alias | `npm run dev:all` |
+| Web only | `npm run dev:web` |
+| API only | `npm run dev:api` |
+| Lint all workspaces | `npm run lint` |
+| Build all workspaces | `npm run build` |
+| Lint web | `npm run lint -w @broady/web` |
+| Lint API | `npm run lint -w @broady/api` |
+| Build web | `npm run build -w @broady/web` |
+| Build API | `npm run build -w @broady/api` |
+| Generate Prisma client | `npm run prisma:generate -w @broady/api` |
+| Run Prisma migrations | `npm run prisma:migrate -w @broady/api` |
+| Seed API database | `npm run prisma:seed -w @broady/api` |
 
-The Prisma schema is located at `apps/api/prisma/schema.prisma`.
+There is currently no project-defined full test suite. Use lint, build, targeted smoke checks, and manual workflow verification for validation evidence.
 
-Key models:
-- **User** – Authentication and profile
-- **Brand** – Marketplace brands
-- **Product** – Product catalog
-- **Order** – Customer orders (can split into SubOrders)
-- **SubOrder** – Fulfillment units per brand
+## Environment And Services
 
-### Common Tasks
+Keep real secrets out of Git. Copy templates, then fill local values in ignored `.env` files.
+
+- Root template: `.env.example`
+- API template: `apps/api/.env.example`
+- Do not commit `.env`, API keys, SMTP credentials, payment secrets, Firebase private keys, or Meilisearch admin keys.
+- Update `.env.example` whenever a required config value is added.
+
+The API defaults to `PORT=4000`. If startup migration deploy hangs or local migration state is intentionally managed separately, set:
+
+```env
+PRISMA_MIGRATE_ON_BOOT=false
+```
+
+After API, database, error-handling, or configuration changes, verify:
 
 ```bash
-# Create a new migration
-npx prisma migrate dev --name add_field_name
-
-# View database in Prisma Studio
-npx prisma studio
-
-# Reset database (⚠️ deletes all data)
-npx prisma migrate reset
+curl http://localhost:4000/health
 ```
 
----
+Expected database health:
 
-## 📚 Documentation
-
-- **[docs/README.md](./docs/README.md)** – Documentation map and curation policy
-- **[docs/Github_push_strategy.md](./docs/Github_push_strategy.md)** – Architecture and contribution standards
-- **[docs/Order_flow.md](./docs/Order_flow.md)** – Order model, split logic, and fulfillment semantics
-- **[docs/notification_system.md](./docs/notification_system.md)** – Event-driven notifications, queue adapters, and worker lifecycle
-
----
-
-## 🤝 Contribution
-
-### Getting Started
-
-1. Read `[CONTRIBUTING.md](./CONTRIBUTING.md)` for guidelines
-2. Check `[docs/Github_push_strategy.md](./docs/Github_push_strategy.md)` for architecture standards
-3. Create a feature branch from `main`
-
-### Commit Format
-
-Follow [Conventional Commits](https://www.conventionalcommits.org/):
-
-```
-feat:    Add new feature
-fix:     Bug fix
-refactor: Code refactoring
-docs:    Documentation updates
-chore:   Build, dependencies, or tooling
+```json
+{
+  "status": "healthy",
+  "connected": true,
+  "message": "Database connection is healthy and responsive"
+}
 ```
 
-Example:
-```bash
-git commit -m "feat: add product search filters"
+## Product And Domain Rules
+
+- Preserve stable API response shapes. Resource endpoints should use envelopes such as `{ "data": ... }`; auth endpoints may return `{ "token", "user" }`.
+- Validate request input at route boundaries with Zod `safeParse`.
+- Use middleware-first authorization with `requireAuth`, `requireAdmin`, and brand membership checks.
+- Use `@broady/shared` for canonical roles, order/payment primitives, and shared marketplace contracts.
+- Product and catalog writes must clear in-memory API cache to avoid stale reads.
+- Notification side effects should be queued through notification events, not sent directly from route handlers.
+- Parent order status must be derived from sub-order state; do not bypass the split-order derivation logic.
+
+## Documentation Map
+
+Start with `docs/README.md` for the current documentation index.
+
+Important docs:
+
+- `docs/Github_push_strategy.md`: repository standards, architecture boundaries, commit rules, and PR expectations.
+- `docs/QUICK_START.md`: local setup reference.
+- `docs/system-design.md`: runtime and data-flow architecture.
+- `docs/Order_flow.md`: order and fulfillment semantics.
+- `docs/notification_system.md`: event-driven notifications and worker behavior.
+- `docs/Meilisearch.md`: product search setup and operational notes.
+- `docs/issue-tracking/`: durable notes for fixed issues and major implementation decisions.
+
+Before editing a domain, read the relevant domain docs and issue-tracking notes to avoid reintroducing solved bugs.
+
+## GitHub And Contribution Rules
+
+Use small, meaningful commits with Conventional Commits:
+
+```text
+feat(order): implement sub-order splitting
+fix(auth): handle token expiration
+refactor(notification): decouple event emitter
+docs(readme): clarify local setup
 ```
 
----
+Before pushing or opening a PR:
 
-## 📄 License
+- Confirm the working tree contains only intentional changes.
+- Keep sensitive internals and real secrets out of public/demo repositories.
+- Run the relevant lint/build commands and record validation evidence.
+- Note migration or environment changes in the PR.
+- Keep API changes backward-compatible unless there is an explicit migration plan.
+- Update README or docs when onboarding, runtime, or operational behavior changes.
 
-This project is proprietary. See [LICENSE](./LICENSE) for details.
+A PR should include the problem statement, scope, architecture impact, validation evidence, and follow-up tasks.
 
----
+## Troubleshooting
 
-## 🎓 Key Concepts
+API cannot reach the database:
 
-### Modular Domain Architecture
-Each domain (Users, Products, Orders, Notifications) is self-contained with its own logic, data access, and validation.
+- Confirm PostgreSQL is running on `localhost:5432`.
+- Confirm `DATABASE_URL` and `DATABASE_DIRECT_URL` point to the local Broady database.
+- Run `npm run prisma:generate -w @broady/api`.
+- Use `PRISMA_MIGRATE_ON_BOOT=false` only when local migration state is handled manually.
 
-### Event-Driven Notifications
-Rather than synchronous email/SMS, events are queued and processed asynchronously by the worker for reliability and scalability.
+Web cannot reach API:
 
-### Order Split Model
-Orders can split into SubOrders per brand, allowing independent fulfillment workflows while maintaining a unified customer experience.
+- Confirm the API is running and `curl http://localhost:4000/health` returns healthy database status.
+- Confirm `NEXT_PUBLIC_API_URL` points to the API base URL, usually `http://localhost:4000/api`.
+- If the web dev server moves from port `3000` to another port, ensure the API CORS allowlist includes it.
 
-### Multiple Queue Adapters
-Support for Redis (production), PostgreSQL (serverless), and in-memory (development) adapters provides flexibility across deployment scenarios.
+Notifications are not processing:
 
----
+- Confirm `NOTIFICATION_QUEUE_ADAPTER` matches your available service.
+- Use `postgres` when Redis is not available.
+- Check API/worker logs for queue claim, retry, or dead-letter messages.
 
-## 🆘 Troubleshooting
+## License
 
-### API won't start
-- Ensure PostgreSQL is running: `psql -U postgres`
-- Check `.env` database URL is correct
-- Run `npm run prisma:migrate -w @broady/api`
-
-### Worker not processing jobs
-- Verify Redis is running: `redis-cli ping`
-- Check `NOTIFICATION_QUEUE_ADAPTER` setting
-- Review worker logs for errors
-
-### Web app can't connect to API
-- Verify API is running on `http://localhost:4000`
-- Check `NEXT_PUBLIC_API_URL` in `.env`
-- Look for CORS errors in browser console
-
-For more help, see `docs/` or open an issue.
-
----
-
-**Built with ❤️ by the Broady team**
+This project is proprietary. See `LICENSE` if it is present in your checkout.

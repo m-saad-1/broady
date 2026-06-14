@@ -9,19 +9,26 @@ datasource db {
 }
 
 model User {
-  id                              String                   @id @default(cuid())
-  email                           String                   @unique
+  id                              String                     @id @default(cuid())
+  email                           String                     @unique
   fullName                        String
   password                        String?
-  googleId                        String?                  @unique
-  authProvider                    AuthProvider             @default(LOCAL)
-  role                            Role                     @default(USER)
-  brandId                         String?                  @unique
+  googleId                        String?                    @unique
+  authProvider                    AuthProvider               @default(LOCAL)
+  role                            Role                       @default(USER)
+  brandId                         String?                    @unique
   brandInviteTokenHash            String?
   brandInviteTokenExpiresAt       DateTime?
   brandInviteAcceptedAt           DateTime?
-  createdAt                       DateTime                 @default(now())
-  updatedAt                       DateTime                 @updatedAt
+  codRefusalCount                 Int                        @default(0)
+  lastCodRefusalAt                DateTime?
+  codReviewFlag                   Boolean                    @default(false)
+  codReviewStatus                 CodReviewStatus            @default(CLEAR)
+  codReviewNote                   String?
+  codBlockedAt                    DateTime?
+  codPrepaymentRequired           Boolean                    @default(false)
+  createdAt                       DateTime                   @default(now())
+  updatedAt                       DateTime                   @updatedAt
   emailVerificationTokenExpiresAt DateTime?
   emailVerificationTokenHash      String?
   emailVerifiedAt                 DateTime?
@@ -34,22 +41,25 @@ model User {
   notificationPreference          NotificationPreference?
   orders                          Order[]
   returnRequests                  ReturnRequest[]
-  productTemplates                ProductContentTemplate[] @relation("TemplateCreatedBy")
-  reviewModerations               Review[]                 @relation("ReviewModeratedBy")
+  productTemplates                ProductContentTemplate[]   @relation("TemplateCreatedBy")
+  reviewModerations               Review[]                   @relation("ReviewModeratedBy")
   reviews                         Review[]
   reviewVotes                     ReviewHelpfulnessVote[]
   reviewModerationLogs            ReviewModerationLog[]
-  reviewReports                   ReviewReport[]           @relation("ReviewReportsByUser")
-  resolvedReviewReports           ReviewReport[]           @relation("ReviewReportsResolvedBy")
-  recommendationClicks             RecommendationClick[]
-  recommendationImpressions        RecommendationImpression[]
-  recommendationProfile            UserRecommendationProfile?
+  reviewReports                   ReviewReport[]             @relation("ReviewReportsByUser")
+  resolvedReviewReports           ReviewReport[]             @relation("ReviewReportsResolvedBy")
+  recommendationClicks            RecommendationClick[]
+  recommendationImpressions       RecommendationImpression[]
+  recommendationProfile           UserRecommendationProfile?
   sessions                        Session[]
-  brand                           Brand?                   @relation("BrandOwnership", fields: [brandId], references: [id])
+  brand                           Brand?                     @relation("BrandOwnership", fields: [brandId], references: [id])
   activities                      UserActivity[]
   addresses                       UserAddress[]
   deviceTokens                    UserDeviceToken[]
   paymentMethods                  UserPaymentMethod[]
+  wallet                          UserWallet?
+  walletTransactions              WalletTransaction[]
+  paymentSessions                 PaymentSession[]
   wishlistItems                   WishlistItem[]
   productApprovalsReviewed        ProductApproval[]
 }
@@ -68,6 +78,41 @@ model UserPaymentMethod {
   user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
+}
+
+model UserWallet {
+  id                  String              @id @default(cuid())
+  userId              String              @unique
+  availableBalancePkr Int                 @default(0)
+  totalCreditedPkr    Int                 @default(0)
+  totalDebitedPkr     Int                 @default(0)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  user                User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions        WalletTransaction[]
+}
+
+model WalletTransaction {
+  id                   String                  @id @default(cuid())
+  walletId             String
+  userId               String
+  type                 WalletTransactionType
+  sourceType           WalletTransactionSource
+  amountPkr            Int
+  balanceAfterPkr      Int
+  note                 String?
+  orderId              String?
+  refundRequestId      String?                 @unique
+  paymentTransactionId String?
+  createdAt            DateTime                @default(now())
+  wallet               UserWallet              @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  user                 User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order                Order?                  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  refundRequest        RefundRequest?          @relation(fields: [refundRequestId], references: [id], onDelete: SetNull)
+
+  @@index([walletId, createdAt])
+  @@index([userId, createdAt])
+  @@index([orderId, createdAt])
 }
 
 model UserAddress {
@@ -156,30 +201,32 @@ model Session {
 }
 
 model Brand {
-  id               String                   @id @default(cuid())
-  name             String                   @unique
-  slug             String                   @unique
-  logoUrl          String?
-  description      String?
-  verified         Boolean                  @default(true)
-  commissionRate   Float                    @default(12)
-  apiEnabled       Boolean                  @default(false)
-  contactEmail     String?
-  whatsappNumber   String?
-  createdAt        DateTime                 @default(now())
-  updatedAt        DateTime                 @updatedAt
-  members          BrandMember[]
-  reviewReplies    BrandReviewReply[]
-  notifications    Notification[]
-  orderItems       OrderItem[]
-  products         Product[]
-  importJobs       ImportJob[]
-  categories       Category[]
-  tags             ProductTag[]
-  productTemplates ProductContentTemplate[]
-  reviews          Review[]
-  subOrders        SubOrder[]
-  owner            User?                    @relation("BrandOwnership")
+  id                   String                   @id @default(cuid())
+  name                 String                   @unique
+  slug                 String                   @unique
+  logoUrl              String?
+  description          String?
+  verified             Boolean                  @default(true)
+  commissionRate       Float                    @default(12)
+  apiEnabled           Boolean                  @default(false)
+  contactEmail         String?
+  whatsappNumber       String?
+  returnWindowDays     Int                      @default(7)
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  members              BrandMember[]
+  reviewReplies        BrandReviewReply[]
+  notifications        Notification[]
+  orderItems           OrderItem[]
+  products             Product[]
+  importJobs           ImportJob[]
+  categories           Category[]
+  tags                 ProductTag[]
+  productTemplates     ProductContentTemplate[]
+  reviews              Review[]
+  subOrders            SubOrder[]
+  cancellationRequests CancellationRequest[]
+  owner                User?                    @relation("BrandOwnership")
 }
 
 model BrandMember {
@@ -206,7 +253,7 @@ model Product {
   slug                        String                  @unique
   shortDescription            String?
   description                 String
-  gender                      String                  @default("WOMEN")
+  gender                      String                  @default("women")
   color                       String                  @default("default")
   type                        String                  @default("Top")
   fit                         String?
@@ -225,6 +272,13 @@ model Product {
   saleEndDate                 DateTime?
   topCategory                 String
   subCategory                 String
+  division                    String                  @default("top")
+  category                    String                  @default("top")
+  subType                     String?
+  subTypeConfidence           String?
+  mappingStatus               String                  @default("unresolved")
+  resolutionSource            String                  @default("unresolved")
+  pageContext                 Json?
   sizes                       String[]
   tags                        String[]                @default([])
   imageUrl                    String
@@ -267,8 +321,10 @@ model Product {
   productTags                 ProductTagOnProduct[]
 
   @@unique([brandId, externalSource, externalProductId])
+  @@index([gender, division, category])
   @@index([brandId, topCategory, subCategory])
   @@index([topCategory, subCategory])
+  @@index([subType])
   @@index([pricePkr])
   @@index([brandId, externalProductId])
   @@index([brandId, approvalStatus, deletedAt])
@@ -398,6 +454,7 @@ model ProductShipping {
   exchangeAvailable        Boolean?
   returnWindowDays         Int?
   exchangeWindowDays       Int?
+  nonReturnableReason      String?
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
   product                  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -591,24 +648,27 @@ model WishlistItem {
 }
 
 model Order {
-  id                  String               @id @default(cuid())
-  userId              String
-  status              OrderStatus          @default(PENDING)
-  paymentMethod       PaymentMethod
-  paymentStatus       PaymentStatus        @default(PENDING)
-  totalPkr            Int
-  deliveryAddress     String
-  trackingId          String?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  notifications       Notification[]
-  user                User                 @relation(fields: [userId], references: [id])
-  items               OrderItem[]
-  statusLogs          OrderStatusLog[]
-  paymentTransactions PaymentTransaction[]
-  subOrders           SubOrder[]
-  returnRequests      ReturnRequest[]
-  refundRequests      RefundRequest[]
+  id                   String                @id @default(cuid())
+  userId               String
+  status               OrderStatus           @default(PENDING)
+  paymentMethod        PaymentMethod
+  paymentStatus        PaymentStatus         @default(PENDING)
+  totalPkr             Int
+  deliveryAddress      String
+  trackingId           String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  notifications        Notification[]
+  user                 User                  @relation(fields: [userId], references: [id])
+  items                OrderItem[]
+  statusLogs           OrderStatusLog[]
+  paymentTransactions  PaymentTransaction[]
+  subOrders            SubOrder[]
+  cancellationRequests CancellationRequest[]
+  returnRequests       ReturnRequest[]
+  refundRequests       RefundRequest[]
+  walletTransactions   WalletTransaction[]
+  paymentSessions      PaymentSession[]
 
   @@index([userId, status])
 }
@@ -627,8 +687,32 @@ model PaymentTransaction {
   @@index([orderId, createdAt])
 }
 
+model PaymentSession {
+  id                   String               @id @default(cuid())
+  orderId              String
+  userId               String
+  paymentMethod        PaymentMethod
+  gateway              String               @default("DEMO_GATEWAY")
+  gatewayTransactionId String               @unique
+  status               PaymentSessionStatus @default(PENDING)
+  redirectUrl          String
+  expiresAt            DateTime
+  completedAt          DateTime?
+  failedAt             DateTime?
+  lastErrorReason      String?
+  attemptNumber        Int                  @default(1)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  order                Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@index([userId, createdAt])
+  @@index([status, expiresAt])
+}
+
 model OrderItem {
-  id            String    @id @default(cuid())
+  id            String              @id @default(cuid())
   orderId       String
   subOrderId    String?
   productId     String
@@ -637,26 +721,27 @@ model OrderItem {
   unitPricePkr  Int
   selectedColor String?
   selectedSize  String?
-  brand         Brand     @relation(fields: [brandId], references: [id])
-  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product       Product   @relation(fields: [productId], references: [id])
-  subOrder      SubOrder? @relation(fields: [subOrderId], references: [id])
+  brand         Brand               @relation(fields: [brandId], references: [id])
+  order         Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product       Product             @relation(fields: [productId], references: [id])
+  subOrder      SubOrder?           @relation(fields: [subOrderId], references: [id])
   review        Review?
+  refundItems   RefundRequestItem[]
 
   @@index([brandId, orderId])
   @@index([subOrderId])
 }
 
 model SubOrder {
-  id                     String              @id @default(cuid())
+  id                     String                @id @default(cuid())
   orderId                String
   brandId                String
-  status                 OrderStatus         @default(PENDING)
+  status                 OrderStatus           @default(PENDING)
   subtotalPkr            Int
   trackingId             String?
   courierName            String?
   estimatedDelivery      DateTime?
-  deliveryAttempts       Int                 @default(0)
+  deliveryAttempts       Int                   @default(0)
   failureReason          String?
   failureReasonMessage   String?
   deliveryFailedAt       DateTime?
@@ -665,12 +750,14 @@ model SubOrder {
   nextAttemptDate        DateTime?
   finalDeliveryFailureAt DateTime?
   refundProcessedAt      DateTime?
-  createdAt              DateTime            @default(now())
-  updatedAt              DateTime            @updatedAt
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
   items                  OrderItem[]
-  brand                  Brand               @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  order                  Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  brand                  Brand                 @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  order                  Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
   statusLogs             SubOrderStatusLog[]
+  statusHistory          StatusHistory[]
+  cancellationRequests   CancellationRequest[]
   refundRequests         RefundRequest[]
   returnRequests         ReturnRequest[]
 
@@ -679,27 +766,160 @@ model SubOrder {
   @@index([orderId, createdAt])
 }
 
+model CancellationRequest {
+  id                String                     @id @default(cuid())
+  orderId           String
+  subOrderId        String
+  brandId           String
+  requestedByRole   CancellationRequestedBy
+  requestedById     String?
+  reasonCode        CancellationReasonCode
+  reasonText        String?
+  status            CancellationRequestStatus  @default(REQUESTED)
+  brandResponseCode CancellationBrandResponse?
+  brandResponseNote String?
+  evidenceUrl       String?
+  trackingEvidence  String?
+  respondedAt       DateTime?
+  decidedById       String?
+  decidedAt         DateTime?
+  decisionNote      String?
+  expiresAt         DateTime
+  autoApproveAt     DateTime
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+  order             Order                      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  subOrder          SubOrder                   @relation(fields: [subOrderId], references: [id], onDelete: Cascade)
+  brand             Brand                      @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  history           CancellationHistory[]
+
+  @@index([orderId, createdAt])
+  @@index([subOrderId, status, createdAt])
+  @@index([brandId, status, createdAt])
+  @@index([status, expiresAt])
+  @@index([status, autoApproveAt])
+}
+
+model StatusHistory {
+  id            String               @id @default(cuid())
+  subOrderId    String
+  oldStatus     OrderStatus?
+  newStatus     OrderStatus
+  changedByRole OrderStatusUpdatedBy
+  changedById   String?
+  reason        String?
+  note          String?
+  createdAt     DateTime             @default(now())
+  subOrder      SubOrder             @relation(fields: [subOrderId], references: [id], onDelete: Cascade)
+
+  @@index([subOrderId, createdAt])
+  @@index([newStatus, createdAt])
+}
+
+model CancellationHistory {
+  id                    String                    @id @default(cuid())
+  cancellationRequestId String
+  action                CancellationHistoryAction
+  performedByRole       OrderStatusUpdatedBy
+  performedById         String?
+  note                  String?
+  createdAt             DateTime                  @default(now())
+  cancellationRequest   CancellationRequest       @relation(fields: [cancellationRequestId], references: [id], onDelete: Cascade)
+
+  @@index([cancellationRequestId, createdAt])
+}
+
 model ReturnRequest {
-  id             String            @id @default(cuid())
-  orderId        String
-  subOrderId     String
-  userId         String
-  reasonCode     ReturnReasonCode
-  reasonText     String?
-  status         ReturnStatus      @default(REQUESTED)
-  reviewNote     String?
-  pickupTracking String?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-  order          Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  subOrder       SubOrder          @relation(fields: [subOrderId], references: [id], onDelete: Cascade)
-  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  statusLogs     ReturnStatusLog[]
-  refundRequests RefundRequest[]
+  id                           String                     @id @default(cuid())
+  orderId                      String
+  subOrderId                   String
+  userId                       String
+  requestType                  ReturnRequestType?
+  orderItemIds                 String[]                   @default([])
+  reasonCode                   ReturnReasonCode
+  reasonText                   String?
+  customerNote                 String?
+  preferredResolution          ReturnResolution           @default(REFUND)
+  requestedExchangeType        String?
+  requestedVariantSummary      String?
+  requestedReplacementVariantId String?
+  requestedReplacementSize     String?
+  requestedReplacementColor    String?
+  customerRefundPreference     String?
+  evidenceImageUrls            String[]                   @default([])
+  brandRecommendation          ReturnBrandRecommendation?
+  brandRejectReason            String?
+  brandRecommendationNote      String?
+  brandConditionNote           String?
+  brandDamageNote              String?
+  canFulfillReplacement        Boolean?
+  brandRecommendedAt           DateTime?
+  replacementUnavailable       Boolean                    @default(false)
+  replacementUnavailableReason String?
+  damageEvidenceUrls           String[]                   @default([])
+  damageClaimNote              String?
+  damageClaimSubmittedAt       DateTime?
+  convertedToRefund            Boolean                    @default(false)
+  replacementStatus            ReplacementStatus?
+  replacementTrackingNo        String?
+  replacementCourier           String?
+  replacementSku              String?
+  replacementDispatchDate     DateTime?
+  replacementEstimatedDelivery DateTime?
+  replacementShipmentNote     String?
+  replacementDeliveryAttempts Int                       @default(0)
+  replacementFailureReason    String?
+  replacementFailureReasonMessage String?
+  replacementNextAttemptDate  DateTime?
+  replacementLastAttemptAt    DateTime?
+  replacementDeliveryFailedAt DateTime?
+  replacementFinalFailureAt   DateTime?
+  replacementDeliveredAt      DateTime?
+  adminDecision               ReturnAdminDecision?
+  adminDecisionNote           String?
+  adminRejectedReason         String?
+  pickupCourier               String?
+  pickupDate                  DateTime?
+  pickupAddress               String?
+  returnTrackingNumber        String?
+  returnReceivedAt            DateTime?
+  returnReceivedByBrandId     String?
+  returnReceiptConditionNote  String?
+  returnReceiptEvidenceUrls   String[]                   @default([])
+  refundStatusSnapshot        String?
+  noReceiptReportedAt          DateTime?
+  status                       ReturnStatus               @default(REQUESTED)
+  reviewNote                   String?
+  pickupTracking               String?
+  completedAt                 DateTime?
+  createdAt                    DateTime                   @default(now())
+  updatedAt                    DateTime                   @updatedAt
+  order                        Order                      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  subOrder                     SubOrder                   @relation(fields: [subOrderId], references: [id], onDelete: Cascade)
+  user                         User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  statusLogs                   ReturnStatusLog[]
+  history                      ReturnHistory[]
+  refundRequests               RefundRequest[]
 
   @@index([orderId, createdAt])
   @@index([subOrderId, status, createdAt])
   @@index([userId, createdAt])
+}
+
+enum ReplacementStatus {
+  EXCHANGE_APPROVED
+  REPLACEMENT_PROCESSING
+  REPLACEMENT_PACKED
+  REPLACEMENT_READY_FOR_PICKUP
+  REPLACEMENT_SHIPPED
+  REPLACEMENT_OUT_FOR_DELIVERY
+  REPLACEMENT_DELIVERY_FAILED
+  REPLACEMENT_ADDRESS_CORRECTION_REQUIRED
+  REPLACEMENT_READY_FOR_REDELIVERY
+  REPLACEMENT_SHIPMENT_RETURNED
+  REPLACEMENT_DELIVERED
+  EXCHANGE_COMPLETED
+  EXCHANGE_UNFULFILLABLE
 }
 
 model ReturnStatusLog {
@@ -715,31 +935,67 @@ model ReturnStatusLog {
   @@index([returnRequestId, createdAt])
 }
 
+model ReturnHistory {
+  id                  String                     @id @default(cuid())
+  returnRequestId     String
+  oldStatus           ReturnStatus?
+  newStatus           ReturnStatus
+  performedByRole     OrderStatusUpdatedBy
+  performedById       String?
+  brandRecommendation ReturnBrandRecommendation?
+  note                String?
+  createdAt           DateTime                   @default(now())
+  returnRequest       ReturnRequest              @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+
+  @@index([returnRequestId, createdAt])
+  @@index([newStatus, createdAt])
+}
+
 model RefundRequest {
-  id              String            @id @default(cuid())
-  orderId         String
-  subOrderId      String
-  returnRequestId String?
-  requestedByRole RefundRequestedBy
-  requestedById   String?
-  reasonCode      RefundReasonCode
-  reasonText      String?
-  method          RefundMethod
-  status          RefundStatus      @default(PENDING)
-  amountPkr       Int
-  reviewNote      String?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  completedAt     DateTime?
-  order           Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  subOrder        SubOrder          @relation(fields: [subOrderId], references: [id], onDelete: Cascade)
-  returnRequest   ReturnRequest?    @relation(fields: [returnRequestId], references: [id], onDelete: SetNull)
-  statusLogs      RefundStatusLog[]
+  id                 String              @id @default(cuid())
+  orderId            String
+  subOrderId         String
+  returnRequestId    String?
+  requestedByRole    RefundRequestedBy
+  requestedById      String?
+  reasonCode         RefundReasonCode
+  reasonText         String?
+  method             RefundMethod
+  status             RefundStatus        @default(PENDING)
+  amountPkr          Int
+  currency           String              @default("PKR")
+  gatewayRefundId    String?
+  adjustedAmountPkr  Int?
+  reviewNote         String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  completedAt        DateTime?
+  order              Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  subOrder           SubOrder            @relation(fields: [subOrderId], references: [id], onDelete: Cascade)
+  returnRequest      ReturnRequest?      @relation(fields: [returnRequestId], references: [id], onDelete: SetNull)
+  items              RefundRequestItem[]
+  statusLogs         RefundStatusLog[]
+  history            RefundHistory[]
+  walletTransactions WalletTransaction[]
 
   @@index([orderId, createdAt])
   @@index([subOrderId, status, createdAt])
   @@index([status, createdAt])
   @@index([requestedByRole, createdAt])
+}
+
+model RefundRequestItem {
+  id              String        @id @default(cuid())
+  refundRequestId String
+  orderItemId     String
+  quantity        Int
+  refundAmountPkr Int
+  createdAt       DateTime      @default(now())
+  refundRequest   RefundRequest @relation(fields: [refundRequestId], references: [id], onDelete: Cascade)
+  orderItem       OrderItem     @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@index([refundRequestId])
+  @@index([orderItemId])
 }
 
 model RefundStatusLog {
@@ -753,6 +1009,23 @@ model RefundStatusLog {
   refundRequest   RefundRequest        @relation(fields: [refundRequestId], references: [id], onDelete: Cascade)
 
   @@index([refundRequestId, createdAt])
+}
+
+model RefundHistory {
+  id               String               @id @default(cuid())
+  refundRequestId  String
+  oldStatus        RefundStatus?
+  newStatus        RefundStatus
+  performedByRole  OrderStatusUpdatedBy
+  performedById    String?
+  adjustedAmount   Int?
+  gatewayReference String?
+  note             String?
+  createdAt        DateTime             @default(now())
+  refundRequest    RefundRequest        @relation(fields: [refundRequestId], references: [id], onDelete: Cascade)
+
+  @@index([refundRequestId, createdAt])
+  @@index([newStatus, createdAt])
 }
 
 model Review {
@@ -968,23 +1241,23 @@ model UserActivity {
 }
 
 model UserRecommendationProfile {
-  id                  String   @id @default(cuid())
-  userId              String   @unique
-  preferredGender     String?
-  topCategories       Json
-  topSubCategories    Json
-  topBrands           Json
-  topColors           Json
-  topSizes            Json
-  topFits             Json
-  styleTags           Json
-  priceMinPkr         Int?
-  priceMaxPkr         Int?
+  id                     String   @id @default(cuid())
+  userId                 String   @unique
+  preferredGender        String?
+  topCategories          Json
+  topSubCategories       Json
+  topBrands              Json
+  topColors              Json
+  topSizes               Json
+  topFits                Json
+  styleTags              Json
+  priceMinPkr            Int?
+  priceMaxPkr            Int?
   lastAnonymousSessionId String?
-  lastBuiltAt         DateTime @default(now())
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastBuiltAt            DateTime @default(now())
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([preferredGender, lastBuiltAt])
   @@index([lastBuiltAt])
@@ -1047,12 +1320,14 @@ enum OrderStatus {
   CONFIRMED
   PROCESSING
   PACKED
+  READY_FOR_PICKUP
   PARTIALLY_SHIPPED
   SHIPPED
   OUT_FOR_DELIVERY
   DELIVERY_FAILED
   ADDRESS_CORRECTION_REQUIRED
   READY_FOR_REDELIVERY
+  SHIPMENT_RETURNED
   DELIVERED
   RETURNED
   CANCELED
@@ -1080,8 +1355,20 @@ enum UserPaymentType {
   BANK
 }
 
+enum WalletTransactionType {
+  CREDIT
+  DEBIT
+}
+
+enum WalletTransactionSource {
+  REFUND
+  PAYMENT
+  ADJUSTMENT
+}
+
 enum OrderStatusUpdatedBy {
   SYSTEM
+  USER
   BRAND
   ADMIN
 }
@@ -1092,7 +1379,66 @@ enum DeliveryFailureReason {
   PHONE_UNREACHABLE
   REFUSED_DELIVERY
   AREA_NOT_SERVICEABLE
+  COURIER_ISSUE
   OTHER
+}
+
+enum CodReviewStatus {
+  CLEAR
+  FLAGGED
+  UNDER_REVIEW
+  RESTRICTED
+  BLOCKED
+}
+
+enum CancellationRequestStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  EXPIRED
+  CANCELLED_BY_USER
+}
+
+enum CancellationRequestedBy {
+  USER
+  BRAND
+  ADMIN
+  SYSTEM
+}
+
+enum CancellationReasonCode {
+  ORDERED_BY_MISTAKE
+  CHANGED_MIND
+  WRONG_SIZE_SELECTED
+  WRONG_COLOR_SELECTED
+  FOUND_BETTER_PRICE
+  DELIVERY_TIME_TOO_LONG
+  OUT_OF_STOCK
+  ITEM_DAMAGED
+  WRONG_PRICE_LISTED
+  CANNOT_FULFILL_ORDER
+  ADDRESS_NOT_SERVICEABLE
+  DUPLICATE_ORDER_ISSUE
+  OTHER
+}
+
+enum CancellationBrandResponse {
+  STILL_CANCELLABLE
+  ORDER_ALREADY_PACKED
+  COURIER_PICKUP_SCHEDULED
+  TRACKING_ALREADY_GENERATED
+  ALREADY_HANDED_TO_COURIER
+  OTHER_OPERATIONAL_REASON
+}
+
+enum CancellationHistoryAction {
+  CREATED
+  BRAND_RESPONDED
+  APPROVED
+  REJECTED
+  EXPIRED
+  AUTO_APPROVED
+  CANCELLED_BY_USER
 }
 
 enum NotificationType {
@@ -1227,20 +1573,75 @@ enum UserActivityEventType {
 
 enum ReturnStatus {
   REQUESTED
+  BRAND_REVIEWING
+  NEED_MORE_EVIDENCE
+  BRAND_APPROVED
+  BRAND_REJECTED
+  ADMIN_REVIEWING
+  ADMIN_APPROVED
+  ADMIN_REJECTED
   REVIEWING
   APPROVED
   REJECTED
+  RETURN_ARRANGED
   PICKUP_SCHEDULED
+  RETURN_IN_TRANSIT
   IN_TRANSIT
+  RETURN_RECEIVED
+  RETURN_CONDITION_APPROVED
+  RETURN_CONDITION_DISPUTED
   RECEIVED
   REFUND_INITIATED
+  REFUND_PROCESSING
+  REFUND_COMPLETED
+  REPLACEMENT_PROCESSING
+  REPLACEMENT_PACKED
+  REPLACEMENT_READY_FOR_PICKUP
+  REPLACEMENT_SHIPPED
+  REPLACEMENT_OUT_FOR_DELIVERY
+  REPLACEMENT_DELIVERY_FAILED
+  REPLACEMENT_ADDRESS_CORRECTION_REQUIRED
+  REPLACEMENT_READY_FOR_REDELIVERY
+  REPLACEMENT_SHIPMENT_RETURNED
+  REPLACEMENT_DELIVERED
+  EXCHANGE_COMPLETED
   COMPLETED
+}
+
+enum ReturnRequestType {
+  RETURN
+  EXCHANGE
+}
+
+enum ReturnResolution {
+  REFUND
+  EXCHANGE_SIZE
+  EXCHANGE_COLOR
+  EXCHANGE_DAMAGED_REPLACEMENT
+  EXCHANGE_WRONG_ITEM_REPLACEMENT
+  EXCHANGE_OTHER
+  STORE_CREDIT
+}
+
+enum ReturnBrandRecommendation {
+  APPROVE
+  REJECT
+  NEED_MORE_EVIDENCE
+}
+
+enum ReturnAdminDecision {
+  APPROVED
+  REJECTED
 }
 
 enum ReturnReasonCode {
   DAMAGED_ITEM
+  DEFECTIVE_PRODUCT
   WRONG_ITEM
+  WRONG_SIZE
+  WRONG_COLOR
   SIZE_ISSUE
+  DIFFERENT_FROM_IMAGES
   QUALITY_ISSUE
   CHANGED_MIND
   OTHER
@@ -1252,6 +1653,7 @@ enum RefundStatus {
   PROCESSING
   COMPLETED
   REJECTED
+  FAILED
 }
 
 enum RefundMethod {
@@ -1260,15 +1662,29 @@ enum RefundMethod {
   WALLET_CREDIT
 }
 
+enum PaymentSessionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+  TIMEOUT
+  EXPIRED
+}
+
 enum RefundReasonCode {
   BRAND_CANCELLATION
+  CUSTOMER_CANCELLATION
   DELIVERY_FAILURE
   RETURNED_PRODUCT
   FAILED_PAYMENT
+  DUPLICATE_PAYMENT
+  PAYMENT_CAPTURED_ORDER_FAILED
   OTHER
 }
 
 enum RefundRequestedBy {
+  USER
   BRAND
+  ADMIN
   SYSTEM
 }

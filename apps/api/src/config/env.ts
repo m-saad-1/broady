@@ -64,6 +64,7 @@ export const env = {
   smtpPass: process.env.SMTP_PASS || process.env.SES_SMTP_PASS || "",
   whatsappWebhookUrl: process.env.WHATSAPP_WEBHOOK_URL || "",
   paymentWebhookSecret: process.env.PAYMENT_WEBHOOK_SECRET || "",
+  demoGatewaySecret: process.env.DEMO_GATEWAY_SECRET || process.env.PAYMENT_WEBHOOK_SECRET || "broady-demo-gateway-secret",
   firebaseProjectId: process.env.FIREBASE_PROJECT_ID || "broady-1",
   firebaseClientEmail: process.env.FIREBASE_CLIENT_EMAIL || "",
   firebasePrivateKey: process.env.FIREBASE_PRIVATE_KEY || "",

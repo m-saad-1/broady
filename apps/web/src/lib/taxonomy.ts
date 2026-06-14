@@ -1,4 +1,5 @@
 import type { Product } from "@/types/marketplace";
+import { getBroadyDivisionForCategory } from "@broady/shared";
 
 type ProductType = NonNullable<Product["productType"]>;
 
@@ -23,14 +24,62 @@ const subCategoryDisplayMap: Record<string, string> = {
   Sneakers: "Sneakers",
   Trainers: "Sneakers",
   Shoes: "Shoes",
+  Flats: "Flats",
+  Boots: "Boots",
+  "Slip Ons": "Slip Ons",
+  Loafers: "Loafers",
   Pumps: "Pumps",
   Sandals: "Sandals",
   Dresses: "Dresses",
   Skirts: "Skirts",
+  Bags: "Bags",
+  Jewelry: "Jewelry",
+  Socks: "Socks",
+};
+
+const displayCategoryToApiCategoryMap: Record<string, string> = {
+  Shirts: "shirt",
+  "T-Shirts": "t-shirt",
+  Polo: "polo",
+  Hoodies: "hoodie",
+  Sweatshirts: "sweatshirt",
+  Jackets: "jacket",
+  Sweaters: "sweater",
+  Vests: "vest",
+  Blouses: "blouse",
+  Tops: "top",
+  Kurtas: "kurta",
+  Trousers: "trouser",
+  Pants: "pant",
+  Jeans: "jeans",
+  Shorts: "shorts",
+  Skirts: "skirt",
+  Joggers: "jogger",
+  "Cargo Pants": "cargo",
+  Sneakers: "sneaker",
+  Trainers: "trainer",
+  Loafers: "loafer",
+  Sandals: "sandal",
+  Slippers: "slipper",
+  Boots: "boot",
+  Shoes: "closed_shoe",
+  "Formal Shoes": "formal_shoe",
+  "Open Shoes": "open_shoe",
+  Bags: "bag",
+  Caps: "cap",
+  Belts: "belt",
+  Watches: "watch",
+  Wallets: "wallet",
+  Socks: "socks",
+  Scarves: "scarf",
+  Sunglasses: "sunglasses",
+  Jewelry: "jewellery",
+  Jewellery: "jewellery",
 };
 
 const subCategoryToType: Record<string, ProductType> = {
   "T-Shirts": "Top",
+  Polo: "Top",
   Shirts: "Top",
   "Polo Shirts": "Top",
   "V-Neck": "Top",
@@ -50,16 +99,201 @@ const subCategoryToType: Record<string, ProductType> = {
   Sneakers: "Footwear",
   Trainers: "Footwear",
   Shoes: "Footwear",
+  Flats: "Footwear",
+  Boots: "Footwear",
+  "Slip Ons": "Footwear",
+  Loafers: "Footwear",
   Pumps: "Footwear",
   Sandals: "Footwear",
   Bags: "Accessories",
   Belts: "Accessories",
   Caps: "Accessories",
   Watches: "Accessories",
+  Jewelry: "Accessories",
+  Socks: "Accessories",
 };
+
+const genericSubCategoryValues = new Set([
+  "",
+  "apparel",
+  "clothing",
+  "top",
+  "bottom",
+  "footwear",
+  "accessories",
+  "accessory",
+  "other",
+]);
+
+const subCategoryAliasMap: Record<string, string> = {
+  "t-shirt": "T-Shirts",
+  "t-shirts": "T-Shirts",
+  "t shirt": "T-Shirts",
+  "t shirts": "T-Shirts",
+  tshirt: "T-Shirts",
+  tshirts: "T-Shirts",
+  tee: "T-Shirts",
+  tees: "T-Shirts",
+  polo: "Polo",
+  polos: "Polo",
+  "polo shirt": "Polo",
+  "polo shirts": "Polo",
+  "casual shirt": "Shirts",
+  "casual shirts": "Shirts",
+  shirt: "Shirts",
+  shirts: "Shirts",
+  "formal shirt": "Formal Shirts",
+  "formal shirts": "Formal Shirts",
+  "v-neck": "V-Neck",
+  vneck: "V-Neck",
+  hoodie: "Hoodies",
+  hoodies: "Hoodies",
+  sweatshirt: "Hoodies",
+  sweatshirts: "Hoodies",
+  jacket: "Jackets",
+  jackets: "Jackets",
+  coat: "Jackets",
+  coats: "Jackets",
+  jeans: "Jeans",
+  jean: "Jeans",
+  denim: "Jeans",
+  trouser: "Trousers",
+  trousers: "Trousers",
+  pant: "Pants",
+  pants: "Pants",
+  jogger: "Joggers",
+  joggers: "Joggers",
+  "cargo pants": "Cargo Pants",
+  cargo: "Cargo Pants",
+  short: "Shorts",
+  shorts: "Shorts",
+  skirt: "Skirts",
+  skirts: "Skirts",
+  dress: "Dresses",
+  dresses: "Dresses",
+  sneaker: "Sneakers",
+  sneakers: "Sneakers",
+  trainer: "Trainers",
+  trainers: "Trainers",
+  shoe: "Shoes",
+  shoes: "Shoes",
+  "open shoe": "Shoes",
+  "open shoes": "Shoes",
+  flat: "Flats",
+  flats: "Flats",
+  boot: "Boots",
+  boots: "Boots",
+  "slip ons": "Slip Ons",
+  "slip-ons": "Slip Ons",
+  loafer: "Loafers",
+  loafers: "Loafers",
+  sandal: "Sandals",
+  sandals: "Sandals",
+  pump: "Pumps",
+  pumps: "Pumps",
+  bag: "Bags",
+  bags: "Bags",
+  "bags & wallets": "Bags",
+  "bags and wallets": "Bags",
+  backpack: "Bags",
+  backpacks: "Bags",
+  tote: "Bags",
+  totes: "Bags",
+  belt: "Belts",
+  belts: "Belts",
+  cap: "Caps",
+  caps: "Caps",
+  hat: "Caps",
+  hats: "Caps",
+  watch: "Watches",
+  watches: "Watches",
+  jewelry: "Jewelry",
+  jewellery: "Jewelry",
+  necklace: "Jewelry",
+  necklaces: "Jewelry",
+  sock: "Socks",
+  socks: "Socks",
+};
+
+function normalizeSubCategoryText(value?: string | null) {
+  return (value || "")
+    .trim()
+    .replace(/[_/]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function normalizeSubCategoryLabel(value?: string | null) {
+  const cleaned = normalizeSubCategoryText(value);
+  const normalized = cleaned.toLowerCase();
+  if (genericSubCategoryValues.has(normalized)) return "";
+  return subCategoryAliasMap[normalized] || cleaned;
+}
+
+function getObjectValue(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+}
+
+function getNestedString(value: unknown, path: string[]) {
+  let current: unknown = value;
+
+  for (const segment of path) {
+    const objectValue = getObjectValue(current);
+    if (!objectValue) return "";
+    current = objectValue[segment];
+  }
+
+  return typeof current === "string" ? current : "";
+}
+
+function getMetadataProductType(product: Product) {
+  const metadata = getObjectValue((product as Product & { metadata?: unknown }).metadata);
+  if (!metadata) return "";
+
+  const candidates = [
+    getNestedString(metadata, ["product_type"]),
+    getNestedString(metadata, ["productType"]),
+    getNestedString(metadata, ["raw", "product_type"]),
+    getNestedString(metadata, ["raw", "productType"]),
+    getNestedString(metadata, ["raw", "raw", "product_type"]),
+    getNestedString(metadata, ["raw", "raw", "productType"]),
+    getNestedString(metadata, ["raw", "raw", "originalProductJson", "product_type"]),
+    getNestedString(metadata, ["raw", "raw", "originalProductJson", "productType"]),
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeSubCategoryLabel(candidate);
+    if (normalized) return normalized;
+  }
+
+  return "";
+}
+
+export function normalizeCatalogCategoryFilterValue(value?: string | null) {
+  return normalizeSubCategoryLabel(value);
+}
+
+export function normalizeApiCategoryFilterValue(value?: string | null) {
+  const normalized = normalizeCatalogCategoryFilterValue(value);
+  return displayCategoryToApiCategoryMap[normalized] || normalized.toLowerCase().replace(/\s+/g, "_");
+}
+
+export const normalizeCatalogTypeFilterValue = normalizeCatalogCategoryFilterValue;
 
 export function inferProductType(subCategory: string) {
   return subCategoryToType[subCategory] || "Top";
+}
+
+export function getCanonicalProductSubCategory(product: Product) {
+  if (product.category) {
+    return normalizeSubCategoryLabel(product.category);
+  }
+  const metadataProductType = getMetadataProductType(product);
+  if (metadataProductType) return metadataProductType;
+
+  const existing = normalizeSubCategoryLabel(product.subCategory);
+  if (existing) return existing;
+
+  return normalizeSubCategoryLabel((product as Product & { type?: string }).type || product.productType || "");
 }
 
 export function getTopCategoryLabel(category: string) {
@@ -170,6 +404,17 @@ function normalizeAdditionalInfo(value: unknown): Array<{ label: string; value: 
 }
 
 export function normalizeProduct(product: Product): Product {
+  const normalizedGender = product.normalizedGender || (["men", "women", "boys", "girls"].includes(String(product.gender).toLowerCase()) ? String(product.gender).toLowerCase() as Product["normalizedGender"] : undefined);
+  const derivedTopCategory =
+    normalizedGender === "men"
+      ? "Men"
+      : normalizedGender === "women"
+        ? "Women"
+        : normalizedGender === "boys"
+          ? "Junior Boys"
+          : normalizedGender === "girls"
+            ? "Junior Girls"
+            : product.topCategory;
   const rawType = (product as Product & { type?: string }).type;
   const normalizedRawType = (() => {
     if (!rawType) return undefined;
@@ -186,8 +431,8 @@ export function normalizeProduct(product: Product): Product {
     (product.productType && ["Top", "Bottom", "Footwear", "Accessories"].includes(product.productType)
       ? product.productType
       : undefined);
-  const productType = normalizedType || product.productType || inferProductType(product.subCategory || "T-Shirts");
-  const subCategory = product.subCategory || "T-Shirts";
+  const subCategory = getCanonicalProductSubCategory(product) || "Other";
+  const productType = normalizedType || product.productType || inferProductType(subCategory);
   const metadata =
     (product as Product & { metadata?: Record<string, unknown> }).metadata &&
     typeof (product as Product & { metadata?: Record<string, unknown> }).metadata === "object"
@@ -235,6 +480,25 @@ export function normalizeProduct(product: Product): Product {
 
   return {
     ...product,
+    gender:
+      normalizedGender === "men"
+        ? "Men"
+        : normalizedGender === "women"
+          ? "Women"
+          : normalizedGender === "boys" || normalizedGender === "girls"
+            ? "Juniors"
+            : product.gender,
+    normalizedGender,
+    juniorsGroup:
+      normalizedGender === "boys"
+        ? (product.juniorsGroup || "Junior Boys")
+        : normalizedGender === "girls"
+          ? (product.juniorsGroup || "Junior Girls")
+          : product.juniorsGroup,
+    topCategory: derivedTopCategory,
+    division: product.division || getBroadyDivisionForCategory(product.category || "") || undefined,
+    category: product.category || undefined,
+    subType: product.subType || undefined,
     description: normalizedDescription || product.description,
     productType,
     subCategory,

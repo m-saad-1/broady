@@ -8,6 +8,7 @@ import { getCart, getCartScopeFromUser, replaceCart } from "../carts/cart.servic
 import { normalizeOrderNotificationPresentation } from "../notifications/notification.presentation.js";
 import { resolveNotificationTargetPath } from "../notifications/notification.targets.js";
 import { sendEmail } from "../../services/email.service.js";
+import { getOrCreateWallet } from "./wallet.service.js";
 
 const updateProfileSchema = z.object({
   fullName: z.string().trim().min(2).max(100),
@@ -352,6 +353,42 @@ router.delete("/payment-methods/:id", requireAuth, async (req, res) => {
   }
 
   return res.status(204).send();
+});
+
+router.get("/wallet", requireAuth, async (req, res) => {
+  const wallet = await prisma.$transaction(async (tx) => {
+    const currentWallet = await getOrCreateWallet(tx, req.auth!.userId);
+    const transactions = await tx.walletTransaction.findMany({
+      where: { userId: req.auth!.userId },
+      orderBy: { createdAt: "desc" },
+      take: 25,
+      include: {
+        order: {
+          select: {
+            id: true,
+            paymentMethod: true,
+            paymentStatus: true,
+            totalPkr: true,
+          },
+        },
+        refundRequest: {
+          select: {
+            id: true,
+            status: true,
+            method: true,
+            amountPkr: true,
+          },
+        },
+      },
+    });
+
+    return {
+      ...currentWallet,
+      transactions,
+    };
+  });
+
+  return res.json({ data: wallet });
 });
 
 router.get("/notification-preferences", requireAuth, async (req, res) => {

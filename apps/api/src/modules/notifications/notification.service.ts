@@ -57,9 +57,14 @@ function mapEventToNotificationType(event: NotificationEvent): NotificationType 
     case "suborder_shipped":
     case "suborder_delivery_failed":
     case "suborder_retry_scheduled":
+    case "suborder_shipment_returned":
     case "suborder_returned":
     case "suborder_delivered":
     case "suborder_cancelled":
+    case "cancellation_request_created":
+    case "cancellation_request_approved":
+    case "cancellation_request_rejected":
+    case "cancellation_request_expired":
     case "payment_initiated":
     case "payment_success":
     case "payment_failed":
@@ -139,9 +144,14 @@ function isOrderOrPaymentEvent(event: NotificationEvent) {
     event.name === "suborder_shipped" ||
     event.name === "suborder_delivery_failed" ||
     event.name === "suborder_retry_scheduled" ||
+    event.name === "suborder_shipment_returned" ||
     event.name === "suborder_returned" ||
     event.name === "suborder_delivered" ||
     event.name === "suborder_cancelled" ||
+    event.name === "cancellation_request_created" ||
+    event.name === "cancellation_request_approved" ||
+    event.name === "cancellation_request_rejected" ||
+    event.name === "cancellation_request_expired" ||
     event.name === "payment_initiated" ||
     event.name === "payment_success" ||
     event.name === "payment_failed" ||

@@ -318,6 +318,7 @@ export function BrandDashboardClient({ mode = "dashboard" }: BrandDashboardClien
                     <option value="REFUSED_DELIVERY">Refused by Customer</option>
                     <option value="PHONE_UNREACHABLE">Phone Unreachable</option>
                     <option value="AREA_NOT_SERVICEABLE">Area Not Serviceable</option>
+                    <option value="COURIER_ISSUE">Courier Issue</option>
                     <option value="OTHER">Other</option>
                   </select>
                   <input

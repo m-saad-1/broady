@@ -92,6 +92,19 @@ export type IngestionQueueStats = {
 
 export type IngestionQueueMetrics = Record<string, IngestionQueueStats>;
 
+export type CatalogFilterOptions = {
+  brands: Array<Pick<Brand, "id" | "name" | "slug">>;
+  divisions: string[];
+  categories: string[];
+  subTypes: string[];
+  sizes: string[];
+  colors: string[];
+  priceRange: {
+    min: number;
+    max: number;
+  };
+};
+
 export type ProductContentTemplate = {
   id: string;
   type: ProductTemplateType;
@@ -164,7 +177,7 @@ export type PaymentStatus = SharedPaymentStatus;
 export type OrderStatusLog = {
   id: string;
   status: OrderStatus;
-  updatedBy: "SYSTEM" | "BRAND" | "ADMIN";
+  updatedBy: "SYSTEM" | "BRAND" | "ADMIN" | "USER";
   updatedById?: string | null;
   note?: string | null;
   createdAt: string;
@@ -198,6 +211,21 @@ export type BrandDashboardOrder = {
     brand?: Brand;
   }>;
   statusLogs: OrderStatusLog[];
+  returnRequests?: Array<{
+    id: string;
+    status: string;
+    requestType?: "RETURN" | "EXCHANGE" | null;
+    preferredResolution?: string | null;
+    reasonCode?: string | null;
+    reasonText?: string | null;
+    customerNote?: string | null;
+    orderItemIds?: string[];
+    replacementStatus?: string | null;
+    replacementUnavailable?: boolean;
+    convertedToRefund?: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }>;
 };
 
 export type UserOrder = {
@@ -205,6 +233,8 @@ export type UserOrder = {
   status: OrderStatus;
   paymentMethod: "COD" | "JAZZCASH" | "EASYPAISA";
   paymentStatus: PaymentStatus;
+  paymentRetryEligible?: boolean;
+  paymentRetryExpiresAt?: string | null;
   totalPkr: number;
   deliveryAddress: string;
   trackingId?: string | null;
@@ -247,8 +277,323 @@ export type UserOrder = {
       brand?: Brand;
     }>;
     statusLogs: OrderStatusLog[];
+    returnRequests?: Array<{
+      id: string;
+      status: string;
+      requestType?: "RETURN" | "EXCHANGE" | null;
+      preferredResolution?: string | null;
+      reasonCode?: string | null;
+      reasonText?: string | null;
+      customerNote?: string | null;
+      orderItemIds?: string[];
+      replacementStatus?: string | null;
+      replacementUnavailable?: boolean;
+      convertedToRefund?: boolean;
+      createdAt: string;
+      updatedAt: string;
+    }>;
   }>;
   statusLogs: OrderStatusLog[];
+  returnRequests?: Array<{
+    id: string;
+    status: string;
+    requestType?: "RETURN" | "EXCHANGE" | null;
+    preferredResolution?: string | null;
+    reasonCode?: string | null;
+    reasonText?: string | null;
+    customerNote?: string | null;
+    orderItemIds?: string[];
+    replacementStatus?: string | null;
+    replacementUnavailable?: boolean;
+    convertedToRefund?: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+};
+
+export type CancellationRequestStatus = "REQUESTED" | "APPROVED" | "REJECTED" | "EXPIRED" | "CANCELLED_BY_USER";
+
+export type CancellationRequestRecord = {
+  id: string;
+  orderId: string;
+  subOrderId: string;
+  brandId: string;
+  status: CancellationRequestStatus;
+  requestedByRole: "USER" | "BRAND" | "ADMIN" | "SYSTEM";
+  reasonCode: string;
+  reasonText: string;
+  requesterNote?: string | null;
+  brandResponseCode?: string | null;
+  brandResponseNote?: string | null;
+  trackingEvidence?: string | null;
+  evidenceUrl?: string | null;
+  decisionNote?: string | null;
+  respondedAt?: string | null;
+  decidedAt?: string | null;
+  expiresAt?: string | null;
+  autoApproveAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  order?: { id: string; userId?: string; paymentMethod?: string; paymentStatus?: string; createdAt?: string };
+  brand?: Pick<Brand, "id" | "name">;
+  subOrder?: {
+    id: string;
+    status: OrderStatus;
+    subtotalPkr?: number;
+    brand?: Pick<Brand, "id" | "name">;
+    items?: Array<{
+      id: string;
+      quantity: number;
+      product?: Pick<Product, "id" | "name" | "imageUrl">;
+    }>;
+  };
+  history?: Array<{ id: string; action: string; note?: string | null; createdAt: string }>;
+};
+
+export type ReturnRequestStatus =
+  | "REQUESTED"
+  | "BRAND_REVIEWING"
+  | "NEED_MORE_EVIDENCE"
+  | "BRAND_APPROVED"
+  | "BRAND_REJECTED"
+  | "ADMIN_REVIEWING"
+  | "ADMIN_APPROVED"
+  | "ADMIN_REJECTED"
+  | "REVIEWING"
+  | "APPROVED"
+  | "REJECTED"
+  | "RETURN_ARRANGED"
+  | "PICKUP_SCHEDULED"
+  | "RETURN_IN_TRANSIT"
+  | "IN_TRANSIT"
+  | "RETURN_RECEIVED"
+  | "RETURN_CONDITION_APPROVED"
+  | "RETURN_CONDITION_DISPUTED"
+  | "RECEIVED"
+  | "REFUND_INITIATED"
+  | "REFUND_PROCESSING"
+  | "REFUND_COMPLETED"
+  | "REPLACEMENT_PROCESSING"
+  | "REPLACEMENT_PACKED"
+  | "REPLACEMENT_READY_FOR_PICKUP"
+  | "REPLACEMENT_SHIPPED"
+  | "REPLACEMENT_OUT_FOR_DELIVERY"
+  | "REPLACEMENT_DELIVERY_FAILED"
+  | "REPLACEMENT_ADDRESS_CORRECTION_REQUIRED"
+  | "REPLACEMENT_READY_FOR_REDELIVERY"
+  | "REPLACEMENT_SHIPMENT_RETURNED"
+  | "REPLACEMENT_DELIVERED"
+  | "COMPLETED"
+  | "EXCHANGE_COMPLETED";
+
+export type ReturnRequestRecord = {
+  id: string;
+  orderId: string;
+  subOrderId: string;
+  requestType?: "RETURN" | "EXCHANGE" | null;
+  status: ReturnRequestStatus;
+  orderItemIds?: string[];
+  reasonCode: string;
+  reasonText: string;
+  customerNote?: string | null;
+  preferredResolution?: string;
+  requestedExchangeType?: string | null;
+  requestedVariantSummary?: string | null;
+  requestedReplacementVariantId?: string | null;
+  requestedReplacementSize?: string | null;
+  requestedReplacementColor?: string | null;
+  customerRefundPreference?: string | null;
+  evidenceImageUrls?: string[];
+  brandRecommendation?: "APPROVE" | "REJECT" | "NEED_MORE_EVIDENCE" | null;
+  brandRejectReason?: string | null;
+  brandRecommendationNote?: string | null;
+  brandConditionNote?: string | null;
+  brandDamageNote?: string | null;
+  canFulfillReplacement?: boolean | null;
+  brandRecommendedAt?: string | null;
+  replacementUnavailable?: boolean;
+  replacementUnavailableReason?: string | null;
+  damageEvidenceUrls?: string[];
+  damageClaimNote?: string | null;
+  damageClaimSubmittedAt?: string | null;
+  convertedToRefund?: boolean;
+  replacementStatus?:
+    | "EXCHANGE_APPROVED"
+    | "REPLACEMENT_PROCESSING"
+    | "REPLACEMENT_PACKED"
+    | "REPLACEMENT_READY_FOR_PICKUP"
+    | "REPLACEMENT_SHIPPED"
+    | "REPLACEMENT_OUT_FOR_DELIVERY"
+    | "REPLACEMENT_DELIVERY_FAILED"
+    | "REPLACEMENT_ADDRESS_CORRECTION_REQUIRED"
+    | "REPLACEMENT_READY_FOR_REDELIVERY"
+    | "REPLACEMENT_SHIPMENT_RETURNED"
+    | "REPLACEMENT_DELIVERED"
+    | "EXCHANGE_COMPLETED"
+    | "EXCHANGE_UNFULFILLABLE"
+    | null;
+  replacementTrackingNo?: string | null;
+  replacementCourier?: string | null;
+  replacementSku?: string | null;
+  replacementDispatchDate?: string | null;
+  replacementEstimatedDelivery?: string | null;
+  replacementShipmentNote?: string | null;
+  replacementDeliveryAttempts?: number;
+  replacementFailureReason?: string | null;
+  replacementFailureReasonMessage?: string | null;
+  replacementNextAttemptDate?: string | null;
+  replacementLastAttemptAt?: string | null;
+  replacementDeliveryFailedAt?: string | null;
+  replacementFinalFailureAt?: string | null;
+  replacementDeliveredAt?: string | null;
+  adminDecision?: "APPROVED" | "REJECTED" | null;
+  adminDecisionNote?: string | null;
+  adminRejectedReason?: string | null;
+  pickupCourier?: string | null;
+  pickupDate?: string | null;
+  pickupAddress?: string | null;
+  returnTrackingNumber?: string | null;
+  returnReceivedAt?: string | null;
+  returnReceivedByBrandId?: string | null;
+  returnReceiptConditionNote?: string | null;
+  returnReceiptEvidenceUrls?: string[];
+  refundStatusSnapshot?: string | null;
+  noReceiptReportedAt?: string | null;
+  reviewNote?: string | null;
+  pickupTracking?: string | null;
+  completedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  order?: { id: string; userId?: string; paymentMethod?: string; createdAt?: string; user?: { id: string; fullName?: string; email?: string } };
+  subOrder?: {
+    id: string;
+    status: OrderStatus;
+    subtotalPkr?: number;
+    brandId?: string;
+    brand?: Pick<Brand, "id" | "name">;
+    items?: Array<{
+      id: string;
+      quantity: number;
+      selectedColor?: string | null;
+      selectedSize?: string | null;
+      unitPricePkr?: number;
+      product?: Pick<Product, "id" | "name" | "imageUrl">;
+    }>;
+  };
+  statusLogs?: Array<{ id: string; status: ReturnRequestStatus; note?: string | null; createdAt: string }>;
+  history?: Array<{ id: string; newStatus?: ReturnRequestStatus; note?: string | null; createdAt: string }>;
+  refundRequests?: Array<{
+    id: string;
+    status: RefundRequestStatus;
+    amountPkr: number;
+    adjustedAmountPkr?: number | null;
+    method?: string | null;
+    completedAt?: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+};
+
+export type RefundRequestStatus = "PENDING" | "APPROVED" | "PROCESSING" | "COMPLETED" | "REJECTED" | "FAILED";
+
+export type RefundRequestRecord = {
+  id: string;
+  orderId: string;
+  subOrderId: string;
+  status: RefundRequestStatus;
+  amountPkr: number;
+  adjustedAmountPkr?: number | null;
+  currency?: string;
+  method?: string;
+  reasonCode?: string;
+  reasonText?: string;
+  gatewayRefundId?: string | null;
+  reviewNote?: string | null;
+  completedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  order?: { id: string; userId?: string; paymentMethod?: string };
+  subOrder?: {
+    id: string;
+    brandId?: string;
+    subtotalPkr?: number;
+    status?: OrderStatus;
+    brand?: Pick<Brand, "id" | "name">;
+    items?: Array<{
+      id: string;
+      quantity: number;
+      selectedColor?: string | null;
+      selectedSize?: string | null;
+      unitPricePkr?: number;
+      product?: Pick<Product, "id" | "name" | "imageUrl">;
+    }>;
+  };
+  returnRequest?: ReturnRequestRecord | null;
+  items?: Array<{
+    id: string;
+    quantity: number;
+    refundAmountPkr: number;
+    orderItem?: {
+      id: string;
+      quantity?: number;
+      selectedColor?: string | null;
+      selectedSize?: string | null;
+      product?: Pick<Product, "id" | "name" | "imageUrl">;
+    };
+  }>;
+  statusLogs?: Array<{ id: string; status: RefundRequestStatus; note?: string | null; createdAt: string }>;
+  history?: Array<{ id: string; oldStatus?: RefundRequestStatus | null; newStatus?: RefundRequestStatus; note?: string | null; adjustedAmount?: number | null; createdAt: string }>;
+};
+
+export type AdminOperationsRecord = {
+  refundRequests: RefundRequestRecord[];
+  returnRequests: ReturnRequestRecord[];
+  failedDeliveries: Array<{
+    id: string;
+    orderId: string;
+    status: OrderStatus;
+    failureReason?: string | null;
+    nextAttemptDate?: string | null;
+      updatedAt: string;
+      deliveryAttempts?: number;
+      order?: { id: string; userId?: string; paymentMethod?: string };
+      brand?: Pick<Brand, "id" | "name">;
+    }>;
+  stuckShipments: Array<{
+    id: string;
+    orderId: string;
+    status: OrderStatus;
+    trackingId?: string | null;
+    updatedAt: string;
+    order?: { id: string; userId?: string; paymentMethod?: string };
+    brand?: Pick<Brand, "id" | "name">;
+  }>;
+  disputes: RefundRequestRecord[];
+  escalations?: Record<string, unknown>;
+};
+
+export type CodAbuseUserRecord = {
+  id: string;
+  fullName: string;
+  email: string;
+  codRefusalCount: number;
+  lastCodRefusalAt?: string | null;
+  codReviewFlag: boolean;
+  codReviewStatus: "CLEAR" | "FLAGGED" | "UNDER_REVIEW" | "RESTRICTED" | "BLOCKED";
+  codReviewNote?: string | null;
+  codBlockedAt?: string | null;
+  codPrepaymentRequired: boolean;
+  orders: Array<{
+    id: string;
+    createdAt: string;
+    paymentMethod: "COD" | "JAZZCASH" | "EASYPAISA";
+    subOrders: Array<{
+      id: string;
+      failureReason?: string | null;
+      finalDeliveryFailureAt?: string | null;
+      updatedAt: string;
+    }>;
+  }>;
 };
 
 export type BrandDashboardOverview = {
@@ -297,6 +642,73 @@ export type NotificationItem = {
     status: "SENT" | "QUEUED" | "FAILED";
     recipient: string;
   }>;
+};
+
+export type WalletTransactionRecord = {
+  id: string;
+  type: "CREDIT" | "DEBIT";
+  sourceType: "REFUND" | "PAYMENT" | "ADJUSTMENT";
+  amountPkr: number;
+  balanceAfterPkr: number;
+  note?: string | null;
+  createdAt: string;
+  order?: {
+    id: string;
+    paymentMethod: "COD" | "JAZZCASH" | "EASYPAISA";
+    paymentStatus: PaymentStatus;
+    totalPkr: number;
+  } | null;
+  refundRequest?: {
+    id: string;
+    status: string;
+    method: "ORIGINAL_SOURCE" | "BANK_TRANSFER" | "WALLET_CREDIT";
+    amountPkr: number;
+  } | null;
+};
+
+export type UserWallet = {
+  id: string;
+  userId: string;
+  availableBalancePkr: number;
+  totalCreditedPkr: number;
+  totalDebitedPkr: number;
+  createdAt: string;
+  updatedAt: string;
+  transactions: WalletTransactionRecord[];
+};
+
+export type PaymentSessionRecord = {
+  id: string;
+  orderId: string;
+  userId: string;
+  paymentMethod: "JAZZCASH" | "EASYPAISA";
+  gateway: string;
+  gatewayTransactionId: string;
+  status: "PENDING" | "COMPLETED" | "FAILED" | "CANCELLED" | "TIMEOUT" | "EXPIRED";
+  redirectUrl: string;
+  expiresAt: string;
+  completedAt?: string | null;
+  failedAt?: string | null;
+  lastErrorReason?: string | null;
+  attemptNumber: number;
+  retryEligible?: boolean;
+  retryExpiresAt?: string | null;
+  order?: UserOrder | {
+    id: string;
+    paymentMethod: "COD" | "JAZZCASH" | "EASYPAISA";
+    paymentStatus: PaymentStatus;
+    totalPkr: number;
+    deliveryAddress: string;
+    items: Array<{
+      id: string;
+      quantity: number;
+      unitPricePkr: number;
+      selectedColor?: string | null;
+      selectedSize?: string | null;
+      product: Product;
+      brand?: Brand;
+    }>;
+  };
 };
 
 export type SearchSuggestion = {
@@ -352,6 +764,21 @@ export type AdminBrandDashboardRecord = {
     updatedAt: string;
     user: { id: string; fullName: string; email: string };
     statusLogs: OrderStatusLog[];
+    returnRequests?: Array<{
+      id: string;
+      status: string;
+      requestType?: "RETURN" | "EXCHANGE" | null;
+      preferredResolution?: string | null;
+      reasonCode?: string | null;
+      reasonText?: string | null;
+      customerNote?: string | null;
+      orderItemIds?: string[];
+      replacementStatus?: string | null;
+      replacementUnavailable?: boolean;
+      convertedToRefund?: boolean;
+      createdAt: string;
+      updatedAt: string;
+    }>;
     items: Array<{
       id: string;
       quantity: number;

@@ -48,6 +48,20 @@ export type NormalizedProduct = {
   shortDescription?: string;
   description: string;
   gender: string;
+  division: string;
+  category: string;
+  subType?: string;
+  subTypeConfidence: "explicit" | "inferred" | "null";
+  mappingStatus: "complete" | "partial" | "unresolved";
+  resolutionSource:
+    | "url_and_breadcrumb"
+    | "url_only"
+    | "breadcrumb_only"
+    | "adapter_label"
+    | "title_keyword"
+    | "admin_manual"
+    | "unresolved";
+  pageContext?: Record<string, unknown>;
   color: string;
   colors?: string[];
   fit?: string;

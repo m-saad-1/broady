@@ -1,5 +1,6 @@
 import type { NormalizedProduct, NormalizedVariant, ParsedImportRecord } from "../ingestion.types.js";
 import { createSlug, normalizePrice, normalizeText } from "../utils/ingestion.utils.js";
+import { resolveBroadyTaxonomy } from "../../products/product-taxonomy.js";
 
 const colorKeys = ["color", "color_name", "clr", "shade", "colour"];
 const DEFAULT_IMPORTED_STOCK = 10;
@@ -727,7 +728,10 @@ function parseAdditionalInfo(
   });
 }
 
-export function normalizeRecord(record: ParsedImportRecord): NormalizedProduct {
+export function normalizeRecord(
+  record: ParsedImportRecord,
+  context?: { brandSlug?: string | null },
+): NormalizedProduct {
   const source = resolveSource(record);
   const lookup = getSourceLookup(source);
   const variantsInput = extractVariants(source);
@@ -747,9 +751,30 @@ export function normalizeRecord(record: ParsedImportRecord): NormalizedProduct {
     source.stock_quantity,
   ].some(hasNumericStockValue);
 
-  const type = inferType(source);
-  const subCategory = normalizeText(source.subcategory ?? source.sub_category ?? source.category ?? source.product_type, "Uncategorized");
+  const sizeList = Array.isArray(source.sizes)
+    ? source.sizes.map((item) => cleanText(item)).filter(Boolean)
+    : variantsInput.length
+      ? uniq(variantsInput.map((variant) => cleanText(variant.option2 ?? variant.size)).filter(Boolean))
+      : cleanText(source.size)
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean);
+
+  const rawSubCategory = normalizeText(source.subcategory ?? source.sub_category ?? source.category ?? source.product_type, "Uncategorized");
   const topCategory = inferTopCategory(source);
+  const taxonomy = resolveBroadyTaxonomy({
+    brandSlug: context?.brandSlug,
+    name,
+    rawGender: normalizeText(source.gender),
+    rawTopCategory: normalizeText(source.top_category ?? source.gender ?? topCategory),
+    rawCategory: normalizeText(source.category ?? source.product_type ?? source.type),
+    rawSubCategory,
+    productUrl: cleanText(getField(source, lookup, ["product_url", "url", "source_url", "handle_url"])),
+    breadcrumb: Array.isArray(source.breadcrumb) ? source.breadcrumb.map((entry) => String(entry || "")) : undefined,
+    sizes: sizeList,
+  });
+  const type = taxonomy.legacyProductType;
+  const subCategory = taxonomy.legacySubCategory;
 
   const actualPrice = normalizePrice(
     source.actual_price ?? source.price ?? source.compare_at_price ?? firstVariant.compare_at_price ?? firstVariant.price,
@@ -760,15 +785,6 @@ export function normalizeRecord(record: ParsedImportRecord): NormalizedProduct {
   const salePrice = hasDiscount ? candidateSalePrice : undefined;
   const pricePkr = salePrice ?? actualPrice;
   const discountPercentage = hasDiscount ? Math.max(0, Math.round(((actualPrice - candidateSalePrice) / actualPrice) * 100)) : undefined;
-
-  const sizeList = Array.isArray(source.sizes)
-    ? source.sizes.map((item) => cleanText(item)).filter(Boolean)
-    : variantsInput.length
-      ? uniq(variantsInput.map((variant) => cleanText(variant.option2 ?? variant.size)).filter(Boolean))
-      : cleanText(source.size)
-          .split(",")
-          .map((item) => item.trim())
-          .filter(Boolean);
 
   const tags = Array.isArray(source.tags)
     ? source.tags.map((item) => cleanText(item)).filter(Boolean)
@@ -941,7 +957,14 @@ export function normalizeRecord(record: ParsedImportRecord): NormalizedProduct {
     slug: createSlug(normalizeText(source.handle ?? source.slug, name)),
     shortDescription: shortDescription || undefined,
     description,
-    gender: inferGender(source, topCategory),
+    gender: taxonomy.gender || (inferGender(source, topCategory).toLowerCase()),
+    division: taxonomy.division || "top",
+    category: taxonomy.category || "top",
+    subType: taxonomy.subType || undefined,
+    subTypeConfidence: taxonomy.subTypeConfidence,
+    mappingStatus: taxonomy.mappingStatus,
+    resolutionSource: taxonomy.resolutionSource,
+    pageContext: taxonomy.pageContext,
     color: primaryColor,
     colors: colors.length ? colors : undefined,
     fit: fitResult.fit,
@@ -951,7 +974,7 @@ export function normalizeRecord(record: ParsedImportRecord): NormalizedProduct {
     visibility: "hidden",
     source: normalizeText(source.source_type, "json_import"),
     type,
-    topCategory,
+    topCategory: taxonomy.topCategory || topCategory,
     subCategory,
     actualPrice,
     salePrice,

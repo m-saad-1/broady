@@ -4,10 +4,48 @@ import { prisma } from "../config/prisma.js";
 import { requireAdmin, requireAuth } from "../middleware/auth.js";
 import { notificationEventNames } from "../modules/notifications/notification.events.js";
 import { queueNotificationEvent } from "../modules/notifications/notification.service.js";
+import { inferReturnRequestType, normalizeReturnRequestForApi } from "../modules/orders/return-workflow.js";
 import { runShippingAutomationSweep } from "../modules/orders/shippingAutomation.service.js";
+import { creditWallet } from "../modules/users/wallet.service.js";
 
 const router = Router();
 const OPEN_ORDER_STATUSES = new Set(["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "OUT_FOR_DELIVERY", "DELIVERY_FAILED"]);
+const RETURN_WORKFLOW_STATUSES = [
+  "REQUESTED",
+  "BRAND_REVIEWING",
+  "NEED_MORE_EVIDENCE",
+  "BRAND_APPROVED",
+  "BRAND_REJECTED",
+  "ADMIN_REVIEWING",
+  "ADMIN_APPROVED",
+  "ADMIN_REJECTED",
+  "REVIEWING",
+  "APPROVED",
+  "REJECTED",
+  "RETURN_ARRANGED",
+  "PICKUP_SCHEDULED",
+  "RETURN_IN_TRANSIT",
+  "IN_TRANSIT",
+  "RETURN_RECEIVED",
+  "RETURN_CONDITION_APPROVED",
+  "RETURN_CONDITION_DISPUTED",
+  "RECEIVED",
+  "REFUND_INITIATED",
+  "REFUND_PROCESSING",
+  "REFUND_COMPLETED",
+  "REPLACEMENT_PROCESSING",
+  "REPLACEMENT_PACKED",
+  "REPLACEMENT_READY_FOR_PICKUP",
+  "REPLACEMENT_SHIPPED",
+  "REPLACEMENT_OUT_FOR_DELIVERY",
+  "REPLACEMENT_DELIVERY_FAILED",
+  "REPLACEMENT_ADDRESS_CORRECTION_REQUIRED",
+  "REPLACEMENT_READY_FOR_REDELIVERY",
+  "REPLACEMENT_SHIPMENT_RETURNED",
+  "REPLACEMENT_DELIVERED",
+  "COMPLETED",
+  "EXCHANGE_COMPLETED",
+] as const;
 
 router.use(requireAuth, requireAdmin);
 
@@ -57,7 +95,7 @@ router.get("/operations", async (req, res) => {
   const query = z
     .object({
       refundStatus: z.enum(["PENDING", "APPROVED", "PROCESSING", "COMPLETED", "REJECTED"]).optional(),
-      returnStatus: z.enum(["REQUESTED", "REVIEWING", "APPROVED", "REJECTED", "PICKUP_SCHEDULED", "IN_TRANSIT", "RECEIVED", "REFUND_INITIATED", "COMPLETED"]).optional(),
+      returnStatus: z.enum(RETURN_WORKFLOW_STATUSES).optional(),
       onlyEscalated: z.coerce.boolean().optional(),
     })
     .safeParse(req.query);
@@ -83,9 +121,43 @@ router.get("/operations", async (req, res) => {
     db.returnRequest.findMany({
       where: { status: query.data.returnStatus },
       include: {
-        order: { select: { id: true, userId: true, paymentMethod: true } },
-        subOrder: { select: { id: true, brandId: true, subtotalPkr: true, status: true } },
+        order: {
+          select: {
+            id: true,
+            userId: true,
+            paymentMethod: true,
+            user: { select: { id: true, fullName: true, email: true } },
+          },
+        },
+        subOrder: {
+          select: {
+            id: true,
+            brandId: true,
+            subtotalPkr: true,
+            status: true,
+            brand: { select: { id: true, name: true } },
+            items: {
+              include: {
+                product: { select: { id: true, name: true, imageUrl: true } },
+              },
+            },
+          },
+        },
         statusLogs: { orderBy: { createdAt: "desc" } },
+        history: { orderBy: { createdAt: "desc" } },
+        refundRequests: {
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            status: true,
+            amountPkr: true,
+            adjustedAmountPkr: true,
+            method: true,
+            completedAt: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
       },
       orderBy: { createdAt: "desc" },
       take: 200,
@@ -119,7 +191,7 @@ router.get("/operations", async (req, res) => {
   return res.json({
     data: {
       refundRequests,
-      returnRequests,
+      returnRequests: returnRequests.map((request: any) => normalizeReturnRequestForApi(request)),
       failedDeliveries: query.data.onlyEscalated ? escalatedFailures : failedDeliveries,
       stuckShipments,
       disputes: refundRequests.filter((entry: any) => entry.status === "REJECTED"),
@@ -131,12 +203,114 @@ router.get("/operations", async (req, res) => {
   });
 });
 
+router.get("/cancellation-requests", async (req, res) => {
+  const query = z
+    .object({
+      status: z.enum(["REQUESTED", "REVIEWING", "APPROVED", "REJECTED", "EXPIRED", "CANCELLED_BY_USER"]).optional(),
+    })
+    .safeParse(req.query);
+
+  if (!query.success) {
+    return res.status(400).json({ message: "Invalid query parameters" });
+  }
+
+  const db = prisma as any;
+  const requests = await db.cancellationRequest.findMany({
+    where: query.data.status ? { status: query.data.status } : undefined,
+    include: {
+      order: { select: { id: true, userId: true, paymentMethod: true } },
+      subOrder: { select: { id: true, brandId: true, subtotalPkr: true, status: true, items: { include: { product: { select: { name: true } } } } } },
+      brand: { select: { id: true, name: true } },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  });
+
+  return res.json({ data: requests });
+});
+
+router.patch("/cancellation-requests/:requestId/status", async (req, res) => {
+  const payload = z
+    .object({
+      status: z.enum(["APPROVED", "REJECTED"]),
+      note: z.string().trim().max(500).optional(),
+      refundMethod: z.enum(["ORIGINAL_SOURCE", "BANK_TRANSFER", "WALLET_CREDIT"]).optional(),
+    })
+    .safeParse(req.body || {});
+
+  if (!payload.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: payload.error.flatten() });
+  }
+
+  const db = prisma as any;
+  const request = await db.cancellationRequest.findUnique({
+    where: { id: String(req.params.requestId) },
+    include: { order: true, subOrder: true },
+  });
+
+  if (!request) return res.status(404).json({ message: "Cancellation request not found" });
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const dbTx = tx as any;
+    const next = await dbTx.cancellationRequest.update({
+      where: { id: request.id },
+      data: {
+        status: payload.data.status,
+        decisionNote: payload.data.note || request.decisionNote,
+        decidedById: req.auth!.userId,
+        decidedAt: new Date(),
+      },
+    });
+
+    if (payload.data.status === "APPROVED") {
+      await dbTx.subOrder.update({
+        where: { id: request.subOrderId },
+        data: { status: "CANCELLED" },
+      });
+
+      if (request.order.paymentStatus === "PAID" || request.order.paymentMethod !== "COD") {
+        await dbTx.refundRequest.create({
+          data: {
+            orderId: request.orderId,
+            subOrderId: request.subOrderId,
+            cancellationRequestId: request.id,
+            requestedByRole: "ADMIN",
+            requestedById: req.auth!.userId,
+            reasonCode: "ORDER_CANCELLED",
+            method: payload.data.refundMethod || "ORIGINAL_SOURCE",
+            amountPkr: request.subOrder.subtotalPkr,
+            status: "APPROVED",
+          },
+        });
+      }
+    } else if (payload.data.status === "REJECTED") {
+      await dbTx.subOrder.update({
+        where: { id: request.subOrderId },
+        data: { status: "PROCESSING" },
+      });
+    }
+
+    return next;
+  });
+
+  return res.json({ data: updated });
+});
+
 router.patch("/refund-requests/:refundRequestId/status", async (req, res) => {
   const payload = z
     .object({
-      status: z.enum(["PENDING", "APPROVED", "PROCESSING", "COMPLETED", "REJECTED"]),
+      action: z.enum([
+        "APPROVE_REFUND",
+        "REJECT_REFUND",
+        "RETRY_FAILED_REFUND",
+        "MARK_MANUAL_REFUND_COMPLETED",
+        "MARK_GATEWAY_REFUND_COMPLETED",
+        "MARK_GATEWAY_REFUND_FAILED",
+      ]),
       note: z.string().trim().max(500).optional(),
       method: z.enum(["ORIGINAL_SOURCE", "BANK_TRANSFER", "WALLET_CREDIT"]).optional(),
+      adjustedAmountPkr: z.coerce.number().int().positive().optional(),
+      gatewayRefundId: z.string().trim().max(160).optional(),
     })
     .safeParse(req.body || {});
 
@@ -147,67 +321,424 @@ router.patch("/refund-requests/:refundRequestId/status", async (req, res) => {
   const db = prisma as any;
   const refundRequest = await db.refundRequest.findUnique({
     where: { id: String(req.params.refundRequestId) },
-    include: { order: true, subOrder: true },
+    include: { order: true, subOrder: true, returnRequest: true },
   });
   if (!refundRequest) return res.status(404).json({ message: "Refund request not found" });
+  const refundActionPayload = payload.data;
+
+  const currentMethod = refundActionPayload.method || refundRequest.method || "ORIGINAL_SOURCE";
+  const currentAmount = refundActionPayload.adjustedAmountPkr ?? refundRequest.adjustedAmountPkr ?? refundRequest.amountPkr;
+
+  if (refundActionPayload.action === "APPROVE_REFUND" && refundRequest.status !== "PENDING") {
+    return res.status(409).json({ message: "Only pending refunds can be approved." });
+  }
+  if (refundActionPayload.action === "REJECT_REFUND" && refundRequest.status !== "PENDING") {
+    return res.status(409).json({ message: "Only pending refunds can be rejected." });
+  }
+  if (refundActionPayload.action === "RETRY_FAILED_REFUND" && refundRequest.status !== "FAILED") {
+    return res.status(409).json({ message: "Only failed refunds can be retried." });
+  }
+  if (
+    (refundActionPayload.action === "MARK_MANUAL_REFUND_COMPLETED" || refundActionPayload.action === "MARK_GATEWAY_REFUND_COMPLETED" || refundActionPayload.action === "MARK_GATEWAY_REFUND_FAILED") &&
+    refundRequest.status !== "PROCESSING"
+  ) {
+    return res.status(409).json({ message: "Refund must be in processing state for this action." });
+  }
+  if (refundActionPayload.action === "MARK_MANUAL_REFUND_COMPLETED" && currentMethod === "ORIGINAL_SOURCE") {
+    return res.status(409).json({ message: "Manual completion is only available for manual refund methods." });
+  }
+  if (refundActionPayload.action === "MARK_MANUAL_REFUND_COMPLETED" && (!refundActionPayload.gatewayRefundId?.trim() || !refundActionPayload.note?.trim())) {
+    return res.status(400).json({ message: "Manual refund completion requires a transaction reference and note." });
+  }
+  if (refundActionPayload.action === "REJECT_REFUND" && !refundActionPayload.note?.trim()) {
+    return res.status(400).json({ message: "A rejection note is required when rejecting a refund." });
+  }
+
+  const notificationStates: Array<{ status: string; note: string }> = [];
 
   const updated = await prisma.$transaction(async (tx) => {
     const dbTx = tx as any;
-    const next = await dbTx.refundRequest.update({
-      where: { id: refundRequest.id },
-      data: {
-        status: payload.data.status,
-        reviewNote: payload.data.note?.trim() || refundRequest.reviewNote,
-        method: payload.data.method || refundRequest.method,
-        completedAt: payload.data.status === "COMPLETED" ? new Date() : refundRequest.completedAt,
-      },
-    });
-    await dbTx.refundStatusLog.create({
-      data: {
-        refundRequestId: refundRequest.id,
-        status: payload.data.status,
-        updatedBy: "ADMIN",
-        updatedById: req.auth!.userId,
-        note: payload.data.note?.trim() || undefined,
-      },
-    });
-    if (payload.data.status === "COMPLETED") {
+    let workingStatus = refundRequest.status;
+    let workingReturnStatus = refundRequest.returnRequest?.status || "REFUND_INITIATED";
+    const now = new Date();
+
+    async function writeRefundAudit(nextStatus: "APPROVED" | "PROCESSING" | "COMPLETED" | "REJECTED" | "FAILED", note: string) {
+      await dbTx.refundStatusLog.create({
+        data: {
+          refundRequestId: refundRequest.id,
+          status: nextStatus,
+          updatedBy: "ADMIN",
+          updatedById: req.auth!.userId,
+          note,
+        },
+      });
+      await dbTx.refundHistory.create({
+        data: {
+          refundRequestId: refundRequest.id,
+          oldStatus: workingStatus,
+          newStatus: nextStatus,
+          performedByRole: "ADMIN",
+          performedById: req.auth!.userId,
+          adjustedAmount: currentAmount,
+          gatewayReference: refundActionPayload.gatewayRefundId?.trim() || refundRequest.gatewayRefundId || null,
+          note,
+        },
+      });
+      workingStatus = nextStatus;
+      notificationStates.push({ status: nextStatus, note });
+    }
+
+    async function moveReturnWorkflow(nextStatus: "REFUND_PROCESSING" | "REFUND_COMPLETED" | "COMPLETED", note: string) {
+      if (!refundRequest.returnRequestId) return;
+      await dbTx.returnStatusLog.create({
+        data: {
+          returnRequestId: refundRequest.returnRequestId,
+          status: nextStatus,
+          updatedBy: "ADMIN",
+          updatedById: req.auth!.userId,
+          note,
+        },
+      });
+      await dbTx.returnHistory.create({
+        data: {
+          returnRequestId: refundRequest.returnRequestId,
+          oldStatus: workingReturnStatus,
+          newStatus: nextStatus,
+          performedByRole: "ADMIN",
+          performedById: req.auth!.userId,
+          note,
+        },
+      });
+      workingReturnStatus = nextStatus;
+    }
+
+    if (refundActionPayload.action === "APPROVE_REFUND") {
+      const approvalNote = refundActionPayload.note?.trim() || "Refund approved.";
+      const processingNote = "Refund moved into processing automatically after approval.";
+      await dbTx.refundRequest.update({
+        where: { id: refundRequest.id },
+        data: {
+          status: "PROCESSING",
+          reviewNote: refundActionPayload.note?.trim() || refundRequest.reviewNote,
+          method: currentMethod,
+          adjustedAmountPkr: currentAmount,
+          gatewayRefundId: refundActionPayload.gatewayRefundId?.trim() || refundRequest.gatewayRefundId,
+          completedAt: null,
+        },
+      });
+      await writeRefundAudit("APPROVED", approvalNote);
+      await writeRefundAudit("PROCESSING", processingNote);
+      if (refundRequest.returnRequestId) {
+        await dbTx.returnRequest.update({
+          where: { id: refundRequest.returnRequestId },
+          data: {
+            status: "REFUND_PROCESSING",
+            refundStatusSnapshot: "PROCESSING",
+          },
+        });
+        await moveReturnWorkflow("REFUND_PROCESSING", processingNote);
+      }
+    }
+
+    if (refundActionPayload.action === "REJECT_REFUND") {
+      const rejectionNote = refundActionPayload.note!.trim();
+      await dbTx.refundRequest.update({
+        where: { id: refundRequest.id },
+        data: {
+          status: "REJECTED",
+          reviewNote: rejectionNote,
+          method: currentMethod,
+          adjustedAmountPkr: currentAmount,
+        },
+      });
+      await writeRefundAudit("REJECTED", rejectionNote);
+      if (refundRequest.returnRequestId) {
+        await dbTx.returnRequest.update({
+          where: { id: refundRequest.returnRequestId },
+          data: { refundStatusSnapshot: "REJECTED" },
+        });
+      }
+    }
+
+    if (refundActionPayload.action === "RETRY_FAILED_REFUND") {
+      const retryNote = refundActionPayload.note?.trim() || "Refund retry started.";
+      await dbTx.refundRequest.update({
+        where: { id: refundRequest.id },
+        data: {
+          status: "PROCESSING",
+          reviewNote: retryNote,
+          method: currentMethod,
+          adjustedAmountPkr: currentAmount,
+          gatewayRefundId: refundActionPayload.gatewayRefundId?.trim() || refundRequest.gatewayRefundId,
+          completedAt: null,
+        },
+      });
+      await writeRefundAudit("PROCESSING", retryNote);
+      if (refundRequest.returnRequestId) {
+        await dbTx.returnRequest.update({
+          where: { id: refundRequest.returnRequestId },
+          data: {
+            status: "REFUND_PROCESSING",
+            refundStatusSnapshot: "PROCESSING",
+          },
+        });
+        await moveReturnWorkflow("REFUND_PROCESSING", retryNote);
+      }
+    }
+
+    if (refundActionPayload.action === "MARK_GATEWAY_REFUND_FAILED") {
+      const failureNote = refundActionPayload.note?.trim() || "Gateway reported refund failure.";
+      await dbTx.refundRequest.update({
+        where: { id: refundRequest.id },
+        data: {
+          status: "FAILED",
+          reviewNote: failureNote,
+          gatewayRefundId: refundActionPayload.gatewayRefundId?.trim() || refundRequest.gatewayRefundId,
+        },
+      });
+      await writeRefundAudit("FAILED", failureNote);
+      if (refundRequest.returnRequestId) {
+        await dbTx.returnRequest.update({
+          where: { id: refundRequest.returnRequestId },
+          data: { refundStatusSnapshot: "FAILED" },
+        });
+      }
+    }
+
+    if (refundActionPayload.action === "MARK_MANUAL_REFUND_COMPLETED" || refundActionPayload.action === "MARK_GATEWAY_REFUND_COMPLETED") {
+      const completionNote =
+        refundActionPayload.action === "MARK_MANUAL_REFUND_COMPLETED"
+          ? refundActionPayload.note!.trim()
+          : refundActionPayload.note?.trim() || "Gateway confirmed refund completion.";
+      await dbTx.refundRequest.update({
+        where: { id: refundRequest.id },
+        data: {
+          status: "COMPLETED",
+          reviewNote: completionNote,
+          method: currentMethod,
+          adjustedAmountPkr: currentAmount,
+          gatewayRefundId: refundActionPayload.gatewayRefundId?.trim() || refundRequest.gatewayRefundId,
+          completedAt: now,
+        },
+      });
+      await writeRefundAudit("COMPLETED", completionNote);
       await tx.subOrder.update({
         where: { id: refundRequest.subOrderId },
-        data: { refundProcessedAt: new Date() },
+        data: { refundProcessedAt: now },
       });
+      if (currentMethod === "WALLET_CREDIT") {
+        await creditWallet(tx, {
+          userId: refundRequest.order.userId,
+          amountPkr: currentAmount,
+          sourceType: "REFUND",
+          note: completionNote,
+          orderId: refundRequest.orderId,
+          refundRequestId: refundRequest.id,
+        });
+      }
+      if (refundRequest.returnRequestId) {
+        await dbTx.returnRequest.update({
+          where: { id: refundRequest.returnRequestId },
+          data: {
+            status: "COMPLETED",
+            refundStatusSnapshot: "COMPLETED",
+            completedAt: now,
+          },
+        });
+        await moveReturnWorkflow("REFUND_COMPLETED", completionNote);
+        await moveReturnWorkflow("COMPLETED", "Return workflow completed after refund settlement.");
+      }
     }
-    return next;
+
+    return dbTx.refundRequest.findUniqueOrThrow({
+      where: { id: refundRequest.id },
+      include: {
+        order: { select: { id: true, userId: true, paymentMethod: true, paymentStatus: true, totalPkr: true, createdAt: true } },
+        subOrder: {
+          include: {
+            brand: { select: { id: true, name: true } },
+            items: { include: { product: { select: { id: true, name: true, imageUrl: true } } } },
+          },
+        },
+        returnRequest: {
+          include: {
+            order: { select: { id: true, userId: true, paymentMethod: true, createdAt: true } },
+            subOrder: {
+              include: {
+                brand: { select: { id: true, name: true } },
+                items: { include: { product: { select: { id: true, name: true, imageUrl: true } } } },
+              },
+            },
+            statusLogs: { orderBy: { createdAt: "desc" } },
+            history: { orderBy: { createdAt: "desc" } },
+            refundRequests: {
+              orderBy: { createdAt: "desc" },
+              select: {
+                id: true,
+                status: true,
+                amountPkr: true,
+                adjustedAmountPkr: true,
+                method: true,
+                completedAt: true,
+                createdAt: true,
+                updatedAt: true,
+              },
+            },
+          },
+        },
+        items: {
+          include: {
+            orderItem: {
+              include: {
+                product: { select: { id: true, name: true, imageUrl: true } },
+              },
+            },
+          },
+        },
+        statusLogs: { orderBy: { createdAt: "desc" } },
+        history: { orderBy: { createdAt: "desc" } },
+      },
+    });
   });
 
-  queueNotificationEvent({
-    name: notificationEventNames.refundStateUpdated,
-    orderId: refundRequest.orderId,
-    userId: refundRequest.order.userId,
-    brandId: refundRequest.subOrder.brandId,
-    paymentMethod: refundRequest.order.paymentMethod,
-    reason: `Refund is now ${payload.data.status}${payload.data.note ? `: ${payload.data.note}` : ""}`,
-  });
+  for (const notificationState of notificationStates) {
+    queueNotificationEvent({
+      name: notificationEventNames.refundStateUpdated,
+      orderId: refundRequest.orderId,
+      userId: refundRequest.order.userId,
+      brandId: refundRequest.subOrder.brandId,
+      paymentMethod: refundRequest.order.paymentMethod,
+      reason: `Refund is now ${notificationState.status}: ${notificationState.note}`,
+    });
+  }
 
-  if (payload.data.status === "COMPLETED") {
+  if (updated.status === "COMPLETED") {
     queueNotificationEvent({
       name: notificationEventNames.refundProcessed,
       orderId: refundRequest.orderId,
       userId: refundRequest.order.userId,
       paymentMethod: refundRequest.order.paymentMethod,
-      reason: payload.data.note,
+      reason: updated.reviewNote || undefined,
     });
   }
 
   return res.json({ data: updated });
 });
 
+router.get("/refund-requests/:refundRequestId", async (req, res) => {
+  const refundRequest = await prisma.refundRequest.findUnique({
+    where: { id: String(req.params.refundRequestId) },
+    include: {
+      order: { select: { id: true, userId: true, paymentMethod: true, paymentStatus: true, totalPkr: true, createdAt: true } },
+      subOrder: {
+        include: {
+          brand: { select: { id: true, name: true } },
+          items: { include: { product: { select: { id: true, name: true, imageUrl: true } } } },
+        },
+      },
+      returnRequest: {
+        include: {
+          order: { select: { id: true, userId: true, paymentMethod: true, createdAt: true } },
+          subOrder: {
+            include: {
+              brand: { select: { id: true, name: true } },
+              items: { include: { product: { select: { id: true, name: true, imageUrl: true } } } },
+            },
+          },
+          statusLogs: { orderBy: { createdAt: "asc" } },
+          history: { orderBy: { createdAt: "asc" } },
+          refundRequests: {
+            orderBy: { createdAt: "desc" },
+            select: {
+              id: true,
+              status: true,
+              amountPkr: true,
+              adjustedAmountPkr: true,
+              method: true,
+              completedAt: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          },
+        },
+      },
+      items: {
+        include: {
+          orderItem: {
+            include: {
+              product: { select: { id: true, name: true, imageUrl: true } },
+            },
+          },
+        },
+      },
+      statusLogs: { orderBy: { createdAt: "asc" } },
+      history: { orderBy: { createdAt: "asc" } },
+      walletTransactions: true,
+    },
+  });
+
+  if (!refundRequest) {
+    return res.status(404).json({ message: "Refund request not found" });
+  }
+
+  return res.json({ data: refundRequest });
+});
+
+router.get("/return-requests/:returnRequestId", async (req, res) => {
+  const returnRequest = await prisma.returnRequest.findUnique({
+    where: { id: String(req.params.returnRequestId) },
+    include: {
+      order: {
+        select: {
+          id: true,
+          userId: true,
+          paymentMethod: true,
+          createdAt: true,
+          user: { select: { id: true, fullName: true, email: true } },
+        },
+      },
+      subOrder: {
+        include: {
+          brand: { select: { id: true, name: true } },
+          items: { include: { product: { select: { id: true, name: true, imageUrl: true } } } },
+        },
+      },
+      statusLogs: { orderBy: { createdAt: "asc" } },
+      history: { orderBy: { createdAt: "asc" } },
+      refundRequests: {
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          status: true,
+          amountPkr: true,
+          adjustedAmountPkr: true,
+          method: true,
+          completedAt: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      },
+    },
+  });
+
+  if (!returnRequest) {
+    return res.status(404).json({ message: "Return request not found" });
+  }
+
+  return res.json({ data: normalizeReturnRequestForApi(returnRequest) });
+});
+
 router.patch("/return-requests/:returnRequestId/status", async (req, res) => {
   const payload = z
     .object({
-      status: z.enum(["REQUESTED", "REVIEWING", "APPROVED", "REJECTED", "PICKUP_SCHEDULED", "IN_TRANSIT", "RECEIVED", "REFUND_INITIATED", "COMPLETED"]),
+      status: z.enum(RETURN_WORKFLOW_STATUSES),
       note: z.string().trim().max(500).optional(),
       pickupTracking: z.string().trim().max(160).optional(),
+      pickupCourier: z.string().trim().max(80).optional(),
+      pickupDate: z.coerce.date().optional(),
+      pickupAddress: z.string().trim().max(240).optional(),
+      returnTrackingNumber: z.string().trim().max(160).optional(),
+      rejectedReason: z.string().trim().max(240).optional(),
     })
     .safeParse(req.body || {});
 
@@ -215,33 +746,152 @@ router.patch("/return-requests/:returnRequestId/status", async (req, res) => {
     return res.status(400).json({ message: "Invalid payload", issues: payload.error.flatten() });
   }
 
+  if (["BRAND_APPROVED", "RETURN_ARRANGED", "RETURN_IN_TRANSIT", "RETURN_RECEIVED"].includes(payload.data.status)) {
+    return res.status(400).json({ message: "These operational return statuses are managed by the brand, not admin." });
+  }
+
+  if (payload.data.status === "ADMIN_REJECTED" && !payload.data.rejectedReason?.trim() && !payload.data.note?.trim()) {
+    return res.status(400).json({ message: "Rejected requests require a rejected reason or admin note." });
+  }
+
   const db = prisma as any;
   const returnRequest = await db.returnRequest.findUnique({
     where: { id: String(req.params.returnRequestId) },
-    include: { order: true, subOrder: true },
+    include: {
+      order: true,
+      subOrder: { include: { brand: true } },
+      refundRequests: { orderBy: { createdAt: "desc" } },
+    },
   });
   if (!returnRequest) return res.status(404).json({ message: "Return request not found" });
+
+  const requestType = inferReturnRequestType(returnRequest);
+  const note = payload.data.note?.trim();
+  const rejectedReason = payload.data.rejectedReason?.trim();
+  const currentStatus = returnRequest.status as string;
+  const resolvedAdminStatus =
+    payload.data.status === "ADMIN_APPROVED" && currentStatus === "RETURN_CONDITION_DISPUTED"
+      ? requestType === "EXCHANGE"
+        ? "REPLACEMENT_PROCESSING"
+        : "RETURN_CONDITION_APPROVED"
+      : payload.data.status;
 
   const updated = await prisma.$transaction(async (tx) => {
     const dbTx = tx as any;
     const next = await dbTx.returnRequest.update({
       where: { id: returnRequest.id },
       data: {
-        status: payload.data.status,
-        reviewNote: payload.data.note?.trim() || returnRequest.reviewNote,
-        pickupTracking: payload.data.pickupTracking || returnRequest.pickupTracking,
+        status: resolvedAdminStatus,
+        requestType,
+        reviewNote: note || returnRequest.reviewNote,
+        adminDecision:
+          payload.data.status === "ADMIN_APPROVED"
+            ? "APPROVED"
+            : payload.data.status === "ADMIN_REJECTED"
+              ? "REJECTED"
+              : returnRequest.adminDecision,
+        adminDecisionNote: note || returnRequest.adminDecisionNote,
+        adminRejectedReason: rejectedReason || returnRequest.adminRejectedReason,
+        pickupTracking: payload.data.pickupTracking?.trim() || returnRequest.pickupTracking,
+        pickupCourier: payload.data.pickupCourier?.trim() || returnRequest.pickupCourier,
+        pickupDate: payload.data.pickupDate || returnRequest.pickupDate,
+        pickupAddress: payload.data.pickupAddress?.trim() || returnRequest.pickupAddress,
+        returnTrackingNumber: payload.data.returnTrackingNumber?.trim() || payload.data.pickupTracking?.trim() || returnRequest.returnTrackingNumber,
+        refundStatusSnapshot:
+          resolvedAdminStatus === "REFUND_INITIATED"
+            ? "INITIATED"
+            : resolvedAdminStatus === "REFUND_PROCESSING"
+              ? "PROCESSING"
+              : resolvedAdminStatus === "REFUND_COMPLETED"
+                ? "COMPLETED"
+                : returnRequest.refundStatusSnapshot,
+        replacementStatus:
+          resolvedAdminStatus === "REPLACEMENT_PROCESSING"
+            ? "REPLACEMENT_PROCESSING"
+            : resolvedAdminStatus === "REPLACEMENT_PACKED"
+              ? "REPLACEMENT_PACKED"
+            : resolvedAdminStatus === "REPLACEMENT_READY_FOR_PICKUP"
+                ? "REPLACEMENT_READY_FOR_PICKUP"
+            : resolvedAdminStatus === "REPLACEMENT_OUT_FOR_DELIVERY"
+                ? "REPLACEMENT_OUT_FOR_DELIVERY"
+            : resolvedAdminStatus === "REPLACEMENT_DELIVERY_FAILED"
+                ? "REPLACEMENT_DELIVERY_FAILED"
+            : resolvedAdminStatus === "REPLACEMENT_ADDRESS_CORRECTION_REQUIRED"
+                ? "REPLACEMENT_ADDRESS_CORRECTION_REQUIRED"
+            : resolvedAdminStatus === "REPLACEMENT_READY_FOR_REDELIVERY"
+                ? "REPLACEMENT_READY_FOR_REDELIVERY"
+            : resolvedAdminStatus === "REPLACEMENT_SHIPMENT_RETURNED"
+                ? "REPLACEMENT_SHIPMENT_RETURNED"
+            : resolvedAdminStatus === "REPLACEMENT_SHIPPED"
+              ? "REPLACEMENT_SHIPPED"
+              : resolvedAdminStatus === "REPLACEMENT_DELIVERED"
+                ? "REPLACEMENT_DELIVERED"
+                : resolvedAdminStatus === "EXCHANGE_COMPLETED"
+                  ? "EXCHANGE_COMPLETED"
+                  : returnRequest.replacementStatus,
+        replacementDeliveredAt:
+          resolvedAdminStatus === "REPLACEMENT_DELIVERED" ? new Date() : returnRequest.replacementDeliveredAt,
+        completedAt:
+          resolvedAdminStatus === "COMPLETED" || resolvedAdminStatus === "EXCHANGE_COMPLETED"
+            ? new Date()
+            : returnRequest.completedAt,
+      },
+      include: {
+        order: {
+          select: {
+            id: true,
+            userId: true,
+            paymentMethod: true,
+            createdAt: true,
+            user: { select: { id: true, fullName: true, email: true } },
+          },
+        },
+        subOrder: {
+          include: {
+            brand: { select: { id: true, name: true } },
+            items: { include: { product: { select: { id: true, name: true, imageUrl: true } } } },
+          },
+        },
+        statusLogs: { orderBy: { createdAt: "asc" } },
+        history: { orderBy: { createdAt: "asc" } },
+        refundRequests: {
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            status: true,
+            amountPkr: true,
+            adjustedAmountPkr: true,
+            method: true,
+            completedAt: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
       },
     });
+
     await dbTx.returnStatusLog.create({
       data: {
         returnRequestId: returnRequest.id,
-        status: payload.data.status,
+        status: resolvedAdminStatus,
         updatedBy: "ADMIN",
         updatedById: req.auth!.userId,
-        note: payload.data.note?.trim() || undefined,
+        note: note || rejectedReason || undefined,
       },
     });
-    if (payload.data.status === "RECEIVED" || payload.data.status === "REFUND_INITIATED") {
+
+    await dbTx.returnHistory.create({
+      data: {
+        returnRequestId: returnRequest.id,
+        oldStatus: returnRequest.status,
+        newStatus: resolvedAdminStatus,
+        performedByRole: "ADMIN",
+        performedById: req.auth!.userId,
+        note: note || rejectedReason || undefined,
+      },
+    });
+
+    if (resolvedAdminStatus === "REFUND_INITIATED") {
       const existingRefund = await dbTx.refundRequest.findFirst({
         where: {
           returnRequestId: returnRequest.id,
@@ -254,24 +904,27 @@ router.patch("/return-requests/:returnRequestId/status", async (req, res) => {
             orderId: returnRequest.orderId,
             subOrderId: returnRequest.subOrderId,
             returnRequestId: returnRequest.id,
-            requestedByRole: "SYSTEM",
+            requestedByRole: "ADMIN",
+            requestedById: req.auth!.userId,
             reasonCode: "RETURNED_PRODUCT",
             method: returnRequest.order.paymentMethod === "COD" ? "BANK_TRANSFER" : "ORIGINAL_SOURCE",
             amountPkr: returnRequest.subOrder.subtotalPkr,
             status: "PENDING",
-            reviewNote: "Auto-created from return workflow.",
+            reviewNote: note || "Refund initiated by admin.",
           },
         });
         await dbTx.refundStatusLog.create({
           data: {
             refundRequestId: refundRequest.id,
             status: "PENDING",
-            updatedBy: "SYSTEM",
-            note: "Auto-created after return received.",
+            updatedBy: "ADMIN",
+            updatedById: req.auth!.userId,
+            note: note || "Refund initiated by admin.",
           },
         });
       }
     }
+
     return next;
   });
 
@@ -281,19 +934,163 @@ router.patch("/return-requests/:returnRequestId/status", async (req, res) => {
     subOrderId: returnRequest.subOrderId,
     userId: returnRequest.order.userId,
     brandId: returnRequest.subOrder.brandId,
-    note: `Return is now ${payload.data.status}${payload.data.note ? `: ${payload.data.note}` : ""}`,
+    note: `Return request is now ${resolvedAdminStatus}${note ? `: ${note}` : ""}`,
     changedByRole: "ADMIN",
     notifyAdmin: true,
   });
 
-  if (payload.data.status === "COMPLETED") {
+  if (resolvedAdminStatus === "COMPLETED" || resolvedAdminStatus === "EXCHANGE_COMPLETED") {
     await prisma.subOrder.update({
       where: { id: returnRequest.subOrderId },
       data: { status: "RETURNED" },
     });
   }
 
-  return res.json({ data: updated });
+  return res.json({ data: normalizeReturnRequestForApi(updated) });
+});
+
+router.patch("/return-requests/:returnRequestId/convert-to-refund", async (req, res) => {
+  const payload = z
+    .object({
+      note: z.string().trim().min(3).max(500),
+    })
+    .safeParse(req.body || {});
+
+  if (!payload.success) {
+    return res.status(400).json({ message: "Invalid payload", issues: payload.error.flatten() });
+  }
+
+  const db = prisma as any;
+  const returnRequest = await db.returnRequest.findUnique({
+    where: { id: String(req.params.returnRequestId) },
+    include: {
+      order: true,
+      subOrder: { include: { brand: true } },
+      refundRequests: { orderBy: { createdAt: "desc" } },
+    },
+  });
+  if (!returnRequest) return res.status(404).json({ message: "Return request not found" });
+  if (inferReturnRequestType(returnRequest) !== "EXCHANGE") {
+    return res.status(409).json({ message: "Only exchange requests can be converted to a refund." });
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const dbTx = tx as any;
+    const next = await dbTx.returnRequest.update({
+      where: { id: returnRequest.id },
+      data: {
+        convertedToRefund: true,
+        replacementUnavailable: true,
+        replacementUnavailableReason: payload.data.note,
+        replacementStatus: "EXCHANGE_UNFULFILLABLE",
+        status: "REFUND_INITIATED",
+        adminDecision: "APPROVED",
+        adminDecisionNote: payload.data.note,
+        refundStatusSnapshot: "INITIATED",
+      },
+      include: {
+        order: {
+          select: {
+            id: true,
+            userId: true,
+            paymentMethod: true,
+            createdAt: true,
+            user: { select: { id: true, fullName: true, email: true } },
+          },
+        },
+        subOrder: {
+          include: {
+            brand: { select: { id: true, name: true } },
+            items: { include: { product: { select: { id: true, name: true, imageUrl: true } } } },
+          },
+        },
+        statusLogs: { orderBy: { createdAt: "asc" } },
+        history: { orderBy: { createdAt: "asc" } },
+        refundRequests: {
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            status: true,
+            amountPkr: true,
+            adjustedAmountPkr: true,
+            method: true,
+            completedAt: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+      },
+    });
+
+    await dbTx.returnStatusLog.create({
+      data: {
+        returnRequestId: returnRequest.id,
+        status: "REFUND_INITIATED",
+        updatedBy: "ADMIN",
+        updatedById: req.auth!.userId,
+        note: payload.data.note,
+      },
+    });
+
+    await dbTx.returnHistory.create({
+      data: {
+        returnRequestId: returnRequest.id,
+        oldStatus: returnRequest.status,
+        newStatus: "REFUND_INITIATED",
+        performedByRole: "ADMIN",
+        performedById: req.auth!.userId,
+        note: payload.data.note,
+      },
+    });
+
+    const existingRefund = await dbTx.refundRequest.findFirst({
+      where: {
+        returnRequestId: returnRequest.id,
+        status: { in: ["PENDING", "APPROVED", "PROCESSING"] },
+      },
+    });
+    if (!existingRefund) {
+      const refundRequest = await dbTx.refundRequest.create({
+        data: {
+          orderId: returnRequest.orderId,
+          subOrderId: returnRequest.subOrderId,
+          returnRequestId: returnRequest.id,
+          requestedByRole: "ADMIN",
+          requestedById: req.auth!.userId,
+          reasonCode: "RETURNED_PRODUCT",
+          reasonText: "Exchange converted to refund.",
+          method: returnRequest.order.paymentMethod === "COD" ? "BANK_TRANSFER" : "ORIGINAL_SOURCE",
+          amountPkr: returnRequest.subOrder.subtotalPkr,
+          status: "PENDING",
+          reviewNote: payload.data.note,
+        },
+      });
+      await dbTx.refundStatusLog.create({
+        data: {
+          refundRequestId: refundRequest.id,
+          status: "PENDING",
+          updatedBy: "ADMIN",
+          updatedById: req.auth!.userId,
+          note: payload.data.note,
+        },
+      });
+    }
+
+    return next;
+  });
+
+  queueNotificationEvent({
+    name: notificationEventNames.returnStateUpdated,
+    orderId: returnRequest.orderId,
+    subOrderId: returnRequest.subOrderId,
+    userId: returnRequest.order.userId,
+    brandId: returnRequest.subOrder.brandId,
+    note: `Exchange converted to refund: ${payload.data.note}`,
+    changedByRole: "ADMIN",
+    notifyAdmin: true,
+  });
+
+  return res.json({ data: normalizeReturnRequestForApi(updated) });
 });
 
 router.get("/orders/:orderId", async (req, res) => {

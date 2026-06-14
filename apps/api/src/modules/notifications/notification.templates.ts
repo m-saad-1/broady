@@ -38,12 +38,22 @@ function orderTitle(name: NotificationEvent["name"]) {
       return "Delivery Failed";
     case "suborder_retry_scheduled":
       return "Retry Scheduled";
+    case "suborder_shipment_returned":
+      return "Shipment Returned";
     case "suborder_returned":
       return "Order Returned";
     case "suborder_delivered":
       return "Order Delivered";
     case "suborder_cancelled":
       return "Order Cancelled";
+    case "cancellation_request_created":
+      return "Cancellation Requested";
+    case "cancellation_request_approved":
+      return "Cancellation Approved";
+    case "cancellation_request_rejected":
+      return "Cancellation Rejected";
+    case "cancellation_request_expired":
+      return "Cancellation Escalated";
     case "order_address_updated":
       return "Address Updated";
     default:
@@ -63,6 +73,16 @@ function resolveOrderUpdateTitle(event: NotificationEvent) {
 function appendNote(note?: string) {
   if (!note) return "";
   return ` ${note}`;
+}
+
+function isIncorrectAddressFailure(note?: string) {
+  return Boolean(note?.toLowerCase().includes("incorrect address"));
+}
+
+function getDeliveryFailureLabel(note?: string) {
+  if (isIncorrectAddressFailure(note)) return "Incorrect address";
+  if (note?.trim()) return note.trim();
+  return "Logistics issue";
 }
 
 function parsePartialCancellation(note?: string) {
@@ -87,6 +107,12 @@ function resolveOrderBrandLabel(context?: NotificationTemplateContext) {
   if (!brands.length) return null;
   if (brands.length === 1) return brands[0];
   return `${brands[0]} + ${brands.length - 1} more`;
+}
+
+function resolveSingleOrderBrandLabel(context?: NotificationTemplateContext) {
+  const brands = (context?.orderBrandNames || []).filter(Boolean);
+  if (brands.length !== 1) return null;
+  return brands[0];
 }
 
 export function buildNotificationTemplate(
@@ -115,9 +141,14 @@ export function buildNotificationTemplate(
     event.name === "suborder_shipped" ||
     event.name === "suborder_delivery_failed" ||
     event.name === "suborder_retry_scheduled" ||
+    event.name === "suborder_shipment_returned" ||
     event.name === "suborder_returned" ||
     event.name === "suborder_delivered" ||
     event.name === "suborder_cancelled" ||
+    event.name === "cancellation_request_created" ||
+    event.name === "cancellation_request_approved" ||
+    event.name === "cancellation_request_rejected" ||
+    event.name === "cancellation_request_expired" ||
     event.name === "order_address_correction_required"
   ) {
     const normalizedOrderEventName =
@@ -126,6 +157,8 @@ export function buildNotificationTemplate(
     const title = resolveOrderUpdateTitle({ ...event, name: normalizedOrderEventName } as NotificationEvent);
     const recipientBrand = context?.recipientBrandName || event.brandName || "your brand";
     const orderBrandLabel = resolveOrderBrandLabel(context);
+    const singleBrandLabel = resolveSingleOrderBrandLabel(context);
+    const userItemLabel = singleBrandLabel ? `${singleBrandLabel} item` : "item";
 
     if (audience === "USER") {
       if (normalizedOrderEventName === "order_placed") {
@@ -138,14 +171,14 @@ export function buildNotificationTemplate(
       if (normalizedOrderEventName === "suborder_confirmed") {
         return {
           title,
-          message: `Order ${maskOrderId(event.orderId)} has been confirmed.`,
+          message: `Your ${userItemLabel} in order ${maskOrderId(event.orderId)} has been confirmed.`,
         };
       }
 
       if (normalizedOrderEventName === "suborder_processing") {
         return {
           title,
-          message: `Order ${maskOrderId(event.orderId)} is being processed.`,
+          message: `Your ${userItemLabel} in order ${maskOrderId(event.orderId)} is being processed.`,
         };
       }
 
@@ -153,12 +186,12 @@ export function buildNotificationTemplate(
         if (title === "Out For Delivery") {
           return {
             title,
-            message: `Order ${maskOrderId(event.orderId)} is out for delivery.`,
+            message: `Your ${userItemLabel} in order ${maskOrderId(event.orderId)} is out for delivery.`,
           };
         }
         return {
           title,
-          message: `Order ${maskOrderId(event.orderId)} has been shipped.`,
+          message: `Your ${userItemLabel} in order ${maskOrderId(event.orderId)} has been shipped.`,
         };
       }
 
@@ -175,7 +208,7 @@ export function buildNotificationTemplate(
           : event.note || "Please check your delivery details.";
         return {
           title,
-          message: `Delivery unsuccessful for order ${maskOrderId(event.orderId)}. ${failureNote}`,
+          message: `Delivery unsuccessful for your ${userItemLabel} in order ${maskOrderId(event.orderId)}. ${failureNote}`,
         };
       }
 
@@ -186,11 +219,18 @@ export function buildNotificationTemplate(
         };
       }
 
+      if (normalizedOrderEventName === "suborder_shipment_returned") {
+        return {
+          title,
+          message: `Shipment for order ${maskOrderId(event.orderId)} has returned to origin after failed delivery. Broady will review the next step.${noteSuffix}`,
+        };
+      }
+
       if (normalizedOrderEventName === "suborder_returned") {
         const returnNote = event.note || "Your order has been processed for return.";
         return {
           title,
-          message: `Order ${maskOrderId(event.orderId)} has been returned. ${returnNote}`,
+          message: `Your ${userItemLabel} in order ${maskOrderId(event.orderId)} has been returned. ${returnNote}`,
         };
       }
 
@@ -209,10 +249,31 @@ export function buildNotificationTemplate(
         };
       }
 
+      if (normalizedOrderEventName === "cancellation_request_created") {
+        return {
+          title,
+          message: `Cancellation request submitted for order ${maskOrderId(event.orderId)}. Broady will review it within 4 hours.`,
+        };
+      }
+
+      if (normalizedOrderEventName === "cancellation_request_approved") {
+        return {
+          title,
+          message: `Cancellation approved for order ${maskOrderId(event.orderId)}.${noteSuffix}`,
+        };
+      }
+
+      if (normalizedOrderEventName === "cancellation_request_rejected") {
+        return {
+          title,
+          message: `Cancellation request rejected for order ${maskOrderId(event.orderId)}.${noteSuffix}`,
+        };
+      }
+
       if (normalizedOrderEventName === "suborder_delivered" && event.note?.toLowerCase().includes("fully delivered")) {
         return {
           title,
-          message: `Your order ${maskOrderId(event.orderId)} has been fully delivered.`,
+          message: `Your ${userItemLabel} in order ${maskOrderId(event.orderId)} has been fully delivered.`,
         };
       }
 
@@ -220,7 +281,7 @@ export function buildNotificationTemplate(
         const deliveredRef = event.subOrderId ? `Sub-order ${maskOrderId(event.subOrderId)}` : `Order ${maskOrderId(event.orderId)}`;
         return {
           title,
-          message: `${deliveredRef} has been delivered.`,
+          message: `Your ${userItemLabel} from ${deliveredRef} has been delivered.`,
         };
       }
     }
@@ -263,10 +324,12 @@ export function buildNotificationTemplate(
       }
 
       if (normalizedOrderEventName === "suborder_delivery_failed") {
-        const failureReason = event.note?.toLowerCase().includes("incorrect address") ? "Incorrect address" : "Logistic issue";
+        const failureReason = getDeliveryFailureLabel(event.note);
         return {
           title,
-          message: `Delivery failed for order ${maskOrderId(event.orderId)} (${failureReason}). Waiting for customer update.`,
+          message: isIncorrectAddressFailure(event.note)
+            ? `Delivery failed for order ${maskOrderId(event.orderId)} (${failureReason}). Waiting for customer update.`
+            : `Delivery failed for order ${maskOrderId(event.orderId)} (${failureReason}). Review retry or courier action.`,
         };
       }
 
@@ -274,6 +337,13 @@ export function buildNotificationTemplate(
         return {
           title,
           message: event.note || `Retry scheduled for order ${maskOrderId(event.orderId)}.`,
+        };
+      }
+
+      if (normalizedOrderEventName === "suborder_shipment_returned") {
+        return {
+          title,
+          message: `Shipment for order ${maskOrderId(event.orderId)} returned to origin for ${recipientBrand}. Review cancellation and refund eligibility.${noteSuffix}`,
         };
       }
 
@@ -297,6 +367,34 @@ export function buildNotificationTemplate(
         return {
           title,
           message: `${cancelledRef} for ${recipientBrand} has been cancelled.${noteSuffix}`,
+        };
+      }
+
+      if (normalizedOrderEventName === "cancellation_request_created") {
+        return {
+          title,
+          message: `New cancellation request for order ${maskOrderId(event.orderId)}. Respond within 4 hours with fulfillment evidence if this order cannot be stopped.`,
+        };
+      }
+
+      if (normalizedOrderEventName === "cancellation_request_approved") {
+        return {
+          title,
+          message: `Cancellation approved for order ${maskOrderId(event.orderId)}.${noteSuffix}`,
+        };
+      }
+
+      if (normalizedOrderEventName === "cancellation_request_rejected") {
+        return {
+          title,
+          message: `Cancellation request rejected for order ${maskOrderId(event.orderId)}.${noteSuffix}`,
+        };
+      }
+
+      if (normalizedOrderEventName === "cancellation_request_expired") {
+        return {
+          title,
+          message: `Cancellation request for order ${maskOrderId(event.orderId)} needs admin review.${noteSuffix}`,
         };
       }
 
@@ -348,7 +446,7 @@ export function buildNotificationTemplate(
     }
 
     if (normalizedOrderEventName === "suborder_delivery_failed") {
-      const failureReason = event.note?.toLowerCase().includes("incorrect address") ? "Incorrect address" : "Logistic issue";
+      const failureReason = getDeliveryFailureLabel(event.note);
       return {
         title,
         message: `Logistics report: Delivery failed for order ${maskOrderId(event.orderId)} (${failureReason}).`,
@@ -359,6 +457,13 @@ export function buildNotificationTemplate(
       return {
         title,
         message: event.note || `Retry scheduled for order ${maskOrderId(event.orderId)}.`,
+      };
+    }
+
+    if (normalizedOrderEventName === "suborder_shipment_returned") {
+      return {
+        title,
+        message: `Shipment for order ${maskOrderId(event.orderId)} returned to origin after delivery failure. Review cancellation and refund eligibility.${noteSuffix}`,
       };
     }
 
@@ -383,6 +488,34 @@ export function buildNotificationTemplate(
         message: orderBrandLabel
           ? `${cancelledRef} for ${orderBrandLabel} has been cancelled.${noteSuffix}`
           : `${cancelledRef} has been cancelled.${noteSuffix}`,
+      };
+    }
+
+    if (normalizedOrderEventName === "cancellation_request_created") {
+      return {
+        title,
+        message: `Cancellation request opened for order ${maskOrderId(event.orderId)}.${noteSuffix}`,
+      };
+    }
+
+    if (normalizedOrderEventName === "cancellation_request_approved") {
+      return {
+        title,
+        message: `Cancellation request approved for order ${maskOrderId(event.orderId)}.${noteSuffix}`,
+      };
+    }
+
+    if (normalizedOrderEventName === "cancellation_request_rejected") {
+      return {
+        title,
+        message: `Cancellation request rejected for order ${maskOrderId(event.orderId)}.${noteSuffix}`,
+      };
+    }
+
+    if (normalizedOrderEventName === "cancellation_request_expired") {
+      return {
+        title,
+        message: `Cancellation request expired and requires admin review for order ${maskOrderId(event.orderId)}.${noteSuffix}`,
       };
     }
 

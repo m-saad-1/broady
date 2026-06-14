@@ -33,7 +33,7 @@ export default async function AdminPage() {
         <p className="max-w-3xl text-sm text-zinc-600">Use dedicated pages for brand and product management, and open read-only dashboard views for brand operations.</p>
       </header>
 
-      <section className="grid gap-4 md:grid-cols-5">
+      <section className="grid gap-4 md:grid-cols-3">
         <Link href="/admin/brands" className="border border-zinc-300 p-5 transition hover:border-black hover:bg-zinc-50">
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Manage</p>
           <p className="mt-3 font-heading text-3xl uppercase">Brands</p>
@@ -48,6 +48,11 @@ export default async function AdminPage() {
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Ingestion</p>
           <p className="mt-3 font-heading text-3xl uppercase">Imports</p>
           <p className="mt-2 text-sm text-zinc-600">Review import jobs, failures, queue health, and pending approval fixes.</p>
+        </Link>
+        <Link href="/admin/operations" className="border border-zinc-300 p-5 transition hover:border-black hover:bg-zinc-50">
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Resolve</p>
+          <p className="mt-3 font-heading text-3xl uppercase">Operations</p>
+          <p className="mt-2 text-sm text-zinc-600">Cancellations, returns, refunds, failed deliveries, and stuck shipments.</p>
         </Link>
         <Link href="/admin/brand-dashboard" className="border border-zinc-300 p-5 transition hover:border-black hover:bg-zinc-50">
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Monitor</p>

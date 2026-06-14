@@ -4,11 +4,14 @@ export const customerOrderStatusOptions: OrderStatus[] = [
   "PENDING",
   "CONFIRMED",
   "PROCESSING",
+  "PACKED",
+  "READY_FOR_PICKUP",
   "SHIPPED",
   "OUT_FOR_DELIVERY",
   "DELIVERY_FAILED",
   "ADDRESS_CORRECTION_REQUIRED",
   "READY_FOR_REDELIVERY",
+  "SHIPMENT_RETURNED",
   "DELIVERED",
   "RETURNED",
   "CANCELED",
@@ -21,17 +24,23 @@ export function getOrderStatusOptions(currentStatus: OrderStatus) {
     case "CONFIRMED":
       return ["PROCESSING"] satisfies OrderStatus[];
     case "PROCESSING":
+      return ["PACKED"] satisfies OrderStatus[];
+    case "PACKED":
+      return ["READY_FOR_PICKUP"] satisfies OrderStatus[];
+    case "READY_FOR_PICKUP":
       return ["SHIPPED"] satisfies OrderStatus[];
     case "SHIPPED":
       return ["OUT_FOR_DELIVERY"] satisfies OrderStatus[];
     case "OUT_FOR_DELIVERY":
       return ["DELIVERY_FAILED", "DELIVERED"] satisfies OrderStatus[];
     case "DELIVERY_FAILED":
-      return ["OUT_FOR_DELIVERY", "ADDRESS_CORRECTION_REQUIRED"] satisfies OrderStatus[];
+      return ["OUT_FOR_DELIVERY", "ADDRESS_CORRECTION_REQUIRED", "SHIPMENT_RETURNED"] satisfies OrderStatus[];
     case "ADDRESS_CORRECTION_REQUIRED":
       return ["READY_FOR_REDELIVERY"] satisfies OrderStatus[];
     case "READY_FOR_REDELIVERY":
-      return ["OUT_FOR_DELIVERY"] satisfies OrderStatus[];
+      return ["OUT_FOR_DELIVERY", "SHIPMENT_RETURNED"] satisfies OrderStatus[];
+    case "SHIPMENT_RETURNED":
+      return ["CANCELED"] satisfies OrderStatus[];
     default:
       return [] satisfies OrderStatus[];
   }
@@ -46,7 +55,9 @@ export function getOrderStatusLabel(status: OrderStatus) {
     case "PROCESSING":
       return "Processing";
     case "PACKED":
-      return "Processing";
+      return "Packed";
+    case "READY_FOR_PICKUP":
+      return "Ready for Pickup";
     case "PARTIALLY_SHIPPED":
       return "Partially Delivered / In Progress";
     case "SHIPPED":
@@ -59,6 +70,8 @@ export function getOrderStatusLabel(status: OrderStatus) {
       return "Address Correction Required";
     case "READY_FOR_REDELIVERY":
       return "Ready for Re-delivery";
+    case "SHIPMENT_RETURNED":
+      return "Shipment Returned";
     case "DELIVERED":
       return "Delivered";
     case "RETURNED":
@@ -80,6 +93,8 @@ export function getOrderStatusTone(status: OrderStatus) {
       return "border-indigo-300 bg-indigo-50 text-indigo-700";
     case "PACKED":
       return "border-indigo-300 bg-indigo-50 text-indigo-700";
+    case "READY_FOR_PICKUP":
+      return "border-cyan-300 bg-cyan-50 text-cyan-700";
     case "PARTIALLY_SHIPPED":
       return "border-violet-300 bg-violet-50 text-violet-700";
     case "SHIPPED":
@@ -92,6 +107,8 @@ export function getOrderStatusTone(status: OrderStatus) {
       return "border-orange-400 bg-orange-100 text-orange-800";
     case "READY_FOR_REDELIVERY":
       return "border-emerald-400 bg-emerald-50 text-emerald-800";
+    case "SHIPMENT_RETURNED":
+      return "border-zinc-400 bg-zinc-100 text-zinc-800";
     case "DELIVERED":
       return "border-emerald-300 bg-emerald-50 text-emerald-700";
     case "RETURNED":

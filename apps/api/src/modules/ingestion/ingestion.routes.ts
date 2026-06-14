@@ -171,8 +171,12 @@ router.patch("/products/:productId/fix", async (req, res) => {
       .object({
         name: z.string().min(1).optional(),
         description: z.string().min(1).optional(),
+        gender: z.enum(["men", "women", "boys", "girls"]).optional(),
         topCategory: z.string().min(1).optional(),
         subCategory: z.string().min(1).optional(),
+        division: z.enum(["top", "bottom", "footwear", "accessory"]).optional(),
+        category: z.string().min(1).optional(),
+        subType: z.string().min(1).optional(),
         color: z.string().min(1).optional(),
         pricePkr: z.number().int().nonnegative().optional(),
         stock: z.number().int().nonnegative().optional(),
@@ -199,6 +203,8 @@ router.patch("/products/:productId/fix", async (req, res) => {
         ...parsedBody.data,
         approvalStatus: "PENDING",
         isActive: false,
+        mappingStatus: parsedBody.data.category || parsedBody.data.division || parsedBody.data.gender ? "complete" : existing.mappingStatus,
+        resolutionSource: "admin_manual",
         metadata: parsedBody.data.metadata as any,
       },
     });

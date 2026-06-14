@@ -38,9 +38,9 @@ Run from repository root unless noted.
 
 There is currently no `test` script in workspace `package.json` files, so there is no project-defined full-suite or single-test command yet.
 
-## ⚠️ CRITICAL: Database Health Verification (AUTO-VERIFY REQUIREMENT)
+## CRITICAL: Database Health Verification (AUTO-VERIFY REQUIREMENT)
 
-**MANDATORY AGENT BEHAVIOR: After every task completion, automatically verify database connectivity.**
+**MANDATORY AGENT BEHAVIOR: Use targeted verification after every task completion. Do not restart both API and web for small or isolated changes.**
 
 ### DB Health Check Implementation
 
@@ -53,18 +53,25 @@ The application has automatic database connectivity validation built-in:
 
 ### Agent Verification Workflow
 
-**After completing ANY of the following:**
-- API response handling
-- Code changes or new features
-- Database schema modifications
-- Error handling updates
-- Configuration changes
+**Follow this verification scope rule first:**
+- If only UI/component/style/text changed, do not restart API or web. Rely on hot reload and verify only the affected page or component.
+- If frontend status/type handling changed, verify only the affected page or flow. Do not rebuild the whole web unless required.
+- If backend route/service logic changed, restart or recheck the API only if needed and verify the affected endpoint or flow.
+- If Prisma schema, enum, model, or generated client changed, run `npm run prisma:generate -w @broady/api` and restart the API only.
+- If database structure changed, run the required migration or `db push` workflow and restart the API only.
+- Prefer targeted checks over full rebuilds.
+- Before restarting any service, explain why that restart is necessary.
 
-**You MUST automatically:**
-1. Verify the application is still running: `npm run dev -w @broady/api` and `npm run dev:web`
-2. Test database connectivity by making a request to: `curl http://localhost:4003/health` or `curl http://localhost:4003/api/health`
-3. Verify the health endpoint returns `{"status":"healthy","connected":true,...}`
-4. If DB is unavailable, check logs and resolve before proceeding
+**Run API/database health verification when the change touches backend, Prisma, database, error handling, or configuration:**
+1. Recheck or restart the API only when needed for the change to take effect.
+2. Test database connectivity by making a request to `curl http://localhost:4003/health` or `curl http://localhost:4003/api/health`.
+3. Verify the health endpoint returns `{"status":"healthy","connected":true,...}`.
+4. If DB is unavailable, check logs and resolve before proceeding.
+
+**For UI-only changes:**
+1. Do not restart the API.
+2. Do not rebuild the full app unless the change specifically requires it.
+3. Verify the affected page, component, style, or text rendering only.
 
 **Expected Health Response:**
 ```json

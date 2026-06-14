@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getUserNotifications, markNotificationAsRead, markAllNotificationsAsRead } from "@/lib/api";
 import Link from "next/link";
+import { getOrderIdDisplay, maskNotificationMessage } from "@/lib/notification-utils";
 import type { NotificationItem } from "@/types/marketplace";
 
 function formatRelativeTime(date: Date) {
@@ -96,7 +97,12 @@ export default function NotificationsPage() {
               <div className={`w-2 h-2 mt-2 rounded-full shrink-0 ${item.readAt ? "bg-transparent" : "bg-black"}`} />
               <div className="flex-1 space-y-1">
                 <p className="text-sm font-semibold">{item.title}</p>
-                <p className="text-sm text-zinc-600 line-clamp-2">{item.message}</p>
+                <p className="text-sm text-zinc-600 line-clamp-2">{maskNotificationMessage(item.message, item.order?.id)}</p>
+                {item.order?.id ? (
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-zinc-500">
+                    Order {getOrderIdDisplay(item.order.id)}
+                  </p>
+                ) : null}
                 <div className="flex items-center gap-3 pt-1">
                   <p className="text-[10px] uppercase tracking-widest text-zinc-400">
                     {formatRelativeTime(new Date(item.createdAt))}

@@ -8,6 +8,7 @@ export const DELIVERY_FAILURE_REASONS = {
   PHONE_UNREACHABLE: "Phone unreachable",
   REFUSED_DELIVERY: "Refused delivery",
   AREA_NOT_SERVICEABLE: "Area not serviceable",
+  COURIER_ISSUE: "Courier issue",
   OTHER: "Other",
 } as const;
 
@@ -61,7 +62,7 @@ const DELIVERY_FAILURE_POLICY: Record<DeliveryFailureReasonKey, DeliveryFailureP
     reason: "CUSTOMER_NOT_AVAILABLE",
     label: DELIVERY_FAILURE_REASONS.CUSTOMER_NOT_AVAILABLE,
     retryable: true,
-    maxAttempts: 3,
+    maxAttempts: 2,
     retryDelayHours: 12,
     requiresAddressCorrection: false,
   },
@@ -77,7 +78,7 @@ const DELIVERY_FAILURE_POLICY: Record<DeliveryFailureReasonKey, DeliveryFailureP
     reason: "PHONE_UNREACHABLE",
     label: DELIVERY_FAILURE_REASONS.PHONE_UNREACHABLE,
     retryable: true,
-    maxAttempts: 3,
+    maxAttempts: 2,
     retryDelayHours: 12,
     requiresAddressCorrection: false,
   },
@@ -97,11 +98,19 @@ const DELIVERY_FAILURE_POLICY: Record<DeliveryFailureReasonKey, DeliveryFailureP
     retryDelayHours: null,
     requiresAddressCorrection: false,
   },
+  COURIER_ISSUE: {
+    reason: "COURIER_ISSUE",
+    label: DELIVERY_FAILURE_REASONS.COURIER_ISSUE,
+    retryable: true,
+    maxAttempts: 2,
+    retryDelayHours: 12,
+    requiresAddressCorrection: false,
+  },
   OTHER: {
     reason: "OTHER",
     label: DELIVERY_FAILURE_REASONS.OTHER,
     retryable: true,
-    maxAttempts: 2,
+    maxAttempts: 1,
     retryDelayHours: 18,
     requiresAddressCorrection: false,
   },
@@ -201,6 +210,11 @@ export function detectSuspiciousFraudPatterns(
   const areaNotServiceableRate = failureRates.find((r) => r.reasonCode === "AREA_NOT_SERVICEABLE")?.percentage || 0;
   if (areaNotServiceableRate > 50) {
     flags.push("SYSTEMATIC_AREA_EXCLUSION");
+  }
+
+  const courierIssueRate = failureRates.find((r) => r.reasonCode === "COURIER_ISSUE")?.percentage || 0;
+  if (courierIssueRate > 40) {
+    flags.push("COURIER_ISSUE_PATTERN");
   }
 
   return {

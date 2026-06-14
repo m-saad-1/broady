@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchCurrentUser } from "@/lib/auth-client";
+import { getUserWallet } from "@/lib/api";
+import { formatPkr } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 import { OrderTrackerClient } from "./order-tracker-client";
 
@@ -10,13 +12,33 @@ export default function AccountOverviewPage() {
   const user = useAuthStore((state) => state.user);
   const setUser = useAuthStore((state) => state.setUser);
   const [loading, setLoading] = useState(true);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+
+  const loadWalletBalance = useCallback(async () => {
+    try {
+      const wallet = await getUserWallet();
+      setWalletBalance(wallet.availableBalancePkr);
+    } catch {
+      setWalletBalance(null);
+    }
+  }, []);
 
   useEffect(() => {
     fetchCurrentUser().then((currentUser) => {
       setUser(currentUser);
       setLoading(false);
     });
-  }, [setUser]);
+    void loadWalletBalance();
+    const onFocus = () => void loadWalletBalance();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    const interval = window.setInterval(() => void loadWalletBalance(), 15000);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+      window.clearInterval(interval);
+    };
+  }, [loadWalletBalance, setUser]);
 
   if (loading) {
     return <main className="space-y-8 animate-pulse"><div className="h-32 bg-zinc-100 w-full" /></main>;
@@ -43,7 +65,7 @@ export default function AccountOverviewPage() {
       </header>
 
       {/* Quick Stats & Actions */}
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <section className="grid grid-cols-2 gap-4 md:grid-cols-5">
         <Link href="/account/orders" className="border border-zinc-300 p-4 hover:border-black transition-colors flex flex-col justify-between group">
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500 group-hover:text-black">Track Orders</p>
           <p className="mt-4 text-2xl font-light">→</p>
@@ -51,6 +73,10 @@ export default function AccountOverviewPage() {
         <Link href="/account/wishlist" className="border border-zinc-300 p-4 hover:border-black transition-colors flex flex-col justify-between group">
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500 group-hover:text-black">Saved Items</p>
           <p className="mt-4 text-2xl font-light">→</p>
+        </Link>
+        <Link href="/account/wallet" className="border border-zinc-300 p-4 hover:border-black transition-colors flex flex-col justify-between group">
+          <p className="text-xs uppercase tracking-[0.12em] text-zinc-500 group-hover:text-black">Wallet Balance</p>
+          <p className="mt-4 text-sm font-semibold">{walletBalance === null ? "Open wallet" : formatPkr(walletBalance)}</p>
         </Link>
         <Link href="/catalog" className="border border-zinc-300 p-4 hover:border-black transition-colors flex flex-col justify-between group">
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500 group-hover:text-black">Continue Shopping</p>

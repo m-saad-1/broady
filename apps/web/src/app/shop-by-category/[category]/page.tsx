@@ -22,7 +22,7 @@ export default async function ShopByCategoryPage({ params, searchParams }: ShopB
   const topCategoryFromQuery = typeof query.topCategory === "string" ? query.topCategory : "";
 
   const safeParams: Record<string, string> = {
-    subCategory: decodedCategory,
+    category: decodedCategory,
   };
 
   if (topCategoryFromQuery) {
@@ -30,7 +30,6 @@ export default async function ShopByCategoryPage({ params, searchParams }: ShopB
   }
 
   const products = await getProducts(safeParams);
-  const allProducts = await getProducts();
 
   return (
     <main className="mx-auto w-full max-w-7xl space-y-8 px-4 py-10 lg:px-10">
@@ -39,7 +38,7 @@ export default async function ShopByCategoryPage({ params, searchParams }: ShopB
         <h1 className="font-heading text-5xl uppercase">{decodedCategory}</h1>
       </header>
 
-      <CatalogClient initialProducts={products} allProducts={allProducts} params={safeParams} />
+      <CatalogClient initialProducts={products} params={safeParams} />
     </main>
   );
 }

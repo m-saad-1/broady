@@ -99,6 +99,10 @@ export async function processImportJob(importJobId: string, payload: ImportInput
   await updateImportJobStatus(importJobId, "PROCESSING");
   const startedAt = new Date();
   await prisma.importJob.update({ where: { id: importJobId }, data: { startedAt } });
+  const brand = await prisma.brand.findUnique({
+    where: { id: payload.brandId },
+    select: { slug: true },
+  });
 
   if (
     payload.sourceType === "REST_API" &&
@@ -145,7 +149,7 @@ export async function processImportJob(importJobId: string, payload: ImportInput
 
   for (const record of parsed) {
     try {
-      const normalized = normalizeRecord(record);
+      const normalized = normalizeRecord(record, { brandSlug: brand?.slug });
       const issues = validateNormalizedProduct(normalized);
       const errors = issues.filter((issue) => issue.level === "ERROR");
 

@@ -23,6 +23,9 @@ export default async function BrandDashboardPage() {
           <Link href="/brand/orders" className="inline-flex h-10 items-center border border-zinc-300 px-4 text-xs font-semibold uppercase tracking-[0.12em]">
             View All Orders
           </Link>
+          <Link href="/brand/operations" className="inline-flex h-10 items-center border border-zinc-300 px-4 text-xs font-semibold uppercase tracking-[0.12em]">
+            Requests
+          </Link>
           <Link href="/brand/dashboard/reviews" className="inline-flex h-10 items-center border border-zinc-300 px-4 text-xs font-semibold uppercase tracking-[0.12em]">
             Open Reviews
           </Link>
