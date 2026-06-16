@@ -66,12 +66,24 @@ export function AdminReturnDetailActions({ request }: AdminReturnDetailActionsPr
         </div>
       ) : null}
 
-      {(status === "BRAND_REJECTED" || status === "RETURN_CONDITION_DISPUTED" || status === "ADMIN_REVIEWING") && !availabilityRejected ? (
+      {(status === "BRAND_REJECTED" || status === "RETURN_CONDITION_DISPUTED" || status === "ADMIN_REVIEWING") ? (
         <div className="space-y-4">
           <p className="text-sm text-zinc-600">Review the customer evidence and the brand submission before approving, rejecting, or requesting more evidence.</p>
           <select className="h-10 w-full border border-zinc-300 px-3 text-sm" value={reviewAction} onChange={(event) => setReviewAction(event.target.value as typeof reviewAction)}>
-            <option value="APPROVE">{status === "RETURN_CONDITION_DISPUTED" ? "Approve refund/exchange anyway" : "Approve customer request"}</option>
-            <option value="REJECT">{status === "RETURN_CONDITION_DISPUTED" ? "Reject refund/exchange" : "Confirm brand rejection"}</option>
+            <option value="APPROVE">
+              {status === "RETURN_CONDITION_DISPUTED"
+                ? "Approve refund/exchange anyway"
+                : status === "BRAND_REJECTED"
+                  ? "Overrule brand rejection (Approve Customer Request)"
+                  : "Approve customer request"}
+            </option>
+            <option value="REJECT">
+              {status === "RETURN_CONDITION_DISPUTED"
+                ? "Reject refund/exchange"
+                : status === "BRAND_REJECTED"
+                  ? "Approve brand decision (Confirm Rejection)"
+                  : "Confirm brand rejection"}
+            </option>
             <option value="NEED_MORE_EVIDENCE">Request More Evidence</option>
           </select>
           <textarea
@@ -96,7 +108,7 @@ export function AdminReturnDetailActions({ request }: AdminReturnDetailActionsPr
 
       {availabilityRejected ? (
         <div className="border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          The brand rejected this exchange because the requested replacement is unavailable. Admin is currently read-only on this path.
+          <strong>Note:</strong> The brand rejected this exchange because the requested replacement variant is out of stock. You can still overrule the brand rejection, confirm the rejection, or convert this exchange to a refund.
         </div>
       ) : null}
 

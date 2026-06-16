@@ -158,93 +158,176 @@ export default function AdminReturnDetailPage({ params }: PageProps) {
         </article>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-[1.3fr_1fr]">
-        <article className="space-y-4 border border-zinc-300 p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Items Under Review</p>
-              <h2 className="font-heading text-3xl uppercase">Item audit</h2>
+      <section className="grid gap-6 md:grid-cols-2">
+        {/* Left Column: Customer Submission & Items */}
+        <div className="space-y-6">
+          {/* Customer Request Info Card */}
+          <article className="space-y-4 border border-zinc-300 p-5 bg-white">
+            <header className="border-b border-zinc-200 pb-3">
+              <p className="text-xs uppercase tracking-[0.12em] text-zinc-500 font-semibold">Customer Submission</p>
+              <h2 className="font-heading text-2xl uppercase mt-1">Request Details</h2>
+            </header>
+            <div className="grid gap-3 border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
+              <p><span className="font-semibold text-zinc-800">Request Type:</span> <span className="uppercase font-medium">{requestType}</span></p>
+              <p><span className="font-semibold text-zinc-800">Preferred Resolution:</span> <span className="uppercase font-medium text-zinc-900">{formatReturnStatus(request.preferredResolution)}</span></p>
+              {request.customerRefundPreference ? (
+                <p><span className="font-semibold text-zinc-800">Refund Preference:</span> {request.customerRefundPreference}</p>
+              ) : null}
+              <p><span className="font-semibold text-zinc-800">Reason:</span> {formatReturnReasonLabel(request.reasonCode, request.reasonText)}</p>
+              <p><span className="font-semibold text-zinc-800">Customer Note:</span> {request.customerNote || <span className="italic text-zinc-400">No customer note</span>}</p>
+              <p><span className="font-semibold text-zinc-800">Current Stage:</span> <span className="font-semibold text-blue-700">{formatOperatorReturnStatus(displayStatus, requestType)}</span></p>
+              <p><span className="font-semibold text-zinc-800">Payment Method:</span> {request.order?.paymentMethod || "N/A"}</p>
+              <p><span className="font-semibold text-zinc-800">Order Date:</span> {formatDateTime(request.order?.createdAt)}</p>
             </div>
-            <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">{itemCount} total units</p>
-          </div>
-          <p className="text-sm text-zinc-600">Item summary: {itemSummary(requestItems)}</p>
-          <div className="grid gap-2 border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
-            <p><span className="font-semibold">Request type:</span> {requestType}</p>
-            <p><span className="font-semibold">Customer reason:</span> {formatReturnReasonLabel(request.reasonCode, request.reasonText)}</p>
-            <p><span className="font-semibold">Customer note:</span> {request.customerNote || "No customer note"}</p>
-            <p><span className="font-semibold">Current stage:</span> {formatOperatorReturnStatus(displayStatus, requestType)}</p>
-            <p><span className="font-semibold">Payment method:</span> {request.order?.paymentMethod || "N/A"}</p>
-            <p><span className="font-semibold">Order date:</span> {formatDateTime(request.order?.createdAt)}</p>
-          </div>
-          <div className="space-y-3">
-            {requestItems.map((item) => (
-              <article key={item.id} className="border border-zinc-200 bg-white p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold">{item.product?.name || "Product"}</p>
-                    <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Quantity {item.quantity}</p>
-                    <p className="mt-1 text-xs text-zinc-500">
-                      {item.selectedColor || "No color"} / {item.selectedSize || "No size"}
-                    </p>
+            
+            <div className="space-y-3">
+              <p className="text-xs uppercase tracking-[0.12em] text-zinc-500 font-semibold">Items in Request ({itemCount} units)</p>
+              {requestItems.map((item) => (
+                <article key={item.id} className="border border-zinc-200 bg-zinc-50/50 p-3 flex gap-4 items-center">
+                  {item.product?.imageUrl ? (
+                    <img 
+                      src={item.product.imageUrl} 
+                      alt={item.product.name || "Product"} 
+                      className="w-14 h-14 object-cover border border-zinc-200" 
+                    />
+                  ) : (
+                    <div className="w-14 h-14 bg-zinc-200 border border-zinc-300 flex items-center justify-center text-xs text-zinc-500 font-medium uppercase">No Img</div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-zinc-900 truncate">{item.product?.name || "Product"}</p>
+                    <p className="text-xs text-zinc-500 mt-0.5">Qty: {item.quantity} • Color: {item.selectedColor || "N/A"} • Size: {item.selectedSize || "N/A"}</p>
+                    {item.unitPricePkr ? (
+                      <p className="text-xs font-semibold text-zinc-800 mt-1">{money(item.unitPricePkr)} each</p>
+                    ) : null}
                   </div>
-                  <p className="text-xs text-zinc-500">{item.product?.id || "No product id"}</p>
-                </div>
-              </article>
-            ))}
-          </div>
-          {isExchange ? (
-            <section className="border border-zinc-200 bg-white p-4 text-sm text-zinc-700">
-              <p className="font-semibold uppercase tracking-[0.12em]">Replacement request</p>
-              <p className="mt-2">Requested replacement: {request.requestedVariantSummary || "Exchange request"}</p>
-              <p className="mt-2">Color: {request.requestedReplacementColor || "Not provided"}</p>
-              <p className="mt-2">Size: {request.requestedReplacementSize || "Not provided"}</p>
-            </section>
-          ) : null}
-        </article>
+                </article>
+              ))}
+            </div>
 
-        <article className="space-y-4 border border-zinc-300 p-5">
-          <div>
-            <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Evidence</p>
-            <h2 className="font-heading text-3xl uppercase">Decision trail</h2>
-          </div>
-          <div className="space-y-3 text-sm text-zinc-700">
-            <p>Customer images: {(request.evidenceImageUrls || []).length}</p>
-            <p>Brand evidence: {(request.damageEvidenceUrls || []).length}</p>
-            <p>Brand decision: {request.brandRecommendation || "Pending"}</p>
-            <p>Brand note: {request.brandRecommendationNote || "No note yet"}</p>
-            <p>Admin rejected reason: {request.adminRejectedReason || "Not rejected"}</p>
-            <p>Pickup tracking: {request.pickupTracking || "Not set"}</p>
-            <p>Return tracking: {request.returnTrackingNumber || "Not set"}</p>
-            <p>Replacement status: {isExchange ? formatReturnStatus(displayStatus) : "Not applicable"}</p>
-            <p>Replacement tracking: {request.replacementTrackingNo || "Not set"}</p>
-          </div>
-          <EvidenceLinks title="Customer Evidence" urls={request.evidenceImageUrls} />
-          <EvidenceLinks title="Brand Evidence" urls={request.damageEvidenceUrls} />
-          {request.replacementUnavailableReason ? (
-            <section className="border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              Replacement unavailable reason: {request.replacementUnavailableReason}
-            </section>
-          ) : null}
-          {availabilityRejected ? (
-            <section className="border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              This exchange rejection is availability-based. Admin has read-only visibility unless the case is reopened manually.
-            </section>
-          ) : null}
-          <div className="space-y-2 border border-zinc-200 bg-zinc-50 p-4">
-            <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Linked refunds</p>
-            {refundSnapshot.length ? (
-              refundSnapshot.map((refund) => (
-                <div key={refund.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                  <span>{refund.status}</span>
-                  <span>{money(refund.adjustedAmountPkr || refund.amountPkr)}</span>
-                  <span>{refund.method || "ORIGINAL_SOURCE"}</span>
+            {isExchange ? (
+              <section className="border border-zinc-200 bg-zinc-50/30 p-4 text-sm text-zinc-700 space-y-2">
+                <p className="font-semibold uppercase tracking-[0.12em] text-xs text-zinc-500">Requested Replacement</p>
+                <div className="grid grid-cols-2 gap-2 text-xs mt-1">
+                  <p><span className="font-medium text-zinc-600">Variant Summary:</span> {request.requestedVariantSummary || "Exchange request"}</p>
+                  <p><span className="font-medium text-zinc-600">Color:</span> {request.requestedReplacementColor || "Not provided"}</p>
+                  <p><span className="font-medium text-zinc-600">Size:</span> {request.requestedReplacementSize || "Not provided"}</p>
                 </div>
-              ))
+              </section>
+            ) : null}
+
+            <EvidenceLinks title="Customer Evidence Files" urls={request.evidenceImageUrls} />
+          </article>
+
+          {/* Linked Refund Info Card */}
+          <div className="border border-zinc-300 p-5 bg-white space-y-3">
+            <p className="text-xs uppercase tracking-[0.12em] text-zinc-500 font-semibold">Linked Refunds</p>
+            {refundSnapshot.length ? (
+              <div className="divide-y divide-zinc-200">
+                {refundSnapshot.map((refund) => (
+                  <div key={refund.id} className="py-2.5 flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <div>
+                      <p className="font-semibold text-zinc-800">Status: <span className="uppercase text-blue-700">{refund.status}</span></p>
+                      <p className="text-xs text-zinc-500 mt-0.5">Method: {refund.method || "ORIGINAL_SOURCE"}</p>
+                    </div>
+                    <span className="font-semibold text-zinc-900">{money(refund.adjustedAmountPkr || refund.amountPkr)}</span>
+                  </div>
+                ))}
+              </div>
             ) : (
-              <p className="text-sm text-zinc-600">No refund has been created yet.</p>
+              <p className="text-sm text-zinc-600 italic">No refund requests have been generated for this request yet.</p>
             )}
           </div>
-        </article>
+        </div>
+
+        {/* Right Column: Brand Decision, Logistics & Receipt Condition */}
+        <div className="space-y-6">
+          {/* Brand Recommendation & Recommendation Notes */}
+          <article className="space-y-4 border border-zinc-300 p-5 bg-white">
+            <header className="border-b border-zinc-200 pb-3">
+              <p className="text-xs uppercase tracking-[0.12em] text-zinc-500 font-semibold">Brand Review</p>
+              <h2 className="font-heading text-2xl uppercase mt-1">Brand Decision</h2>
+            </header>
+            
+            <div className="grid gap-3 text-sm text-zinc-700 bg-zinc-50 p-4 border border-zinc-200">
+              <p>
+                <span className="font-semibold text-zinc-800">Brand Recommendation: </span>
+                {request.brandRecommendation ? (
+                  <span className={`inline-flex px-2 py-0.5 text-xs font-semibold uppercase border ${
+                    request.brandRecommendation === "APPROVE" 
+                      ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                      : request.brandRecommendation === "REJECT"
+                        ? "border-red-300 bg-red-50 text-red-800"
+                        : "border-amber-300 bg-amber-50 text-amber-800"
+                  }`}>
+                    {request.brandRecommendation}
+                  </span>
+                ) : (
+                  <span className="text-zinc-500 italic">Pending brand response</span>
+                )}
+              </p>
+              {request.brandRecommendedAt ? (
+                <p><span className="font-semibold text-zinc-800">Submitted At:</span> {formatDateTime(request.brandRecommendedAt)}</p>
+              ) : null}
+              {request.brandRejectReason ? (
+                <p><span className="font-semibold text-zinc-800">Brand Reject Reason:</span> <span className="font-medium text-red-700">{request.brandRejectReason}</span></p>
+              ) : null}
+              <p><span className="font-semibold text-zinc-800">Brand Notes:</span> {request.brandRecommendationNote || <span className="italic text-zinc-400">No recommendation notes</span>}</p>
+              {isExchange ? (
+                <p><span className="font-semibold text-zinc-800">Can Fulfill Replacement:</span> {request.canFulfillReplacement === true ? "Yes" : request.canFulfillReplacement === false ? "No" : "N/A"}</p>
+              ) : null}
+            </div>
+
+            {availabilityRejected ? (
+              <section className="border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                <strong>Availability Rejection:</strong> The brand rejected this exchange because the requested replacement is out of stock. You can overrule the brand, confirm the rejection, or convert this exchange to a refund.
+              </section>
+            ) : null}
+          </article>
+
+          {/* Logistics & Pickup Info Card */}
+          <article className="space-y-4 border border-zinc-300 p-5 bg-white">
+            <header className="border-b border-zinc-200 pb-3">
+              <p className="text-xs uppercase tracking-[0.12em] text-zinc-500 font-semibold">Logistics</p>
+              <h2 className="font-heading text-2xl uppercase mt-1">Return Courier Details</h2>
+            </header>
+            <div className="grid grid-cols-2 gap-3 text-xs text-zinc-700">
+              <p><span className="font-semibold text-zinc-800">Pickup Courier:</span> {request.pickupCourier || "Not set"}</p>
+              <p><span className="font-semibold text-zinc-800">Pickup Tracking ID:</span> {request.pickupTracking || "Not set"}</p>
+              <p><span className="font-semibold text-zinc-800">Return Tracking ID:</span> {request.returnTrackingNumber || "Not set"}</p>
+              <p><span className="font-semibold text-zinc-800">Pickup Date:</span> {formatDateTime(request.pickupDate)}</p>
+              <p className="col-span-2"><span className="font-semibold text-zinc-800">Pickup Address:</span> {request.pickupAddress || "Not set"}</p>
+            </div>
+          </article>
+
+          {/* Brand Return Receipt & Condition Report */}
+          <article className="space-y-4 border border-zinc-300 p-5 bg-white">
+            <header className="border-b border-zinc-200 pb-3">
+              <p className="text-xs uppercase tracking-[0.12em] text-zinc-500 font-semibold">Quality Inspection</p>
+              <h2 className="font-heading text-2xl uppercase mt-1">Condition Report</h2>
+            </header>
+            <div className="grid gap-3 text-sm text-zinc-700 bg-zinc-50 p-4 border border-zinc-200">
+              <p><span className="font-semibold text-zinc-800">Return Received At:</span> {formatDateTime(request.returnReceivedAt)}</p>
+              <p><span className="font-semibold text-zinc-800">Receipt Condition Note:</span> {request.returnReceiptConditionNote || <span className="italic text-zinc-400">No receipt condition note</span>}</p>
+              {request.brandConditionNote || request.brandDamageNote || request.damageClaimNote ? (
+                <div className="border-t border-zinc-200 pt-2.5 mt-1 space-y-2">
+                  <p className="font-semibold text-xs uppercase text-red-600 tracking-wider">Brand Damage Report</p>
+                  {request.brandConditionNote ? <p><span className="font-semibold text-zinc-800">Condition note:</span> {request.brandConditionNote}</p> : null}
+                  {request.brandDamageNote ? <p><span className="font-semibold text-zinc-800">Damage note:</span> {request.brandDamageNote}</p> : null}
+                  {request.damageClaimNote ? <p><span className="font-semibold text-zinc-800">Claim note:</span> {request.damageClaimNote}</p> : null}
+                </div>
+              ) : null}
+            </div>
+
+            <EvidenceLinks title="Brand Return Receipt Evidence" urls={request.returnReceiptEvidenceUrls} />
+            <EvidenceLinks title="Brand Damage/Dispute Evidence" urls={request.damageEvidenceUrls} />
+            
+            {request.replacementUnavailableReason ? (
+              <section className="border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                <strong>Replacement Unavailable Reason:</strong> {request.replacementUnavailableReason}
+              </section>
+            ) : null}
+          </article>
+        </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">
