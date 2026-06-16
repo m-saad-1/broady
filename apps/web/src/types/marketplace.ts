@@ -480,8 +480,8 @@ export type ReturnRequestRecord = {
       product?: Pick<Product, "id" | "name" | "imageUrl">;
     }>;
   };
-  statusLogs?: Array<{ id: string; status: ReturnRequestStatus; note?: string | null; createdAt: string }>;
-  history?: Array<{ id: string; newStatus?: ReturnRequestStatus; note?: string | null; createdAt: string }>;
+  statusLogs?: Array<{ id: string; status: ReturnRequestStatus; updatedBy?: "SYSTEM" | "USER" | "BRAND" | "ADMIN" | null; note?: string | null; createdAt: string }>;
+  history?: Array<{ id: string; newStatus?: ReturnRequestStatus; performedByRole?: "SYSTEM" | "USER" | "BRAND" | "ADMIN" | null; note?: string | null; createdAt: string }>;
   refundRequests?: Array<{
     id: string;
     status: RefundRequestStatus;

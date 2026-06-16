@@ -336,9 +336,16 @@ export default function AdminReturnDetailPage({ params }: PageProps) {
           <div className="space-y-3">
             {(request.statusLogs || []).map((log) => (
               <div key={log.id} className="border border-zinc-200 p-3 text-sm">
-                <p className="font-semibold uppercase tracking-[0.08em]">{formatReturnStatus(log.status)}</p>
-                <p className="text-zinc-500">{formatDateTime(log.createdAt)}</p>
-                {log.note ? <p className="mt-1 text-zinc-700">{log.note}</p> : null}
+                <p className="font-semibold uppercase tracking-[0.08em] flex flex-wrap items-center gap-2">
+                  <span>{formatReturnStatus(log.status)}</span>
+                  {log.updatedBy ? (
+                    <span className="text-[10px] font-normal lowercase tracking-wider text-zinc-500 bg-zinc-100 border border-zinc-200 px-1.5 py-0.5 first-letter:uppercase">
+                      by {log.updatedBy.toLowerCase()}
+                    </span>
+                  ) : null}
+                </p>
+                <p className="text-zinc-500 text-xs mt-0.5">{formatDateTime(log.createdAt)}</p>
+                {log.note ? <p className="mt-1.5 text-zinc-700 border-l-2 border-zinc-200 pl-2 text-xs italic">{log.note}</p> : null}
               </div>
             ))}
           </div>
