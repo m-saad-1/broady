@@ -26,9 +26,19 @@ export function AdminReturnDetailActions({ request }: AdminReturnDetailActionsPr
   );
   const [note, setNote] = useState(request.adminDecisionNote || request.reviewNote || "");
   const [rejectedReason, setRejectedReason] = useState(request.adminRejectedReason || "");
+
+  function getTargetStatus(action: typeof reviewAction) {
+    if (action === "NEED_MORE_EVIDENCE") return "NEED_MORE_EVIDENCE";
+    if (status === "BRAND_REJECTED") {
+      return action === "APPROVE" ? "ADMIN_REJECTED" : "ADMIN_APPROVED";
+    }
+    return action === "APPROVE" ? "ADMIN_APPROVED" : "ADMIN_REJECTED";
+  }
+
+  const targetStatus = getTargetStatus(reviewAction);
   const canSubmitReview =
     note.trim().length > 0 &&
-    (reviewAction !== "REJECT" || rejectedReason.trim().length > 0);
+    (targetStatus !== "ADMIN_REJECTED" || rejectedReason.trim().length > 0);
 
   async function submitStatus(nextStatus: string) {
     setSaving(true);
@@ -74,14 +84,14 @@ export function AdminReturnDetailActions({ request }: AdminReturnDetailActionsPr
               {status === "RETURN_CONDITION_DISPUTED"
                 ? "Approve refund/exchange anyway"
                 : status === "BRAND_REJECTED"
-                  ? "Overrule brand rejection (Approve Customer Request)"
+                  ? "Approve brand decision (Confirm Rejection)"
                   : "Approve customer request"}
             </option>
             <option value="REJECT">
               {status === "RETURN_CONDITION_DISPUTED"
                 ? "Reject refund/exchange"
                 : status === "BRAND_REJECTED"
-                  ? "Approve brand decision (Confirm Rejection)"
+                  ? "Overrule brand rejection (Approve Customer Request)"
                   : "Confirm brand rejection"}
             </option>
             <option value="NEED_MORE_EVIDENCE">Request More Evidence</option>
@@ -92,16 +102,26 @@ export function AdminReturnDetailActions({ request }: AdminReturnDetailActionsPr
             value={note}
             onChange={(event) => setNote(event.target.value)}
           />
-          {reviewAction === "REJECT" ? (
+          {targetStatus === "ADMIN_REJECTED" ? (
             <input className="h-10 w-full border border-zinc-300 px-3 text-sm" placeholder="Rejected reason" value={rejectedReason} onChange={(event) => setRejectedReason(event.target.value)} />
           ) : null}
           <button
             type="button"
             disabled={saving || !canSubmitReview}
-            onClick={() => void submitStatus(reviewAction === "APPROVE" ? "ADMIN_APPROVED" : reviewAction === "REJECT" ? "ADMIN_REJECTED" : "NEED_MORE_EVIDENCE")}
+            onClick={() => void submitStatus(targetStatus)}
             className="h-10 border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-50"
           >
-            {saving ? "Saving..." : reviewAction === "APPROVE" ? "Approve Request" : reviewAction === "REJECT" ? "Reject Request" : "Request Evidence"}
+            {saving
+              ? "Saving..."
+              : reviewAction === "NEED_MORE_EVIDENCE"
+                ? "Request Evidence"
+                : status === "BRAND_REJECTED"
+                  ? reviewAction === "APPROVE"
+                    ? "Confirm Rejection"
+                    : "Overrule & Approve"
+                  : reviewAction === "APPROVE"
+                    ? "Approve Request"
+                    : "Reject Request"}
           </button>
         </div>
       ) : null}
