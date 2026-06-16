@@ -115,6 +115,20 @@ export default function BrandReturnInboxPage() {
                   </div>
                 </div>
 
+                {(request.adminDecision || request.adminDecisionNote || request.adminRejectedReason) ? (
+                  <div className="grid gap-2 border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700">
+                    <p>
+                      <span className="font-semibold">Admin decision:</span>{" "}
+                      {request.adminDecision === "APPROVED"
+                        ? "Overruled Brand Rejection (Customer Approved)"
+                        : request.adminDecision === "REJECTED"
+                          ? "Confirmed Brand Rejection (Customer Rejected)"
+                          : "Reviewed"}
+                    </p>
+                    <p><span className="font-semibold">Admin reason:</span> {request.adminRejectedReason || request.adminDecisionNote || "No reason added"}</p>
+                  </div>
+                ) : null}
+
                 <div className="flex justify-end">
                   <Link href={`/brand/operations/returns/${request.id}`} className="inline-flex h-9 items-center border border-black bg-black px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
                     Open Details

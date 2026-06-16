@@ -28,15 +28,19 @@ export function AdminReturnDetailActions({ request }: AdminReturnDetailActionsPr
   const [rejectedReason, setRejectedReason] = useState(request.adminRejectedReason || "");
   const canSubmitReview =
     note.trim().length > 0 &&
-    (reviewAction !== "REJECT" || rejectedReason.trim().length > 0);
+    (reviewAction !== "REJECT" || status === "BRAND_REJECTED" || rejectedReason.trim().length > 0);
 
   async function submitStatus(nextStatus: string) {
     setSaving(true);
     try {
+      const finalRejectedReason =
+        nextStatus === "ADMIN_REJECTED" && !rejectedReason.trim() && status === "BRAND_REJECTED"
+          ? (request.brandRejectReason || request.brandRecommendationNote || "Brand rejection confirmed")
+          : rejectedReason.trim();
       await updateAdminReturnRequestStatus(request.id, {
         status: nextStatus,
         note: note.trim() || undefined,
-        rejectedReason: rejectedReason.trim() || undefined,
+        rejectedReason: finalRejectedReason || undefined,
       });
       pushToast("Return request updated.", "success");
       router.refresh();
@@ -93,7 +97,12 @@ export function AdminReturnDetailActions({ request }: AdminReturnDetailActionsPr
             onChange={(event) => setNote(event.target.value)}
           />
           {reviewAction === "REJECT" ? (
-            <input className="h-10 w-full border border-zinc-300 px-3 text-sm" placeholder="Rejected reason" value={rejectedReason} onChange={(event) => setRejectedReason(event.target.value)} />
+            <input
+              className="h-10 w-full border border-zinc-300 px-3 text-sm"
+              placeholder={status === "BRAND_REJECTED" ? "Confirm rejection reason (optional, defaults to brand reason)" : "Rejected reason"}
+              value={rejectedReason}
+              onChange={(event) => setRejectedReason(event.target.value)}
+            />
           ) : null}
           <button
             type="button"
