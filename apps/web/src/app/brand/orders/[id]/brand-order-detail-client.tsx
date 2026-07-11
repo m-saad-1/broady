@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { ProductImage } from "@/components/ui/product-image";
-import { cancelBrandOrder, getBrandDashboardOrder, getBrandReturnRequests, updateBrandOrderStatus, type BrandCancelReasonCode } from "@/lib/api";
+import { cancelBrandOrder, getBrandDashboardOrder, getBrandReturnRequests, getBrandCancellationRequests, updateBrandOrderStatus, type BrandCancelReasonCode } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/media-url";
 import { getCancelledOrderItemIds } from "@/lib/order-cancellation";
 import { getOrderStatusLabel, getOrderStatusOptions, getOrderStatusTone } from "@/lib/order-status";
@@ -17,7 +17,7 @@ import {
 } from "@/lib/return-workflow";
 import { formatPkr } from "@/lib/utils";
 import { useToastStore } from "@/stores/toast-store";
-import type { BrandDashboardOrder, OrderStatus, ReturnRequestRecord } from "@/types/marketplace";
+import type { BrandDashboardOrder, OrderStatus, ReturnRequestRecord, CancellationRequestRecord } from "@/types/marketplace";
 
 type BrandOrderDetailClientProps = {
   orderId: string;
@@ -68,6 +68,7 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
   const [pendingConfirm, setPendingConfirm] = useState(false);
   const [openCancelModal, setOpenCancelModal] = useState(false);
   const [returnRequests, setReturnRequests] = useState<ReturnRequestRecord[]>([]);
+  const [cancellationRequests, setCancellationRequests] = useState<CancellationRequestRecord[]>([]);
   const [cancelReasonCode, setCancelReasonCode] = useState<BrandCancelReasonCode>("OUT_OF_STOCK");
   const [cancelNote, setCancelNote] = useState("");
   const [selectedCancelItemIds, setSelectedCancelItemIds] = useState<string[]>([]);
@@ -113,17 +114,15 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
 
   useEffect(() => {
     let mounted = true;
-    void getBrandReturnRequests()
-      .then((items) => {
-        if (mounted) {
-          setReturnRequests(items);
-        }
-      })
-      .catch(() => {
-        if (mounted) {
-          setReturnRequests([]);
-        }
-      });
+    Promise.all([
+      getBrandReturnRequests().catch(() => []),
+      getBrandCancellationRequests().catch(() => []),
+    ]).then(([returns, cancellations]) => {
+      if (mounted) {
+        setReturnRequests(returns);
+        setCancellationRequests(cancellations);
+      }
+    });
     return () => {
       mounted = false;
     };
@@ -231,6 +230,8 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
   const customerEmail = order.user?.email || "Email unavailable";
   const cancelledItemIds = getCancelledOrderItemIds(order.statusLogs);
   const matchingReturnRequests = returnRequests.filter((request) => request.orderId === order.id);
+  const matchingCancellationRequests = cancellationRequests.filter((request) => request.orderId === order.id);
+  const hasActiveCancellation = matchingCancellationRequests.some(r => r.status === "REQUESTED");
 
   return (
     <div className="space-y-8">
@@ -293,11 +294,10 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
                     <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">{formatOperatorReturnStatus(displayStatus, requestType)}</p>
                   </div>
                   <div className="flex flex-col items-end gap-2">
-                    <span className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
-                      requestType === "EXCHANGE"
+                    <span className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${requestType === "EXCHANGE"
                         ? "border-amber-300 bg-amber-100 text-amber-800"
                         : "border-sky-300 bg-sky-100 text-sky-800"
-                    }`}>
+                      }`}>
                       {requestType}
                     </span>
                     <Link href={`/brand/operations/returns/${request.id}`} className="inline-flex h-9 items-center border border-black bg-black px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
@@ -311,150 +311,178 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
         </section>
       ) : null}
 
-      <section className="space-y-3 border border-zinc-300 p-5">
-        <h2 className="font-heading text-3xl uppercase">Update Order</h2>
-        <div className="flex flex-wrap gap-2">
-          <Link href={`/brand/orders/${order.id}/status`} className="inline-flex h-9 items-center border border-zinc-300 px-3 text-[10px] font-semibold uppercase tracking-[0.12em]">
-            Shipment Status Screen
-          </Link>
-          <Link href={`/brand/orders/${order.id}/cancel`} className="inline-flex h-9 items-center border border-zinc-300 px-3 text-[10px] font-semibold uppercase tracking-[0.12em]">
-            Cancel Screen
-          </Link>
-          <Link href={`/brand/orders/${order.id}/delivery-failure`} className="inline-flex h-9 items-center border border-zinc-300 px-3 text-[10px] font-semibold uppercase tracking-[0.12em]">
-            Delivery Failure Screen
-          </Link>
-        </div>
-        <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
-          <select
-            className={`h-10 border px-3 text-sm ${
-              draft.status === "SHIPPED"
-                ? "border-blue-300 bg-blue-50"
-                : draft.status === "DELIVERED"
-                  ? "border-emerald-300 bg-emerald-50"
-                  : draft.status === "CANCELED"
-                    ? "border-rose-300 bg-rose-50"
-                    : "border-zinc-300 bg-white"
-            }`}
-            value={draft.status}
-            onChange={(event) =>
-              setDraft((current) => {
-                if (!current) return current;
-                const nextStatus = event.target.value as OrderStatus;
-                const hasEstimated = Boolean(current.estimatedDelivery?.trim());
-                if (hasEstimated || (nextStatus !== "SHIPPED" && nextStatus !== "OUT_FOR_DELIVERY")) {
-                  return { ...current, status: nextStatus };
-                }
+      {matchingCancellationRequests.length ? (
+        <section className="space-y-3 border border-amber-300 bg-amber-50 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.12em] text-amber-800">Action Required</p>
+              <h2 className="text-lg font-bold text-amber-900">Customer has requested cancellation</h2>
+              <p className="text-sm text-amber-900">You must review and respond to the cancellation request before proceeding with any further actions.</p>
+            </div>
+            <Link href="/brand/operations?tab=cancellations" className="inline-flex h-9 items-center border border-amber-800 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-900 hover:bg-amber-100">
+              Open Cancellation Queue
+            </Link>
+          </div>
+        </section>
+      ) : null}
 
-                const now = new Date();
-                const autoDate = new Date(now.getTime() + (nextStatus === "OUT_FOR_DELIVERY" ? 24 : 72) * 60 * 60 * 1000);
-                const yyyy = autoDate.getFullYear();
-                const mm = String(autoDate.getMonth() + 1).padStart(2, "0");
-                const dd = String(autoDate.getDate()).padStart(2, "0");
-                const hh = String(autoDate.getHours()).padStart(2, "0");
-                const min = String(autoDate.getMinutes()).padStart(2, "0");
-                return { ...current, status: nextStatus, estimatedDelivery: `${yyyy}-${mm}-${dd}T${hh}:${min}` };
-              })
-            }
-          >
-            <option value={order.status} disabled>
-              Current: {getOrderStatusLabel(order.status)}
-            </option>
-            {getOrderStatusOptions(order.status).map((status) => (
-              <option key={status} value={status}>{status}</option>
-            ))}
-          </select>
-          <div className="flex items-center gap-2">
-            {canCancelBeforeShipment ? (
+      {order.status !== "CANCELED" ? (
+        <section className="space-y-3 border border-zinc-300 p-5">
+          <h2 className="font-heading text-3xl uppercase">Update Order</h2>
+          {hasActiveCancellation && (
+            <div className="border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 font-semibold">
+              Shipment actions are blocked because there is an active cancellation request pending your review.
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Link href={`/brand/orders/${order.id}/status`} className={`inline-flex h-9 items-center border border-zinc-300 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] ${hasActiveCancellation ? "pointer-events-none opacity-50" : ""}`}>
+              Shipment Status Screen
+            </Link>
+            <Link href={`/brand/orders/${order.id}/cancel`} className={`inline-flex h-9 items-center border border-zinc-300 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] ${hasActiveCancellation ? "pointer-events-none opacity-50" : ""}`}>
+              Cancel Screen
+            </Link>
+            <Link href={`/brand/orders/${order.id}/delivery-failure`} className={`inline-flex h-9 items-center border border-zinc-300 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] ${hasActiveCancellation ? "pointer-events-none opacity-50" : ""}`}>
+              Delivery Failure Screen
+            </Link>
+          </div>
+          <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+            <select
+              disabled={hasActiveCancellation}
+              className={`h-10 border px-3 text-sm ${draft.status === "SHIPPED"
+                  ? "border-blue-300 bg-blue-50"
+                  : draft.status === "DELIVERED"
+                    ? "border-emerald-300 bg-emerald-50"
+                    : draft.status === "CANCELED"
+                      ? "border-rose-300 bg-rose-50"
+                      : "border-zinc-300 bg-white"
+                }`}
+              value={draft.status}
+              onChange={(event) =>
+                setDraft((current) => {
+                  if (!current) return current;
+                  const nextStatus = event.target.value as OrderStatus;
+                  const hasEstimated = Boolean(current.estimatedDelivery?.trim());
+                  if (hasEstimated || (nextStatus !== "SHIPPED" && nextStatus !== "OUT_FOR_DELIVERY")) {
+                    return { ...current, status: nextStatus };
+                  }
+
+                  const now = new Date();
+                  const autoDate = new Date(now.getTime() + (nextStatus === "OUT_FOR_DELIVERY" ? 24 : 72) * 60 * 60 * 1000);
+                  const yyyy = autoDate.getFullYear();
+                  const mm = String(autoDate.getMonth() + 1).padStart(2, "0");
+                  const dd = String(autoDate.getDate()).padStart(2, "0");
+                  const hh = String(autoDate.getHours()).padStart(2, "0");
+                  const min = String(autoDate.getMinutes()).padStart(2, "0");
+                  return { ...current, status: nextStatus, estimatedDelivery: `${yyyy}-${mm}-${dd}T${hh}:${min}` };
+                })
+              }
+            >
+              <option value={order.status} disabled>
+                Current: {getOrderStatusLabel(order.status)}
+              </option>
+              {getOrderStatusOptions(order.status).map((status) => (
+                <option key={status} value={status}>{status}</option>
+              ))}
+            </select>
+            <div className="flex items-center gap-2">
+              {canCancelBeforeShipment ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCancelItemIds(order.items.map((item) => item.id));
+                    setOpenCancelModal(true);
+                  }}
+                  disabled={saving}
+                  className="h-10 border border-red-300 bg-red-50 px-4 text-xs font-semibold uppercase tracking-[0.12em] text-red-700 disabled:opacity-50"
+                >
+                  {cancellationRequiresReview ? "Cancel Order" : "Cancel Order"}
+                </button>
+              ) : null}
               <button
                 type="button"
-                onClick={() => {
-                  setSelectedCancelItemIds(order.items.map((item) => item.id));
-                  setOpenCancelModal(true);
-                }}
-                disabled={saving}
-                className="h-10 border border-red-300 bg-red-50 px-4 text-xs font-semibold uppercase tracking-[0.12em] text-red-700 disabled:opacity-50"
+                onClick={() => setPendingConfirm(true)}
+                disabled={saving || hasActiveCancellation}
+                className="h-10 border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-50"
               >
-                {cancellationRequiresReview ? "Request Cancellation" : "Cancel Order"}
+                {saving ? "Saving" : "Apply Update"}
               </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => setPendingConfirm(true)}
-              disabled={saving}
-              className="h-10 border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-50"
-            >
-              {saving ? "Saving" : "Apply Update"}
-            </button>
+            </div>
           </div>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          <input
-            className="h-10 border border-zinc-300 px-3 text-sm"
-            placeholder="Tracking ID"
-            value={draft.trackingId}
-            onChange={(event) => setDraft((current) => current ? { ...current, trackingId: event.target.value } : current)}
-          />
-          <select
-            className="h-10 border border-zinc-300 px-3 text-sm"
-            value={draft.courierName}
-            onChange={(event) => setDraft((current) => current ? { ...current, courierName: event.target.value } : current)}
-          >
-            <option value="">-- Select Courier (Optional) --</option>
-            <option value="Leopards">Leopards</option>
-            <option value="TCS">TCS</option>
-            <option value="Call Courier">Call Courier</option>
-            <option value="Trax">Trax</option>
-            <option value="Other">Other</option>
-          </select>
-          <input
-            type="datetime-local"
-            className="h-10 border border-zinc-300 px-3 text-sm"
-            placeholder="Estimated Delivery (optional)"
-            value={draft.estimatedDelivery}
-            onChange={(event) => setDraft((current) => current ? { ...current, estimatedDelivery: event.target.value } : current)}
-          />
-          <input
-            className="h-10 border border-zinc-300 px-3 text-sm"
-            placeholder="Internal note (for ops/admin logs)"
-            value={draft.note}
-            onChange={(event) => setDraft((current) => current ? { ...current, note: event.target.value } : current)}
-          />
+          <div className="grid gap-3 md:grid-cols-2">
+            <input
+              className="h-10 border border-zinc-300 px-3 text-sm"
+              placeholder="Tracking ID"
+              value={draft.trackingId}
+              disabled={hasActiveCancellation}
+              onChange={(event) => setDraft((current) => current ? { ...current, trackingId: event.target.value } : current)}
+            />
+            <select
+              className="h-10 border border-zinc-300 px-3 text-sm"
+              value={draft.courierName}
+              disabled={hasActiveCancellation}
+              onChange={(event) => setDraft((current) => current ? { ...current, courierName: event.target.value } : current)}
+            >
+              <option value="">-- Select Courier (Optional) --</option>
+              <option value="Leopards">Leopards</option>
+              <option value="TCS">TCS</option>
+              <option value="Call Courier">Call Courier</option>
+              <option value="Trax">Trax</option>
+              <option value="Other">Other</option>
+            </select>
+            <input
+              type="datetime-local"
+              className="h-10 border border-zinc-300 px-3 text-sm"
+              placeholder="Estimated Delivery (optional)"
+              value={draft.estimatedDelivery}
+              disabled={hasActiveCancellation}
+              onChange={(event) => setDraft((current) => current ? { ...current, estimatedDelivery: event.target.value } : current)}
+            />
+            <input
+              className="h-10 border border-zinc-300 px-3 text-sm"
+              placeholder="Internal note (for ops/admin logs)"
+              value={draft.note}
+              disabled={hasActiveCancellation}
+              onChange={(event) => setDraft((current) => current ? { ...current, note: event.target.value } : current)}
+            />
 
-          {draft.status === "DELIVERY_FAILED" && (
-            <>
-              <select
-                className="h-10 border border-orange-300 bg-orange-50 px-3 text-sm"
-                value={draft.failureReason}
-                onChange={(event) => setDraft((current) => current ? { ...current, failureReason: event.target.value } : current)}
-              >
-                <option value="">-- Select failure reason (required) --</option>
-                {DELIVERY_FAILURE_REASONS.map((reason) => (
-                  <option key={reason.code} value={reason.code}>
-                    {reason.label}
-                  </option>
-                ))}
-              </select>
+            {draft.status === "DELIVERY_FAILED" && (
+              <>
+                <select
+                  className="h-10 border border-orange-300 bg-orange-50 px-3 text-sm"
+                  value={draft.failureReason}
+                  disabled={hasActiveCancellation}
+                  onChange={(event) => setDraft((current) => current ? { ...current, failureReason: event.target.value } : current)}
+                >
+                  <option value="">-- Select failure reason (required) --</option>
+                  {DELIVERY_FAILURE_REASONS.map((reason) => (
+                    <option key={reason.code} value={reason.code}>
+                      {reason.label}
+                    </option>
+                  ))}
+                </select>
 
-              {draft.failureReason === "OTHER" ? (
-                <textarea
-                  className="min-h-24 border border-orange-300 bg-orange-50 px-3 py-2 text-sm md:col-span-2"
-                  placeholder="Describe the failure reason"
-                  value={draft.failureReasonMessage}
-                  onChange={(event) => setDraft((current) => current ? { ...current, failureReasonMessage: event.target.value } : current)}
+                {draft.failureReason === "OTHER" ? (
+                  <textarea
+                    className="min-h-24 border border-orange-300 bg-orange-50 px-3 py-2 text-sm md:col-span-2"
+                    placeholder="Describe the failure reason"
+                    value={draft.failureReasonMessage}
+                    onChange={(event) => setDraft((current) => current ? { ...current, failureReasonMessage: event.target.value } : current)}
+                  />
+                ) : null}
+
+                <input
+                  type="datetime-local"
+                  className="h-10 border border-blue-300 bg-blue-50 px-3 text-sm"
+                  placeholder="Next attempt date (optional)"
+                  value={draft.nextAttemptDate}
+                  onChange={(event) => setDraft((current) => current ? { ...current, nextAttemptDate: event.target.value } : current)}
                 />
-              ) : null}
+              </>
+            )}
+          </div>
+        </section>
+      ) : null}
 
-              <input
-                type="datetime-local"
-                className="h-10 border border-blue-300 bg-blue-50 px-3 text-sm"
-                placeholder="Next attempt date (optional)"
-                value={draft.nextAttemptDate}
-                onChange={(event) => setDraft((current) => current ? { ...current, nextAttemptDate: event.target.value } : current)}
-              />
-            </>
-          )}
-        </div>
-      </section>
 
       <section className="space-y-3 border border-zinc-300 p-5">
         <h2 className="font-heading text-3xl uppercase">Items</h2>
@@ -464,53 +492,70 @@ export function BrandOrderDetailClient({ orderId }: BrandOrderDetailClientProps)
             const itemReturnRequest = matchingReturnRequests.find((request) =>
               getReturnRequestItems(request).some((requestItem) => requestItem.id === item.id),
             );
+            const itemCancellationRequest = matchingCancellationRequests.find((request) => request.orderItemIds?.includes(item.id) || (!request.orderItemIds?.length && request.orderId === order.id));
             const itemReturnLabel = itemReturnRequest
               ? formatOperatorReturnStatus(getDisplayReturnStatus(itemReturnRequest), getReturnRequestType(itemReturnRequest))
               : null;
+            const itemCancellationLabel = itemCancellationRequest
+              ? itemCancellationRequest.status === "REQUESTED" ? "Cancellation Requested" : itemCancellationRequest.status
+              : null;
             return (
-            <article key={item.id} className={`grid gap-4 border-b py-3 md:grid-cols-[80px_1fr_auto] md:items-center ${isCancelled ? "border-red-100 bg-red-50 px-2" : "border-zinc-200"}`}>
-              <div className="relative h-20 w-20 overflow-hidden border border-zinc-200 bg-zinc-50">
-                <ProductImage
-                  src={resolveProductImageSrc(item.product.imageUrl)}
-                  alt={item.product.name || "Product image"}
-                  fill
-                  sizes="80px"
-                  className="object-cover"
-                />
-              </div>
-              <div className="space-y-1">
-                <Link href={`/product/${item.product.slug}`} className="text-sm font-semibold uppercase tracking-[0.08em] underline decoration-zinc-400 underline-offset-2">
-                  {item.product.name}
-                </Link>
-                <div className="flex flex-wrap gap-3 text-xs text-zinc-700">
-                  <p className="font-semibold">Size: {item.selectedSize || "Not specified"}</p>
-                  <p className="font-semibold">Color: {item.selectedColor || "Not specified"}</p>
-                  <p className="font-semibold">Quantity: {item.quantity}</p>
-                  <p className="font-semibold">Price: {formatPkr(item.unitPricePkr)}</p>
-                  {itemReturnLabel ? <p className="font-semibold uppercase tracking-[0.12em] text-emerald-700">{itemReturnLabel}</p> : null}
-                  {isCancelled ? <p className="font-semibold uppercase tracking-[0.12em] text-red-700">Cancelled</p> : null}
+              <article key={item.id} className={`grid gap-4 border-b py-3 md:grid-cols-[80px_1fr_auto] md:items-center ${isCancelled ? "border-red-100 bg-red-50 px-2" : "border-zinc-200"}`}>
+                <div className="relative h-20 w-20 overflow-hidden border border-zinc-200 bg-zinc-50">
+                  <ProductImage
+                    src={resolveProductImageSrc(item.product.imageUrl)}
+                    alt={item.product.name || "Product image"}
+                    fill
+                    sizes="80px"
+                    className="object-cover"
+                  />
                 </div>
-              </div>
-              {isCancelled ? (
-                <span className="inline-flex h-9 items-center border border-red-200 px-3 text-xs font-semibold uppercase tracking-[0.12em] text-red-700">
-                  Cancelled
-                </span>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {itemReturnRequest ? (
-                    <Link href={`/brand/operations/returns/${itemReturnRequest.id}`} className="inline-flex h-9 items-center border border-zinc-300 px-3 text-xs font-semibold uppercase tracking-[0.12em] leading-9 text-center">
-                      Request
+                <div className="space-y-1">
+                  <Link href={`/product/${item.product.slug}`} className="text-sm font-semibold uppercase tracking-[0.08em] underline decoration-zinc-400 underline-offset-2">
+                    {item.product.name}
+                  </Link>
+                  <div className="flex flex-wrap gap-3 text-xs text-zinc-700">
+                    <p className="font-semibold">Size: {item.selectedSize || "Not specified"}</p>
+                    <p className="font-semibold">Color: {item.selectedColor || "Not specified"}</p>
+                    <p className="font-semibold">Quantity: {item.quantity}</p>
+                    <p className="font-semibold">Price: {formatPkr(item.unitPricePkr)}</p>
+                    {itemReturnLabel ? <p className="font-semibold uppercase tracking-[0.12em] text-emerald-700">{itemReturnLabel}</p> : null}
+                    {itemCancellationLabel && !isCancelled ? <p className="font-semibold uppercase tracking-[0.12em] text-amber-700">{itemCancellationLabel}</p> : null}
+                    {isCancelled ? <p className="font-semibold uppercase tracking-[0.12em] text-red-700">Cancelled</p> : null}
+                  </div>
+                </div>
+                {isCancelled ? (
+                  <div className="flex flex-wrap gap-2">
+                    {itemCancellationRequest ? (
+                      <Link href={`/brand/operations?tab=cancellations`} className="inline-flex h-9 items-center border border-zinc-300 px-3 text-xs font-semibold uppercase tracking-[0.12em] leading-9 text-center bg-white">
+                        Cancellation Request
+                      </Link>
+                    ) : null}
+                    <span className="inline-flex h-9 items-center border border-red-200 bg-white px-3 text-xs font-semibold uppercase tracking-[0.12em] text-red-700">
+                      Cancelled
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {itemCancellationRequest ? (
+                      <Link href={`/brand/operations?tab=cancellations`} className="inline-flex h-9 items-center border border-zinc-300 px-3 text-xs font-semibold uppercase tracking-[0.12em] leading-9 text-center bg-white">
+                        Cancellation Request
+                      </Link>
+                    ) : null}
+                    {itemReturnRequest ? (
+                      <Link href={`/brand/operations/returns/${itemReturnRequest.id}`} className="inline-flex h-9 items-center border border-zinc-300 px-3 text-xs font-semibold uppercase tracking-[0.12em] leading-9 text-center">
+                        Request
+                      </Link>
+                    ) : null}
+                    <Link href={`/product/${item.product.slug}`} className="inline-flex h-9 items-center border border-zinc-300 px-3 text-xs font-semibold uppercase tracking-[0.12em] leading-9 text-center">
+                      Product
                     </Link>
-                  ) : null}
-                  <Link href={`/product/${item.product.slug}`} className="inline-flex h-9 items-center border border-zinc-300 px-3 text-xs font-semibold uppercase tracking-[0.12em] leading-9 text-center">
-                    Product
-                  </Link>
-                  <Link href={`/account/orders?orderId=${encodeURIComponent(order.id)}`} className="inline-flex h-9 items-center border border-black bg-black px-3 text-xs font-semibold uppercase tracking-[0.12em] text-white">
-                    Tracking
-                  </Link>
-                </div>
-              )}
-            </article>
+                    <Link href={`/account/orders?orderId=${encodeURIComponent(order.id)}`} className="inline-flex h-9 items-center border border-black bg-black px-3 text-xs font-semibold uppercase tracking-[0.12em] text-white">
+                      Tracking
+                    </Link>
+                  </div>
+                )}
+              </article>
             );
           })}
         </div>

@@ -6,6 +6,8 @@ import { prisma } from "../../config/prisma.js";
 import { approveProduct, enqueueImport, rejectProduct, retryImport } from "./services/ingestion.service.js";
 import { getIngestionQueueMetrics } from "./queues/ingestion.queue-metrics.js";
 import { inventorySyncQueue } from "./queues/ingestion.queues.js";
+import { classifyProduct } from "../products/classification.service.js";
+import { normalizeGender } from "../products/taxonomy.js";
 
 const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024, files: 1 },
@@ -197,14 +199,40 @@ router.patch("/products/:productId/fix", async (req, res) => {
     const existing = await prisma.product.findUnique({ where: { id: productId } });
     if (!existing) return res.status(404).json({ message: "Product not found" });
 
+    const classification = await classifyProduct({
+      title: parsedBody.data.name || existing.name,
+      description: parsedBody.data.description || existing.description,
+      brandCategory: parsedBody.data.topCategory || parsedBody.data.category || existing.brandCategoryRaw || undefined,
+      brandSubcategory: parsedBody.data.subCategory || parsedBody.data.subType || existing.brandSubcategoryRaw || undefined,
+      gender: parsedBody.data.gender ? (normalizeGender(parsedBody.data.gender) || undefined) : undefined,
+      tags: parsedBody.data.tags || existing.tags,
+    });
+
+    const colors = parsedBody.data.color ? [parsedBody.data.color] : existing.colors;
+    const primaryColor = parsedBody.data.color || existing.primaryColor;
+
     const updated = await prisma.product.update({
       where: { id: productId },
       data: {
-        ...parsedBody.data,
+        name: parsedBody.data.name,
+        description: parsedBody.data.description,
+        gender: classification.gender,
+        productType: classification.productType,
+        department: classification.department,
+        category: classification.category,
+        subcategory: classification.subcategory,
+        brandCategoryRaw: parsedBody.data.topCategory || parsedBody.data.category || existing.brandCategoryRaw || null,
+        brandSubcategoryRaw: parsedBody.data.subCategory || parsedBody.data.subType || existing.brandSubcategoryRaw || null,
+        colors,
+        primaryColor,
+        pricePkr: parsedBody.data.pricePkr,
+        stock: parsedBody.data.stock,
+        sizes: parsedBody.data.sizes,
+        tags: parsedBody.data.tags,
+        imageUrl: parsedBody.data.imageUrl,
         approvalStatus: "PENDING",
         isActive: false,
-        mappingStatus: parsedBody.data.category || parsedBody.data.division || parsedBody.data.gender ? "complete" : existing.mappingStatus,
-        resolutionSource: "admin_manual",
+        classificationConfidence: classification.confidence,
         metadata: parsedBody.data.metadata as any,
       },
     });

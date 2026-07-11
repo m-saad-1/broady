@@ -38,43 +38,43 @@ const subCategoryDisplayMap: Record<string, string> = {
 };
 
 const displayCategoryToApiCategoryMap: Record<string, string> = {
-  Shirts: "shirt",
-  "T-Shirts": "t-shirt",
-  Polo: "polo",
-  Hoodies: "hoodie",
-  Sweatshirts: "sweatshirt",
-  Jackets: "jacket",
-  Sweaters: "sweater",
-  Vests: "vest",
-  Blouses: "blouse",
-  Tops: "top",
-  Kurtas: "kurta",
-  Trousers: "trouser",
-  Pants: "pant",
-  Jeans: "jeans",
-  Shorts: "shorts",
-  Skirts: "skirt",
-  Joggers: "jogger",
-  "Cargo Pants": "cargo",
-  Sneakers: "sneaker",
-  Trainers: "trainer",
-  Loafers: "loafer",
-  Sandals: "sandal",
-  Slippers: "slipper",
-  Boots: "boot",
-  Shoes: "closed_shoe",
-  "Formal Shoes": "formal_shoe",
-  "Open Shoes": "open_shoe",
-  Bags: "bag",
-  Caps: "cap",
-  Belts: "belt",
-  Watches: "watch",
-  Wallets: "wallet",
-  Socks: "socks",
-  Scarves: "scarf",
-  Sunglasses: "sunglasses",
-  Jewelry: "jewellery",
-  Jewellery: "jewellery",
+  Shirts: "SHIRTS",
+  "T-Shirts": "T_SHIRTS",
+  Polo: "POLOS",
+  Hoodies: "HOODIES",
+  Sweatshirts: "SWEATSHIRTS",
+  Jackets: "JACKETS",
+  Sweaters: "SWEATERS",
+  Vests: "VESTS",
+  Blouses: "BLOUSES",
+  Tops: "TOPS",
+  Kurtas: "KURTAS",
+  Trousers: "TROUSERS",
+  Pants: "PANTS",
+  Jeans: "JEANS",
+  Shorts: "SHORTS",
+  Skirts: "SKIRTS",
+  Joggers: "JOGGERS",
+  "Cargo Pants": "CARGO_PANTS",
+  Sneakers: "SNEAKERS",
+  Trainers: "TRAINERS",
+  Loafers: "LOAFERS",
+  Sandals: "SANDALS",
+  Slippers: "SLIPPERS",
+  Boots: "BOOTS",
+  Shoes: "CLOSED_SHOE",
+  "Formal Shoes": "FORMAL_SHOE",
+  "Open Shoes": "OPEN_SHOE",
+  Bags: "BAGS",
+  Caps: "CAPS",
+  Belts: "BELTS",
+  Watches: "WATCHES",
+  Wallets: "WALLETS",
+  Socks: "SOCKS",
+  Scarves: "SCARVES",
+  Sunglasses: "SUNGLASSES",
+  Jewelry: "JEWELLERY",
+  Jewellery: "JEWELLERY",
 };
 
 const subCategoryToType: Record<string, ProductType> = {
@@ -274,7 +274,7 @@ export function normalizeCatalogCategoryFilterValue(value?: string | null) {
 
 export function normalizeApiCategoryFilterValue(value?: string | null) {
   const normalized = normalizeCatalogCategoryFilterValue(value);
-  return displayCategoryToApiCategoryMap[normalized] || normalized.toLowerCase().replace(/\s+/g, "_");
+  return displayCategoryToApiCategoryMap[normalized] || normalized.toUpperCase().replace(/\s+/g, "_");
 }
 
 export const normalizeCatalogTypeFilterValue = normalizeCatalogCategoryFilterValue;
@@ -297,6 +297,9 @@ export function getCanonicalProductSubCategory(product: Product) {
 }
 
 export function getTopCategoryLabel(category: string) {
+  if (category === "Juniors") return "Boy/Girl";
+  if (category === "Junior Boys" || category === "Toddler Boys") return "Boy";
+  if (category === "Junior Girls" || category === "Toddler Girls") return "Girl";
   return category;
 }
 
@@ -324,6 +327,8 @@ export function resolveTopCategoryFilter(category: string) {
   if (normalized === "men") return "Men";
   if (normalized === "women") return "Women";
   if (normalized === "juniors" || normalized === "kids") return "Juniors";
+  if (normalized === "boys") return "Junior Boys";
+  if (normalized === "girls") return "Junior Girls";
   if (normalized === "toddler boys") return "Toddler Boys";
   if (normalized === "toddler girls") return "Toddler Girls";
   if (normalized === "junior boys") return "Junior Boys";

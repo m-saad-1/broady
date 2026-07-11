@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { ProductCard } from "@/components/ui/product-card";
-import { getCatalogFilterOptions, getForYouRecommendationFeed, getProducts, trackUserBehaviorEvent, type RecommendationMeta } from "@/lib/api";
+import { getCatalogFilterOptions, getForYouRecommendationFeed, getProducts, getPagedProducts, trackUserBehaviorEvent, type RecommendationMeta } from "@/lib/api";
 import { blendRecommendedProducts } from "@/lib/recommendation-mix";
 import { useAuthStore } from "@/stores/auth-store";
 import { normalizeApiCategoryFilterValue, normalizeCatalogCategoryFilterValue, normalizeProduct } from "@/lib/taxonomy";
@@ -79,6 +79,7 @@ export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
   const [minPrice, setMinPrice] = useState(paramsState.minPrice);
   const [maxPrice, setMaxPrice] = useState(paramsState.maxPrice);
   const [sort, setSort] = useState(paramsState.sort);
+  const [gender, setGender] = useState(paramsState.gender || "");
   const [catalogRecommendations, setCatalogRecommendations] = useState<Product[]>([]);
   const [catalogRecommendationMeta, setCatalogRecommendationMeta] = useState<RecommendationMeta | undefined>();
 
@@ -88,6 +89,7 @@ export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
       setCorrectedFrom(paramsState.correctedFrom);
       setTopCategory(paramsState.topCategory);
       setJuniorCategory(paramsState.juniorCategory);
+      setGender(paramsState.gender || "");
       setBrandId(paramsState.brandId);
       setDivision(paramsState.division);
       setCategory(paramsState.category);
@@ -108,6 +110,7 @@ export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
     if (correctedFrom) next.correctedFrom = correctedFrom;
     if (topCategory) next.topCategory = topCategory;
     if (juniorCategory) next.juniorCategory = juniorCategory;
+    if (gender) next.gender = gender;
     if (brandId) next.brandId = brandId;
     if (division) next.division = division;
     if (category) next.category = category;
@@ -118,21 +121,27 @@ export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
     if (maxPrice) next.maxPrice = maxPrice;
     if (sort) next.sort = sort;
     return next;
-  }, [brandId, category, color, correctedFrom, division, juniorCategory, maxPrice, minPrice, query, size, sort, subType, topCategory]);
+  }, [brandId, category, color, correctedFrom, division, gender, juniorCategory, maxPrice, minPrice, query, size, sort, subType, topCategory]);
 
+  const [initialQueryKey] = useState(() => buildStableParamsKey(paramsState) || "all");
   const queryKeyString = useMemo(() => buildStableParamsKey(activeParams) || "all", [activeParams]);
 
-  const { data: productsData, isLoading, isFetching } = useQuery({
+  const { data: pagedData, isLoading, isFetching } = useQuery({
     queryKey: ["products", queryKeyString],
-    queryFn: () => getProducts({ ...activeParams, limit: "100" }),
-    initialData: initialProducts.map(normalizeProduct),
+    queryFn: () => getPagedProducts({ ...activeParams, limit: "100" }),
+    initialData: queryKeyString === initialQueryKey ? {
+      products: initialProducts.map(normalizeProduct),
+      meta: { totalCount: initialProducts.length, page: 1, totalPages: 1 }
+    } : undefined,
     refetchOnWindowFocus: false,
   });
+  const productsData = pagedData?.products || [];
 
   const filterOptionParams = useMemo(() => {
     const next: Record<string, string> = {};
     if (topCategory) next.topCategory = topCategory;
     if (juniorCategory) next.juniorCategory = juniorCategory;
+    if (gender) next.gender = gender;
     if (brandId) next.brandId = brandId;
     if (division) next.division = division;
     if (category) next.category = category;
@@ -142,10 +151,10 @@ export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
     if (minPrice) next.minPrice = minPrice;
     if (maxPrice) next.maxPrice = maxPrice;
     return next;
-  }, [brandId, category, color, division, juniorCategory, maxPrice, minPrice, size, subType, topCategory]);
+  }, [brandId, category, color, division, gender, juniorCategory, maxPrice, minPrice, size, subType, topCategory]);
 
   const { data: filterOptions } = useQuery({
-    queryKey: ["product-filter-options", buildStableParamsKey(filterOptionParams) || "all"],
+    queryKey: ["product-filter-options", JSON.stringify(filterOptionParams)],
     queryFn: () => getCatalogFilterOptions(filterOptionParams),
     refetchOnWindowFocus: false,
   });
@@ -251,19 +260,21 @@ export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
-      if (division && filterOptions && !filterOptions.divisions.includes(division)) setDivision("");
-      if (category && filterOptions && !filterOptions.categories.includes(category)) setCategory("");
-      if (subType && filterOptions && !filterOptions.subTypes.includes(subType)) setSubType("");
-      if (size && filterOptions && !filterOptions.sizes.includes(size)) setSize("");
-      if (color && filterOptions && !filterOptions.colors.includes(color)) setColor("");
+      if (division && filterOptions && !filterOptions.availableDepartments.some(d => d.value === division)) setDivision("");
+      if (category && filterOptions && !filterOptions.availableCategories.some(c => c.value === category)) setCategory("");
+      if (subType && filterOptions && !filterOptions.availableSubcategories.some(s => s.value === subType)) setSubType("");
+      if (size && filterOptions && !filterOptions.availableSizes.some(s => s.value === size)) setSize("");
+      if (color && filterOptions && !filterOptions.availableColors.some(c => c.value === color)) setColor("");
+      if (gender && filterOptions && !filterOptions.availableGenders.some(g => g.value === gender)) setGender("");
     }, 0);
 
     return () => window.clearTimeout(handle);
-  }, [category, color, division, filterOptions, size, subType]);
+  }, [category, color, division, filterOptions, gender, size, subType]);
 
   const clearFilters = () => {
     setQuery("");
     setCorrectedFrom("");
+    setGender("");
     setBrandId("");
     setDivision("");
     setCategory("");
@@ -279,9 +290,18 @@ export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
     <div className="space-y-4">
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
+          <select value={gender} onChange={(event) => setGender(event.target.value)} className="h-9 border border-zinc-300 bg-white px-2 text-sm">
+            <option value="">Gender</option>
+            {(filterOptions?.availableGenders || []).map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.value === "Juniors" ? "Boys/Girls" : item.value}
+              </option>
+            ))}
+          </select>
+
           <select value={brandId} onChange={(event) => setBrandId(event.target.value)} className="h-9 border border-zinc-300 bg-white px-2 text-sm">
             <option value="">Brand</option>
-            {(filterOptions?.brands || []).map((item) => (
+            {(filterOptions?.availableBrands || []).map((item) => (
               <option key={item.id} value={item.id}>
                 {item.name}
               </option>
@@ -290,50 +310,52 @@ export function CatalogClient({ initialProducts, params }: CatalogClientProps) {
 
           <select value={division} onChange={(event) => { setDivision(event.target.value); setCategory(""); setSubType(""); }} className="h-9 border border-zinc-300 bg-white px-2 text-sm">
             <option value="">Division</option>
-            {(filterOptions?.divisions || []).map((item) => (
-              <option key={item} value={item}>
-                {item}
+            {(filterOptions?.availableDepartments || []).map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label || item.value}
               </option>
             ))}
           </select>
 
           <select value={category} onChange={(event) => { setCategory(event.target.value); setSubType(""); }} className="h-9 border border-zinc-300 bg-white px-2 text-sm">
             <option value="">Category</option>
-            {(filterOptions?.categories || []).map((item) => (
-              <option key={item} value={item}>
-                {normalizeCatalogCategoryFilterValue(item)}
+            {(filterOptions?.availableCategories || []).map((item) => (
+              <option key={item.value} value={item.value}>
+                {normalizeCatalogCategoryFilterValue(item.value)}
               </option>
             ))}
           </select>
 
-          {(filterOptions?.subTypes?.length || 0) > 0 ? (
+          {category && (filterOptions?.availableSubcategories?.length || 0) > 0 ? (
             <select value={subType} onChange={(event) => setSubType(event.target.value)} className="h-9 border border-zinc-300 bg-white px-2 text-sm">
               <option value="">Sub-type</option>
-              {(filterOptions?.subTypes || []).map((item) => (
-                <option key={item} value={item}>
-                  {item}
+              {(filterOptions?.availableSubcategories || []).map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.value}
                 </option>
               ))}
             </select>
           ) : null}
 
-          <select value={size} onChange={(event) => setSize(event.target.value)} className="h-9 border border-zinc-300 bg-white px-2 text-sm" disabled={!(filterOptions?.sizes || []).length}>
+          <select value={size} onChange={(event) => setSize(event.target.value)} className="h-9 border border-zinc-300 bg-white px-2 text-sm" disabled={!(filterOptions?.availableSizes || []).length}>
             <option value="">Size</option>
-            {(filterOptions?.sizes || []).map((item) => (
-              <option key={item} value={item}>
-                {item}
+            {(filterOptions?.availableSizes || []).map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.value}
               </option>
             ))}
           </select>
 
-          <select value={color} onChange={(event) => setColor(event.target.value)} className="h-9 border border-zinc-300 bg-white px-2 text-sm" disabled={!(filterOptions?.colors || []).length}>
-            <option value="">Color</option>
-            {(filterOptions?.colors || []).map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
+          {category ? (
+            <select value={color} onChange={(event) => setColor(event.target.value)} className="h-9 border border-zinc-300 bg-white px-2 text-sm" disabled={!(filterOptions?.availableColors || []).length}>
+              <option value="">Color</option>
+              {(filterOptions?.availableColors || []).map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.value}
+                </option>
+              ))}
+            </select>
+          ) : null}
 
           <input value={minPrice} onChange={(event) => setMinPrice(event.target.value)} placeholder={`Min ${filterOptions?.priceRange.min ?? 0}`} className="h-9 w-24 border border-zinc-300 px-2 text-sm" inputMode="numeric" />
           <input value={maxPrice} onChange={(event) => setMaxPrice(event.target.value)} placeholder={`Max ${filterOptions?.priceRange.max ?? 0}`} className="h-9 w-24 border border-zinc-300 px-2 text-sm" inputMode="numeric" />

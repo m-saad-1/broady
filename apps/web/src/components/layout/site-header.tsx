@@ -84,7 +84,8 @@ const MEN_WOMEN_MENU_ITEMS: CatalogCard[] = [
 const primaryNavItems = [
   { href: "/category/Men", label: "Men" },
   { href: "/category/Women", label: "Women" },
-  { href: "/category/Juniors", label: "Juniors" },
+  { href: "/category/Boys", label: "Boys" },
+  { href: "/category/Girls", label: "Girls" },
   { href: "/catalog", label: "Catalog" },
   { href: "/offers", label: "Offers" },
   { href: "/brands", label: "Brands" },
@@ -355,7 +356,7 @@ export function SiteHeader() {
   const pathname = usePathname();
   const [, startTransition] = useTransition();
   const [hasHydrated, setHasHydrated] = useState(false);
-  const [openMenu, setOpenMenu] = useState<"men" | "women" | "juniors" | null>(null);
+  const [openMenu, setOpenMenu] = useState<"men" | "women" | "boys" | "girls" | null>(null);
   const cartCount = useCartStore((state) => state.items.length);
   const cartItems = useCartStore((state) => state.items);
   const setCartItems = useCartStore((state) => state.setItems);
@@ -982,13 +983,13 @@ export function SiteHeader() {
                 </div>
               );
             }
-            if (item.label === "Juniors") {
+                        if (item.label === "Boys") {
               return (
                 <div
                   key={item.href}
                   onMouseEnter={() => {
                     clearDropdownCloseTimer();
-                    setOpenMenu("juniors");
+                    setOpenMenu("boys");
                   }}
                   onMouseLeave={scheduleDropdownClose}
                   className="relative"
@@ -996,49 +997,90 @@ export function SiteHeader() {
                   <Link
                     href={item.href}
                     onClick={closeDropdownMenu}
-                    className={`${dropdownNavLinkClass} inline-flex items-center py-1`}
+                    className={dropdownNavLinkClass + " inline-flex items-center py-1"}
                   >
                     {item.label}
                   </Link>
-                  {openMenu === "juniors" ? (
+                  {openMenu === "boys" ? (
                     <div
                       onMouseEnter={clearDropdownCloseTimer}
                       onMouseLeave={scheduleDropdownClose}
                       className={dropdownMenuShellClass}
                     >
                       <div className="mx-auto grid max-w-7xl grid-cols-4 gap-4 px-4 py-6 lg:px-10">
-                        {JUNIOR_GROUPS.map((group) => {
-                          const groupSlug = group.toLowerCase().replace(/\s+/g, "-");
+                        {MEN_PRESET_CATEGORIES.map((cat) => {
+                          const menuItem = MEN_WOMEN_MENU_ITEMS.find((menu) => menu.label === cat);
                           return (
-                            <div key={group} className="space-y-3">
-                              <Link href={`/category/${groupSlug}`} onClick={closeDropdownMenu} className="group block">
-                                <div className="relative aspect-[4/3] w-full overflow-hidden border border-zinc-200 bg-zinc-100">
-                                  <Image
-                                    src={JUNIOR_GROUP_IMAGES[group]}
-                                    alt={group}
-                                    fill
-                                    className="object-cover"
-                                    sizes="(max-width: 768px) 50vw, 20vw"
-                                  />
-                                </div>
-                                <div className="mt-3 text-lg font-semibold uppercase tracking-[0.08em] text-zinc-900 group-hover:underline">
-                                  {group}
-                                </div>
-                              </Link>
-                              <ul className="space-y-2">
-                                {(JUNIOR_SUBCATEGORIES[group] || JUNIORS_DEFAULT_SUBCATEGORIES).map((sub) => (
-                                  <li key={sub}>
-                                    <button
-                                      type="button"
-                                      onClick={() => navigateToCatalog({ topCategory: group, category: sub })}
-                                      className="text-sm uppercase tracking-[0.08em] text-zinc-700 hover:underline"
-                                    >
-                                      {sub}
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
+                            <button
+                              key={cat}
+                              type="button"
+                              onClick={() => navigateToCatalog({ topCategory: "Junior Boys", ...menuItem?.filters })}
+                              className="group block w-full text-left"
+                            >
+                              <div className="relative aspect-[4/3] w-full overflow-hidden border border-zinc-200 bg-zinc-100">
+                                <Image
+                                  src={MEN_CATEGORY_CARD_IMAGES[cat] || FALLBACK_CATEGORY_IMAGE}
+                                  alt={cat}
+                                  fill
+                                  className="object-cover"
+                                  sizes="(max-width: 768px) 50vw, 20vw"
+                                />
+                              </div>
+                              <div className={dropdownCardLabelClass}>{cat}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            }
+            if (item.label === "Girls") {
+              return (
+                <div
+                  key={item.href}
+                  onMouseEnter={() => {
+                    clearDropdownCloseTimer();
+                    setOpenMenu("girls");
+                  }}
+                  onMouseLeave={scheduleDropdownClose}
+                  className="relative"
+                >
+                  <Link
+                    href={item.href}
+                    onClick={closeDropdownMenu}
+                    className={dropdownNavLinkClass + " inline-flex items-center py-1"}
+                  >
+                    {item.label}
+                  </Link>
+                  {openMenu === "girls" ? (
+                    <div
+                      onMouseEnter={clearDropdownCloseTimer}
+                      onMouseLeave={scheduleDropdownClose}
+                      className={dropdownMenuShellClass}
+                    >
+                      <div className="mx-auto grid max-w-7xl grid-cols-4 gap-4 px-4 py-6 lg:px-10">
+                        {WOMEN_PRESET_CATEGORIES.map((cat) => {
+                          const menuItem = MEN_WOMEN_MENU_ITEMS.find((menu) => menu.label === cat);
+                          return (
+                            <button
+                              key={cat}
+                              type="button"
+                              onClick={() => navigateToCatalog({ topCategory: "Junior Girls", ...menuItem?.filters })}
+                              className="group block w-full text-left"
+                            >
+                              <div className="relative aspect-[4/3] w-full overflow-hidden border border-zinc-200 bg-zinc-100">
+                                <Image
+                                  src={WOMEN_CATEGORY_CARD_IMAGES[cat] || FALLBACK_CATEGORY_IMAGE}
+                                  alt={cat}
+                                  fill
+                                  className="object-cover"
+                                  sizes="(max-width: 768px) 50vw, 20vw"
+                                />
+                              </div>
+                              <div className={dropdownCardLabelClass}>{cat}</div>
+                            </button>
                           );
                         })}
                       </div>

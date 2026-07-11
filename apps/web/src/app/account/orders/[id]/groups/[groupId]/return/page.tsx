@@ -70,6 +70,8 @@ export default async function ReturnTrackerPage({ params }: PageProps) {
           <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Audit</p>
           <p className="mt-2 text-sm text-zinc-700">Evidence images: {(request.evidenceImageUrls || []).length}</p>
           <p className="mt-2 text-sm text-zinc-700">Brand decision: {request.brandRecommendation || "Pending"}</p>
+          {request.adminDecision ? <p className="mt-2 text-sm text-zinc-700">Decision: {request.adminDecision}</p> : null}
+          {request.adminRejectedReason || request.adminDecisionNote ? <p className="mt-2 text-sm text-zinc-700">Admin reason: {request.adminRejectedReason || request.adminDecisionNote}</p> : null}
           <p className="mt-2 text-sm text-zinc-700">Refund: {refund ? formatPkr(refund.adjustedAmountPkr || refund.amountPkr) : "Pending"}</p>
         </div>
       </section>

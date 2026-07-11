@@ -99,6 +99,28 @@ export default async function ReturnExchangeDetailPage({ params }: PageProps) {
         </div>
       </section>
 
+      {(request.adminDecision || request.adminDecisionNote || request.adminRejectedReason) ? (
+        <section className={`border p-5 text-sm ${request.adminDecision === "REJECTED" ? "border-red-200 bg-red-50 text-red-800" : "border-blue-200 bg-blue-50 text-blue-900"}`}>
+          <p className="font-semibold uppercase tracking-[0.12em]">Admin Review</p>
+          <p className="mt-2">Decision: {request.adminDecision || "Reviewed"}</p>
+          <p className="mt-2">Reason: {request.adminRejectedReason || request.adminDecisionNote || "No admin note added."}</p>
+        </section>
+      ) : null}
+
+      {request.pickupCourier || request.pickupDate || request.pickupAddress ? (
+        <section className="grid gap-4 border border-blue-200 bg-blue-50 p-5 md:grid-cols-2">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-900">Pickup Details</p>
+            <p className="mt-2 text-sm text-blue-900">Courier: {request.pickupCourier || "Not specified"}</p>
+            <p className="mt-1 text-sm text-blue-900">Date: {request.pickupDate ? new Date(request.pickupDate).toLocaleDateString("en-PK", { dateStyle: "long" }) : "Not specified"}</p>
+          </div>
+          <div>
+            <p className="mt-6 md:mt-0 text-sm text-blue-900">Location: {request.pickupAddress || "Not specified"}</p>
+            {request.pickupNote ? <p className="mt-1 text-sm text-blue-900">Notes: {request.pickupNote}</p> : null}
+          </div>
+        </section>
+      ) : null}
+
       <section className="space-y-3 border border-zinc-300 p-5">
         <h2 className="font-heading text-3xl uppercase">Timeline</h2>
         <div className="space-y-3">

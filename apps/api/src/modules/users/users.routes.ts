@@ -500,14 +500,16 @@ router.get("/notifications", requireAuth, async (req, res) => {
         },
         roleContext,
       ),
-      targetPath: resolveNotificationTargetPath({
-        type: item.type,
-        orderId: item.order?.id,
-        subOrderId: resolveSubOrderIdForNotification(item),
-        title: item.title,
-        message: item.message,
-        role: req.auth?.role,
-      }),
+      targetPath:
+        item.targetPath ||
+        resolveNotificationTargetPath({
+          type: item.type,
+          orderId: item.order?.id,
+          subOrderId: resolveSubOrderIdForNotification(item),
+          title: item.title,
+          message: item.message,
+          role: req.auth?.role,
+        }),
     })),
   });
 });

@@ -10,6 +10,7 @@ import {
   getReturnRequestItems,
   getReturnRequestType,
 } from "@/lib/return-workflow";
+import { getCancelledOrderItemIds } from "@/lib/order-cancellation";
 import { useToastStore } from "@/stores/toast-store";
 import type { BrandDashboardOrder, BrandDashboardOverview, Product } from "@/types/marketplace";
 
@@ -54,7 +55,6 @@ const activeSubFilters: Array<{ key: OrderFilter; label: string }> = [
   { key: "SHIPPED", label: "Shipped" },
   { key: "OUT_FOR_DELIVERY", label: "Out for Delivery" },
   { key: "DELIVERY_FAILED", label: "Delivery Failed" },
-  { key: "SHIPMENT_RETURNED", label: "Shipment Returned" },
 ];
 
 const statusTone: Record<string, string> = {
@@ -92,17 +92,20 @@ function formatDateTime(value?: string | null) {
 function matchesFilter(order: BrandDashboardOrder, mainTab: MainTab, activeFilter: OrderFilter) {
   const hasExchange = order.returnRequests?.some((request) => getReturnRequestType(request) === "EXCHANGE");
   const hasReturn = order.returnRequests?.some((request) => getReturnRequestType(request) === "RETURN");
+  const cancelledItemIds = getCancelledOrderItemIds(order.statusLogs);
+  const isFullyCancelled = order.status === "CANCELED" || order.status === "SHIPMENT_RETURNED" || cancelledItemIds.size === order.items.length;
+  const isPartiallyCancelled = cancelledItemIds.size > 0 && !isFullyCancelled;
 
-  if (mainTab === "CANCELLED") return order.status === "CANCELED";
+  if (mainTab === "CANCELLED") return isFullyCancelled || isPartiallyCancelled;
 
   if (mainTab === "DELIVERED") {
-    return order.status === "DELIVERED" && !hasReturn && !hasExchange;
+    return order.status === "DELIVERED" && !hasReturn && !hasExchange && !isFullyCancelled;
   }
 
   if (mainTab === "ACTIVE") {
     if (
       order.status === "DELIVERED" ||
-      order.status === "CANCELED" ||
+      isFullyCancelled ||
       order.status === "RETURNED" ||
       hasReturn ||
       hasExchange
@@ -257,11 +260,10 @@ export function BrandOrdersClient({ title = "Orders", mode = "orders" }: BrandOr
                   setActiveTab(tab.key);
                   setActiveFilter("ALL_ACTIVE");
                 }}
-                className={`h-9 border px-3 text-xs font-semibold uppercase tracking-[0.12em] ${
-                  activeTab === tab.key
+                className={`h-9 border px-3 text-xs font-semibold uppercase tracking-[0.12em] ${activeTab === tab.key
                     ? "border-black bg-black text-white"
                     : "border-zinc-300 text-zinc-600 hover:border-black"
-                }`}
+                  }`}
               >
                 {tab.label}
               </button>
@@ -275,11 +277,10 @@ export function BrandOrdersClient({ title = "Orders", mode = "orders" }: BrandOr
                   key={sub.key}
                   type="button"
                   onClick={() => setActiveFilter(sub.key)}
-                  className={`h-8 border px-2 text-[10px] font-semibold uppercase tracking-[0.1em] ${
-                    activeFilter === sub.key
+                  className={`h-8 border px-2 text-[10px] font-semibold uppercase tracking-[0.1em] ${activeFilter === sub.key
                       ? "border-black bg-zinc-800 text-white"
                       : "border-zinc-200 text-zinc-500 hover:border-zinc-400"
-                  }`}
+                    }`}
                 >
                   {sub.label}
                 </button>
@@ -367,19 +368,58 @@ export function BrandOrdersClient({ title = "Orders", mode = "orders" }: BrandOr
                   order.deliveryAddress.length > 72
                     ? `${order.deliveryAddress.slice(0, 72).trimEnd()}...`
                     : order.deliveryAddress;
-                const itemsSummary = order.items.map((item) => `${item.product.name} x${item.quantity}`).join(", ");
+                
+                const cancelledItemIds = getCancelledOrderItemIds(order.statusLogs);
+                const activeItems = order.items.filter(item => !cancelledItemIds.has(item.id) && order.status !== "CANCELED" && order.status !== "SHIPMENT_RETURNED");
+                const cancelledItems = order.items.filter(item => cancelledItemIds.has(item.id) || order.status === "CANCELED" || order.status === "SHIPMENT_RETURNED");
+                
+                let itemsSummaryParts: string[] = [];
+                if (activeTab === "CANCELLED") {
+                  itemsSummaryParts = cancelledItems.map(item => `${item.product.name} x${item.quantity}`);
+                } else if (activeTab === "ACTIVE" || activeTab === "DELIVERED") {
+                  itemsSummaryParts = activeItems.map(item => `${item.product.name} x${item.quantity}`);
+                } else {
+                  itemsSummaryParts = [
+                    ...activeItems.map(item => `${item.product.name} x${item.quantity}`),
+                    ...cancelledItems.map(item => `${item.product.name} x${item.quantity} (Cancelled)`)
+                  ];
+                }
+                const itemsSummary = itemsSummaryParts.length > 0 ? itemsSummaryParts.join(", ") : "No applicable items";
 
                 return (
                   <article key={order.id} className="space-y-4 border border-zinc-200 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <Link
-                          href={`/brand/orders/${order.id}`}
-                          className="text-sm font-semibold uppercase tracking-[0.08em] underline decoration-zinc-400 underline-offset-2"
-                        >
-                          Order {order.id}
-                        </Link>
-                        <p className="text-xs text-zinc-600">
+                        {activeTab === "CANCELLED" ? (
+                          <>
+                            {cancelledItems.map((item) => (
+                              <p key={item.id} className="text-sm font-semibold uppercase tracking-[0.08em] text-zinc-900">
+                                {item.product.name}
+                              </p>
+                            ))}
+                            <div className="mt-1 space-y-0.5">
+                              <Link
+                                href={`/brand/orders/${order.id}`}
+                                className="block text-[10px] text-zinc-500 hover:underline"
+                              >
+                                Order ID: {order.id}
+                              </Link>
+                              {activeItems.length > 0 && (
+                                <p className="text-[10px] text-zinc-500">
+                                  Active: {activeItems.map((item) => item.product.name).join(", ")}
+                                </p>
+                              )}
+                            </div>
+                          </>
+                        ) : (
+                          <Link
+                            href={`/brand/orders/${order.id}`}
+                            className="text-sm font-semibold uppercase tracking-[0.08em] underline decoration-zinc-400 underline-offset-2"
+                          >
+                            Order {order.id}
+                          </Link>
+                        )}
+                        <p className="mt-1 text-xs text-zinc-600">
                           {order.user.fullName} / {order.user.email}
                         </p>
                       </div>
@@ -410,10 +450,21 @@ export function BrandOrdersClient({ title = "Orders", mode = "orders" }: BrandOr
                       <span>
                         <span className="font-semibold text-zinc-700">Items:</span> {itemsSummary}
                       </span>
-                      <span className={`font-semibold ${statusTone[order.status] || "text-zinc-700"}`}>
-                        {order.status} · PKR {order.totalPkr.toLocaleString()}
+                      <span className={`font-semibold ${activeTab === "CANCELLED" ? statusTone["CANCELED"] : (statusTone[order.status] || "text-zinc-700")}`}>
+                        {activeTab === "CANCELLED" ? "CANCELED" : order.status} · PKR {order.totalPkr.toLocaleString()}
                       </span>
                     </div>
+                    {(order.cancellationRequests?.length ?? 0) > 0 ? (
+                      <div className="flex flex-wrap items-center gap-2 border border-amber-300 bg-amber-50 px-3 py-2">
+                        <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                        <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-amber-800">
+                          {order.cancellationRequests!.length > 1
+                            ? `${order.cancellationRequests!.length} Item(s) Cancellation Requested`
+                            : "Cancellation Requested"}
+                        </span>
+                        <span className="text-[10px] text-amber-700">— Review required in Operations</span>
+                      </div>
+                    ) : null}
                   </article>
                 );
               })}

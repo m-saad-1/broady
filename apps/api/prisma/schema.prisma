@@ -253,34 +253,47 @@ model Product {
   slug                        String                  @unique
   shortDescription            String?
   description                 String
-  gender                      String                  @default("women")
-  color                       String                  @default("default")
-  type                        String                  @default("Top")
+  gender                      ProductGender
+  productType                 ProductType
+  department                  ProductDepartment
+  category                    ProductCategory
+  subcategory                 ProductSubcategory?
+  brandCategoryRaw            String?
+  brandSubcategoryRaw         String?
+  colors                      String[]                @default([])
+  primaryColor                String?
+  colorCode                   String?
+  sizes                       String[]
+  sizeType                    String?
+  material                    String?
   fit                         String?
   season                      String?
   collection                  String?
+  tags                        String[]                @default([])
+  searchKeywords              String[]                @default([])
+  recommendedKeywords         String[]                @default([])
+  searchBoost                 Float                   @default(1.0)
+  availabilityStatus          ProductAvailability     @default(IN_STOCK)
+  isFeatured                  Boolean                 @default(false)
+  isRecommended               Boolean                 @default(false)
+  isTrending                  Boolean                 @default(false)
+  isNewArrival                Boolean                 @default(false)
+  isBestSeller                Boolean                 @default(false)
+  classificationConfidence    Float?
   productUrl                  String?
   visibility                  String                  @default("visible")
   source                      String                  @default("manual")
   actualPrice                 Float
   salePrice                   Float?
   discountPercentage          Float?
+  discountType                String?
+  discountValue               Float?
+  isOnSale                    Boolean                 @default(false)
   pricePkr                    Int
   currency                    String                  @default("PKR")
   label                       String?
   saleStartDate               DateTime?
   saleEndDate                 DateTime?
-  topCategory                 String
-  subCategory                 String
-  division                    String                  @default("top")
-  category                    String                  @default("top")
-  subType                     String?
-  subTypeConfidence           String?
-  mappingStatus               String                  @default("unresolved")
-  resolutionSource            String                  @default("unresolved")
-  pageContext                 Json?
-  sizes                       String[]
-  tags                        String[]                @default([])
   imageUrl                    String
   sizeGuideTemplateId         String?
   sizeGuide                   Json?
@@ -295,10 +308,13 @@ model Product {
   externalProductId           String?
   externalSource              String?
   importHash                  String?
+  pageContext                 Json?
   metadata                    Json?
   deletedAt                   DateTime?
   createdAt                   DateTime                @default(now())
   updatedAt                   DateTime                @updatedAt
+  createdById                 String?
+  updatedById                 String?
   cartItems                   CartItem[]
   orderItems                  OrderItem[]
   brand                       Brand                   @relation(fields: [brandId], references: [id])
@@ -321,13 +337,16 @@ model Product {
   productTags                 ProductTagOnProduct[]
 
   @@unique([brandId, externalSource, externalProductId])
-  @@index([gender, division, category])
-  @@index([brandId, topCategory, subCategory])
-  @@index([topCategory, subCategory])
-  @@index([subType])
+  @@index([gender, department, category])
+  @@index([brandId, category, subcategory])
+  @@index([category, subcategory])
+  @@index([department, category])
+  @@index([productType])
   @@index([pricePkr])
   @@index([brandId, externalProductId])
   @@index([brandId, approvalStatus, deletedAt])
+  @@index([classificationConfidence])
+  @@index([availabilityStatus, isActive])
 }
 
 model Category {
@@ -464,6 +483,7 @@ model ProductSEO {
   productId       String   @id
   metaTitle       String?
   metaDescription String?
+  metaKeywords    String[] @default([])
   canonicalUrl    String?
   ogImageUrl      String?
   createdAt       DateTime @default(now())
@@ -771,6 +791,7 @@ model CancellationRequest {
   orderId           String
   subOrderId        String
   brandId           String
+  orderItemIds      String[]                   @default([])
   requestedByRole   CancellationRequestedBy
   requestedById     String?
   reasonCode        CancellationReasonCode
@@ -850,6 +871,7 @@ model ReturnRequest {
   brandRecommendation          ReturnBrandRecommendation?
   brandRejectReason            String?
   brandRecommendationNote      String?
+  brandEvidenceUrls            String[]                   @default([])
   brandConditionNote           String?
   brandDamageNote              String?
   canFulfillReplacement        Boolean?
@@ -881,6 +903,7 @@ model ReturnRequest {
   pickupCourier               String?
   pickupDate                  DateTime?
   pickupAddress               String?
+  pickupNote                  String?
   returnTrackingNumber        String?
   returnReceivedAt            DateTime?
   returnReceivedByBrandId     String?
@@ -1177,6 +1200,7 @@ model Notification {
   userId           String
   brandId          String?
   orderId          String?
+  targetPath       String?
   type             NotificationType
   title            String
   message          String
@@ -1687,4 +1711,201 @@ enum RefundRequestedBy {
   BRAND
   ADMIN
   SYSTEM
+}
+
+enum ProductGender {
+  MEN
+  WOMEN
+  BOYS
+  GIRLS
+  UNISEX
+}
+
+enum ProductType {
+  TOP
+  BOTTOM
+  FOOTWEAR
+  ACCESSORY
+}
+
+enum ProductDepartment {
+  CLOTHING
+  FOOTWEAR
+  ACCESSORIES
+}
+
+enum ProductCategory {
+  SHIRTS
+  T_SHIRTS
+  POLOS
+  JEANS
+  TROUSERS
+  SHORTS
+  HOODIES
+  JACKETS
+  SNEAKERS
+  LOAFERS
+  SANDALS
+  CAPS
+  BAGS
+  BELTS
+  SOCKS
+  SWEATSHIRTS
+  JOGGERS
+  CARGO_PANTS
+  FORMAL_PANTS
+  CHINOS
+  KURTAS
+  SHALWAR_KAMEEZ
+  WAISTCOATS
+  BLAZERS
+  COATS
+  SWEATERS
+  CARDIGANS
+  VESTS
+  TANK_TOPS
+  DRESSES
+  SKIRTS
+  LEGGINGS
+  BOOTS
+  FLATS
+  HEELS
+  SLIPPERS
+  WATCHES
+  SUNGLASSES
+  WALLETS
+  SCARVES
+  TIES
+  UNDERWEAR
+}
+
+enum ProductSubcategory {
+  TEXTURED_SHIRT
+  EMBROIDERED_SHIRT
+  KNIT_SHIRT
+  PRINTED_SHIRT
+  FORMAL_SHIRT
+  CASUAL_SHIRT
+  DENIM_SHIRT
+  FLANNEL_SHIRT
+  OXFORD_SHIRT
+  LINEN_SHIRT
+  GRAPHIC_TSHIRT
+  PLAIN_TSHIRT
+  OVERSIZED_TSHIRT
+  HENLEY_TSHIRT
+  V_NECK_TSHIRT
+  CREW_NECK_TSHIRT
+  POCKET_TSHIRT
+  STRIPED_TSHIRT
+  PIQUE_POLO
+  TIPPED_POLO
+  CLASSIC_POLO
+  PERFORMANCE_POLO
+  SLIM_FIT_JEANS
+  REGULAR_FIT_JEANS
+  RELAXED_FIT_JEANS
+  SKINNY_JEANS
+  STRAIGHT_LEG_JEANS
+  BOOTCUT_JEANS
+  DISTRESSED_JEANS
+  DARK_WASH_JEANS
+  LIGHT_WASH_JEANS
+  RAW_DENIM_JEANS
+  CHINO_TROUSERS
+  DRESS_TROUSERS
+  PLEATED_TROUSERS
+  FLAT_FRONT_TROUSERS
+  CARGO_SHORTS
+  DENIM_SHORTS
+  CHINO_SHORTS
+  ATHLETIC_SHORTS
+  SWIM_SHORTS
+  ZIP_HOODIE
+  PULLOVER_HOODIE
+  GRAPHIC_HOODIE
+  FLEECE_HOODIE
+  BOMBER_JACKET
+  DENIM_JACKET
+  LEATHER_JACKET
+  WINDBREAKER
+  PUFFER_JACKET
+  VARSITY_JACKET
+  RUNNING_SNEAKER
+  LIFESTYLE_SNEAKER
+  TRAINING_SNEAKER
+  CASUAL_SNEAKER
+  HIGH_TOP_SNEAKER
+  LOW_TOP_SNEAKER
+  CANVAS_SNEAKER
+  SLIP_ON_SNEAKER
+  FORMAL_LOAFER
+  CASUAL_LOAFER
+  PENNY_LOAFER
+  TASSEL_LOAFER
+  SLIDE_SANDAL
+  FLIP_FLOP_SANDAL
+  SPORT_SANDAL
+  GLADIATOR_SANDAL
+  BASEBALL_CAP
+  SNAPBACK_CAP
+  FITTED_CAP
+  TRUCKER_CAP
+  BEANIE
+  BUCKET_HAT
+  BACKPACK
+  MESSENGER_BAG
+  TOTE_BAG
+  DUFFLE_BAG
+  CROSSBODY_BAG
+  CLUTCH
+  LEATHER_BELT
+  CANVAS_BELT
+  BRAIDED_BELT
+  REVERSIBLE_BELT
+  DRESS_SOCKS
+  ATHLETIC_SOCKS
+  ANKLE_SOCKS
+  NO_SHOW_SOCKS
+  BOXERS
+  BRIEFS
+}
+
+enum ProductAvailability {
+  IN_STOCK
+  OUT_OF_STOCK
+  LOW_STOCK
+  PREORDER
+  DISCONTINUED
+}
+
+model CategoryAnalytics {
+  id                String            @id @default(cuid())
+  category          ProductCategory   @unique
+  views             Int               @default(0)
+  purchases         Int               @default(0)
+  revenuePkr        Int               @default(0)
+  conversionRate    Float             @default(0)
+  lastCalculatedAt  DateTime          @default(now())
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([views(sort: Desc)])
+  @@index([purchases(sort: Desc)])
+}
+
+model SubcategoryAnalytics {
+  id                String               @id @default(cuid())
+  subcategory       ProductSubcategory   @unique
+  category          ProductCategory
+  views             Int                  @default(0)
+  purchases         Int                  @default(0)
+  revenuePkr        Int                  @default(0)
+  conversionRate    Float                @default(0)
+  lastCalculatedAt  DateTime             @default(now())
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@index([category, views(sort: Desc)])
+  @@index([purchases(sort: Desc)])
 }

@@ -1,6 +1,6 @@
 export type UserRole = "USER" | "ADMIN" | "BRAND" | "BRAND_ADMIN" | "BRAND_STAFF" | "SUPER_ADMIN";
 
-export const BROADY_GENDER_VALUES = ["men", "women", "boys", "girls"] as const;
+export const BROADY_GENDER_VALUES = ["men", "women", "boys", "girls", "unisex"] as const;
 export type BroadyGender = (typeof BROADY_GENDER_VALUES)[number];
 
 export const BROADY_DIVISION_VALUES = ["top", "bottom", "footwear", "accessory"] as const;
@@ -44,6 +44,7 @@ export const BROADY_CATEGORY_VALUES = [
   "scarf",
   "sunglasses",
   "jewellery",
+  "underwear",
 ] as const;
 export type BroadyCategory = (typeof BROADY_CATEGORY_VALUES)[number];
 
@@ -73,6 +74,8 @@ export const BROADY_SUB_TYPE_VALUES = [
   "bomber",
   "windbreaker",
   "quilted",
+  "boxer",
+  "brief",
 ] as const;
 export type BroadySubType = (typeof BROADY_SUB_TYPE_VALUES)[number];
 
@@ -95,7 +98,7 @@ export type BroadySubTypeConfidence = (typeof BROADY_SUB_TYPE_CONFIDENCE_VALUES)
 
 export const BROADY_CATEGORIES_BY_DIVISION: Record<BroadyDivision, readonly BroadyCategory[]> = {
   top: ["shirt", "t-shirt", "polo", "hoodie", "sweatshirt", "jacket", "coat", "sweater", "vest", "blouse", "top", "kurta"],
-  bottom: ["trouser", "pant", "jeans", "shorts", "skirt", "jogger", "cargo"],
+  bottom: ["trouser", "pant", "jeans", "shorts", "skirt", "jogger", "cargo", "underwear"],
   footwear: ["sneaker", "trainer", "loafer", "sandal", "slipper", "boot", "formal_shoe", "open_shoe", "closed_shoe"],
   accessory: ["bag", "cap", "belt", "watch", "wallet", "socks", "scarf", "sunglasses", "jewellery"],
 };
@@ -107,6 +110,7 @@ export const BROADY_SUB_TYPES_BY_CATEGORY: Partial<Record<BroadyCategory, readon
   hoodie: ["pullover", "zip-up", "printed", "basic"],
   sneaker: ["low-top", "high-top", "chunky", "slip-on", "running"],
   jacket: ["denim", "leather", "bomber", "windbreaker", "quilted"],
+  underwear: ["boxer", "brief", "basic", "printed", "striped"],
 };
 
 const CATEGORY_TO_DIVISION = Object.entries(BROADY_CATEGORIES_BY_DIVISION).reduce<Record<string, BroadyDivision>>((acc, [division, categories]) => {

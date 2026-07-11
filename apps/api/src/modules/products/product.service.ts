@@ -12,6 +12,7 @@ import {
 } from "./products.meilisearch-search.js";
 import { z } from "zod";
 import { resolveBroadyTaxonomy } from "./product-taxonomy.js";
+import { getAvailableFilters, buildWhereClause, type FilterState } from "./filter.service.js";
 
 type ProductCreateData = z.infer<typeof productBaseSchema>;
 
@@ -63,7 +64,7 @@ function tokenVariants(token: string) {
 }
 
 function containsToken(field: string, token: string) {
-  return { [field]: { contains: token, mode: "insensitive" } };
+  return { [field]: { contains: token, mode: "insensitive" as any } };
 }
 
 function normalizeQueryValues(value: unknown): string[] {
@@ -145,13 +146,11 @@ function buildSearchTokenCondition(token: string) {
       { sizes: { hasSome: variants } },
       {
         brand: {
-          is: {
-            OR: [
-              { name: { contains: token, mode: "insensitive" } },
-              { slug: { contains: token, mode: "insensitive" } },
-              { description: { contains: token, mode: "insensitive" } },
-            ],
-          },
+          OR: [
+            { name: { contains: token, mode: "insensitive" as any } },
+            { slug: { contains: token, mode: "insensitive" as any } },
+            { description: { contains: token, mode: "insensitive" as any } },
+          ],
         },
       },
       {
@@ -159,13 +158,13 @@ function buildSearchTokenCondition(token: string) {
           some: {
             deletedAt: null,
             OR: [
-              { sku: { contains: token, mode: "insensitive" } },
-              { barcode: { contains: token, mode: "insensitive" } },
-              { color: { contains: token, mode: "insensitive" } },
+              { sku: { contains: token, mode: "insensitive" as any } },
+              { barcode: { contains: token, mode: "insensitive" as any } },
+              { color: { contains: token, mode: "insensitive" as any } },
               { size: { in: variants } },
-              { fit: { contains: token, mode: "insensitive" } },
-              { season: { contains: token, mode: "insensitive" } },
-              { style: { contains: token, mode: "insensitive" } },
+              { fit: { contains: token, mode: "insensitive" as any } },
+              { season: { contains: token, mode: "insensitive" as any } },
+              { style: { contains: token, mode: "insensitive" as any } },
             ],
           },
         },
@@ -174,17 +173,17 @@ function buildSearchTokenCondition(token: string) {
         detail: {
           is: {
             OR: [
-              { fabricComposition: { contains: token, mode: "insensitive" } },
-              { careGuide: { contains: token, mode: "insensitive" } },
-              { fitDetails: { contains: token, mode: "insensitive" } },
-              { modelDetails: { contains: token, mode: "insensitive" } },
-              { sizeGuideText: { contains: token, mode: "insensitive" } },
-              { shippingDelivery: { contains: token, mode: "insensitive" } },
-              { returnExchangePolicy: { contains: token, mode: "insensitive" } },
-              { disclaimer: { contains: token, mode: "insensitive" } },
-              { materialDetails: { contains: token, mode: "insensitive" } },
-              { origin: { contains: token, mode: "insensitive" } },
-              { packageIncludes: { contains: token, mode: "insensitive" } },
+              { fabricComposition: { contains: token, mode: "insensitive" as any } },
+              { careGuide: { contains: token, mode: "insensitive" as any } },
+              { fitDetails: { contains: token, mode: "insensitive" as any } },
+              { modelDetails: { contains: token, mode: "insensitive" as any } },
+              { sizeGuideText: { contains: token, mode: "insensitive" as any } },
+              { shippingDelivery: { contains: token, mode: "insensitive" as any } },
+              { returnExchangePolicy: { contains: token, mode: "insensitive" as any } },
+              { disclaimer: { contains: token, mode: "insensitive" as any } },
+              { materialDetails: { contains: token, mode: "insensitive" as any } },
+              { origin: { contains: token, mode: "insensitive" as any } },
+              { packageIncludes: { contains: token, mode: "insensitive" as any } },
             ],
           },
         },
@@ -193,9 +192,9 @@ function buildSearchTokenCondition(token: string) {
         seo: {
           is: {
             OR: [
-              { metaTitle: { contains: token, mode: "insensitive" } },
-              { metaDescription: { contains: token, mode: "insensitive" } },
-              { canonicalUrl: { contains: token, mode: "insensitive" } },
+              { metaTitle: { contains: token, mode: "insensitive" as any } },
+              { metaDescription: { contains: token, mode: "insensitive" as any } },
+              { canonicalUrl: { contains: token, mode: "insensitive" as any } },
             ],
           },
         },
@@ -270,9 +269,8 @@ export async function createProduct(
       currency: productData.currency || "PKR",
       visibility: productData.visibility || "visible",
       source: options?.source || productData.source || "manual",
-      approvalStatus: options?.approvalStatus || "APPROVED",
       isActive: options?.isActive ?? productData.isActive ?? true,
-    },
+    } as any,
   });
 
   await syncStructuredProductBlocks(product.id, { detail, shipping, seo } as Partial<ProductCreateData>);
@@ -325,7 +323,7 @@ export async function updateProduct(id: string, data: Partial<ProductCreateData>
       validation.data.discountPercentage !== undefined;
     const pricing = shouldReprice ? normalizePricing(validation.data, existingProduct.actualPrice) : {};
     const taxonomy = resolveTaxonomyPayload({
-      ...(existingProduct as Partial<ProductCreateData>),
+      ...existingProduct as any,
       ...validation.data,
     });
 
@@ -335,7 +333,7 @@ export async function updateProduct(id: string, data: Partial<ProductCreateData>
           ...productData,
           ...taxonomy,
           ...pricing,
-        },
+        } as any,
     });
 
     await syncStructuredProductBlocks(id, { detail, shipping, seo } as Partial<ProductCreateData>);
@@ -352,7 +350,7 @@ export async function deleteProduct(id: string) {
   });
 }
 
-export async function getProductFilterOptions(options: Record<string, any>) {
+export function mapOptionsToFilterState(options: Record<string, any>): FilterState {
   const {
     brandId,
     brand,
@@ -360,198 +358,151 @@ export async function getProductFilterOptions(options: Record<string, any>) {
     topCategory,
     juniorCategory,
     division,
+    department,
     category,
     subType,
+    subcategory,
     size,
+    sizes,
     colors,
     color,
     minPrice,
     maxPrice,
-  } = options;
-
-  const where: any = {
-    approvalStatus: "APPROVED",
-    isActive: true,
-    deletedAt: null,
-  };
-  const andConditions: any[] = [];
-  const effectiveBrandIds = normalizeQueryValues(brandId ?? brand);
-  const effectiveGenderValues = Array.from(
-    new Set([
-      ...normalizeQueryValues(gender).map((value) => value.toLowerCase()),
-      ...mapTopCategoryToGenderValues(typeof topCategory === "string" ? topCategory : undefined, typeof juniorCategory === "string" ? juniorCategory : undefined),
-    ]),
-  ).filter((value) => ["men", "women", "boys", "girls"].includes(value));
-  const effectiveDivisionValues = normalizeQueryValues(division).map((value) => value.toLowerCase());
-  const effectiveCategoryValues = normalizeQueryValues(category).map((value) => value.toLowerCase());
-  const effectiveSubTypeValues = normalizeQueryValues(subType).map((value) => value.toLowerCase());
-  const effectiveSize = typeof size === "string" && size ? size : undefined;
-  const effectiveColor = typeof color === "string" && color ? color : undefined;
-  const effectiveColorValues = normalizeQueryValues(colors);
-
-  if (effectiveBrandIds.length === 1) {
-    where.brandId = effectiveBrandIds[0];
-  } else if (effectiveBrandIds.length > 1) {
-    where.brandId = { in: effectiveBrandIds };
-  }
-  if (effectiveGenderValues.length) {
-    andConditions.push({ gender: { in: effectiveGenderValues } });
-  }
-  if (effectiveDivisionValues.length) {
-    andConditions.push({ division: effectiveDivisionValues.length === 1 ? { equals: effectiveDivisionValues[0], mode: "insensitive" } : { in: effectiveDivisionValues } });
-  }
-  if (effectiveCategoryValues.length) {
-    andConditions.push({ category: effectiveCategoryValues.length === 1 ? { equals: effectiveCategoryValues[0], mode: "insensitive" } : { in: effectiveCategoryValues } });
-  }
-  if (effectiveSubTypeValues.length) {
-    andConditions.push({ subType: effectiveSubTypeValues.length === 1 ? { equals: effectiveSubTypeValues[0], mode: "insensitive" } : { in: effectiveSubTypeValues } });
-  }
-  if (effectiveSize) {
-    andConditions.push({ sizes: { has: effectiveSize } });
-  }
-  if (effectiveColor) {
-    andConditions.push({ color: { contains: effectiveColor, mode: "insensitive" } });
-  }
-  if (effectiveColorValues.length) {
-    andConditions.push({ variants: { some: { deletedAt: null, color: { in: effectiveColorValues } } } });
-  }
-  const minPriceValue = typeof minPrice === "string" ? Number(minPrice) : minPrice;
-  const maxPriceValue = typeof maxPrice === "string" ? Number(maxPrice) : maxPrice;
-  if (Number.isFinite(minPriceValue)) andConditions.push({ pricePkr: { gte: minPriceValue } });
-  if (Number.isFinite(maxPriceValue)) andConditions.push({ pricePkr: { lte: maxPriceValue } });
-  if (andConditions.length) where.AND = andConditions;
-
-  const [products, brands] = await Promise.all([
-    prisma.product.findMany({
-      where,
-      select: {
-        division: true,
-        category: true,
-        subType: true,
-        sizes: true,
-        color: true,
-        pricePkr: true,
-        brandId: true,
-        brand: { select: { id: true, name: true, slug: true } },
-      },
-    }),
-    prisma.brand.findMany({ select: { id: true, name: true, slug: true } }),
-  ]);
-
-  const divisionOptions = Array.from(new Set(products.map((product) => product.division).filter(Boolean))).sort();
-  const categoryOptions = Array.from(new Set(products.map((product) => product.category).filter(Boolean))).sort();
-  const subTypeOptions = Array.from(new Set(products.map((product) => product.subType).filter(Boolean))).sort();
-  const sizeOptions = Array.from(new Set(products.flatMap((product) => product.sizes || []).filter(Boolean))).sort();
-  const colorOptions = Array.from(new Set(products.map((product) => product.color).filter(Boolean))).sort();
-  const availableBrandIds = new Set(products.map((product) => product.brandId));
-
-  return {
-    brands: brands.filter((item) => availableBrandIds.has(item.id)),
-    divisions: divisionOptions,
-    categories: categoryOptions,
-    subTypes: subTypeOptions,
-    sizes: sizeOptions,
-    colors: colorOptions,
-    priceRange: {
-      min: products.length ? Math.min(...products.map((product) => product.pricePkr)) : 0,
-      max: products.length ? Math.max(...products.map((product) => product.pricePkr)) : 0,
-    },
-  };
-}
-
-export async function listProducts(options: Record<string, any>) {
-  const {
-    brandId,
-    brand,
-    topCategory,
-    juniorCategory,
-    gender,
-    division,
-    category,
-    subType,
-    productType,
-    subCategory,
-    size,
-    color,
-    colors,
-    minPrice,
-    maxPrice,
-    sort = "latest",
-    query,
     q,
-    page = 1,
-    limit = 100,
+    query,
   } = options;
-
-  const rawQuery = typeof q === "string" && q.trim() ? q : typeof query === "string" ? query : "";
-  const normalizedInput = normalizeSearchInput(rawQuery);
-  const correctedInput = correctSearchInput(normalizedInput) || normalizedInput;
 
   const resolvedTopCategory = typeof topCategory === "string" && topCategory ? topCategory : undefined;
   const resolvedJuniorCategory = typeof juniorCategory === "string" && juniorCategory ? juniorCategory : undefined;
-  const effectiveBrandIds = normalizeQueryValues(brandId ?? brand);
+  
   const effectiveGenderValues = Array.from(
     new Set([
-      ...normalizeQueryValues(gender).map((value) => value.toLowerCase()),
-      ...mapTopCategoryToGenderValues(resolvedTopCategory, resolvedJuniorCategory),
+      ...normalizeQueryValues(gender).map((value) => value.toUpperCase()),
+      ...mapTopCategoryToGenderValues(resolvedTopCategory, resolvedJuniorCategory).map(v => v.toUpperCase()),
     ]),
-  ).filter((value) => ["men", "women", "boys", "girls"].includes(value));
-  const effectiveDivisionValues = normalizeQueryValues(division).map((value) => value.toLowerCase());
-  const effectiveCategoryValues = normalizeQueryValues(category).map((value) => value.toLowerCase());
-  const effectiveSubTypeValues = normalizeQueryValues(subType).map((value) => value.toLowerCase());
-  const effectiveType = typeof productType === "string" && productType ? productType : undefined;
-  const effectiveSubCategory = typeof subCategory === "string" && subCategory ? subCategory : undefined;
-  const effectiveSize = typeof size === "string" && size ? size : undefined;
-  const effectiveColor = typeof color === "string" && color ? color : undefined;
-  const effectiveColorValues = normalizeQueryValues(colors);
-
+  ).filter((value) => ["MEN", "WOMEN", "BOYS", "GIRLS", "UNISEX"].includes(value));
+  
+  const effectiveBrandIds = normalizeQueryValues(brandId ?? brand);
+  const effectiveDepartmentValues = normalizeQueryValues(department ?? division).map((value) => value.toUpperCase());
+  const effectiveCategoryValues = normalizeQueryValues(category).map((value) => {
+    const norm = value.toUpperCase().replace(/[\s-]/g, "_");
+    const map: Record<string, string> = {
+      SHIRT: "SHIRTS", T_SHIRT: "T_SHIRTS", TSHIRT: "T_SHIRTS", POLO: "POLOS",
+      JEAN: "JEANS", TROUSER: "TROUSERS", SHORT: "SHORTS", HOODIE: "HOODIES",
+      JACKET: "JACKETS", SNEAKER: "SNEAKERS", LOAFER: "LOAFERS", SANDAL: "SANDALS",
+      CAP: "CAPS", BAG: "BAGS", BELT: "BELTS", SOCK: "SOCKS", SWEATSHIRT: "SWEATSHIRTS",
+      JOGGER: "JOGGERS", KURTA: "KURTAS", WAISTCOAT: "WAISTCOATS", BLAZER: "BLAZERS",
+      COAT: "COATS", SWEATER: "SWEATERS", CARDIGAN: "CARDIGANS", VEST: "VESTS",
+      DRESS: "DRESSES", SKIRT: "SKIRTS", LEGGING: "LEGGINGS", BOOT: "BOOTS",
+      FLAT: "FLATS", HEEL: "HEELS", SLIPPER: "SLIPPERS", WATCH: "WATCHES", WALLET: "WALLETS",
+      SCARF: "SCARVES", TIE: "TIES"
+    };
+    return map[norm] || norm;
+  });
+  const effectiveSubCategoryValues = normalizeQueryValues(subcategory ?? subType).map((value) => value.toUpperCase());
+  const effectiveSizeValues = normalizeQueryValues(size ?? sizes);
+  const effectiveColorValues = normalizeQueryValues(color ?? colors);
+  
   const minPriceValue = typeof minPrice === "string" ? Number(minPrice) : minPrice;
   const maxPriceValue = typeof maxPrice === "string" ? Number(maxPrice) : maxPrice;
+  const searchStr = typeof q === "string" && q.trim() ? q : typeof query === "string" ? query : "";
 
-  const hasAnyFilters =
-    Boolean(effectiveGenderValues.length) ||
-    Boolean(effectiveDivisionValues.length) ||
-    Boolean(effectiveCategoryValues.length) ||
-    Boolean(effectiveSubTypeValues.length) ||
-    Boolean(effectiveType) ||
-    Boolean(effectiveSubCategory) ||
-    Boolean(effectiveSize) ||
-    Boolean(effectiveColor) ||
-    Boolean(minPriceValue || maxPriceValue);
-  const effectiveQuery = correctedInput;
-  const effectiveSearchTokens = tokenizeSearchQuery(effectiveQuery);
-  const isShortQuery = correctedInput.trim().length > 0 && correctedInput.trim().length < 2 && !hasAnyFilters;
+  return {
+    gender: effectiveGenderValues.length ? effectiveGenderValues : undefined,
+    department: effectiveDepartmentValues.length ? effectiveDepartmentValues : undefined,
+    category: effectiveCategoryValues.length ? effectiveCategoryValues : undefined,
+    subcategory: effectiveSubCategoryValues.length ? effectiveSubCategoryValues : undefined,
+    brandId: effectiveBrandIds.length ? effectiveBrandIds : undefined,
+    sizes: effectiveSizeValues.length ? effectiveSizeValues : undefined,
+    colors: effectiveColorValues.length ? effectiveColorValues : undefined,
+    minPrice: Number.isFinite(minPriceValue) ? minPriceValue : undefined,
+    maxPrice: Number.isFinite(maxPriceValue) ? maxPriceValue : undefined,
+    search: searchStr.trim() || undefined,
+  };
+}
+
+export async function getProductFilterOptions(options: Record<string, any>) {
+  const filters = mapOptionsToFilterState(options);
+  return getAvailableFilters(filters);
+}
+
+export async function listProducts(options: Record<string, any>) {
+  const { sort = "latest", page = 1, limit = 100 } = options;
+  const filters = mapOptionsToFilterState(options);
+  
   const pageValue = Math.max(Number(page) || 1, 1);
   const limitValue = Math.min(Math.max(Number(limit) || 100, 1), 5000);
   const skipValue = (pageValue - 1) * limitValue;
   const takeValue = limitValue;
+
+  const hasAnyFilters = Object.values(filters).some(v => v !== undefined && v !== "");
+  const isShortQuery = filters.search && filters.search.trim().length > 0 && filters.search.trim().length < 2 && !hasAnyFilters;
 
   if (isShortQuery && !hasAnyFilters) {
     return [];
   }
 
   if (isMeilisearchProductSearchEnabled()) {
-    const ids = await runMeilisearchProductSearch(effectiveQuery, {
-      brandId: effectiveBrandIds[0] || brandId,
-      gender: effectiveGenderValues[0],
-      topCategory: resolvedTopCategory,
-      juniorCategory: resolvedJuniorCategory || undefined,
-      productType: effectiveType,
-      subCategory: effectiveSubCategory,
-      size: effectiveSize,
-      color: effectiveColor,
-      minPrice: Number.isFinite(minPriceValue) ? minPriceValue : undefined,
-      maxPrice: Number.isFinite(maxPriceValue) ? maxPriceValue : undefined,
+    const rawCategoryForMeili = options.subcategory || options.category || "";
+    const meiliSubCategory = (() => {
+       const norm = rawCategoryForMeili.toString().toLowerCase();
+       const map: Record<string, string> = {
+        shirt: "Shirts", shirts: "Shirts",
+        "t-shirt": "T-Shirts", t_shirts: "T-Shirts",
+        polo: "Polo Shirts", polos: "Polo Shirts",
+        hoodie: "Hoodies", hoodies: "Hoodies",
+        sweatshirt: "Hoodies", sweatshirts: "Hoodies",
+        jacket: "Jackets", jackets: "Jackets",
+        sweater: "Sweaters", sweaters: "Sweaters",
+        jeans: "Jeans",
+        trouser: "Trousers", trousers: "Trousers",
+        pant: "Pants", pants: "Pants",
+        shorts: "Shorts",
+        skirt: "Skirts", skirts: "Skirts",
+        jogger: "Joggers", joggers: "Joggers",
+        cargo: "Cargo Pants", cargo_pants: "Cargo Pants",
+        sneaker: "Sneakers", sneakers: "Sneakers",
+        trainer: "Trainers", trainers: "Trainers",
+        loafer: "Loafers", loafers: "Loafers",
+        sandal: "Sandals", sandals: "Sandals",
+        slipper: "Slippers", slippers: "Slippers",
+        boot: "Boots", boots: "Boots",
+        closed_shoe: "Shoes", formal_shoe: "Shoes", open_shoe: "Shoes",
+        bag: "Bags", bags: "Bags",
+        cap: "Caps", caps: "Caps",
+        belt: "Belts", belts: "Belts",
+        watch: "Watches", watches: "Watches",
+        wallet: "Wallets", wallets: "Wallets",
+        socks: "Socks",
+        scarf: "Scarves", scarves: "Scarves",
+        sunglasses: "Sunglasses",
+        jewellery: "Jewelry", jewelry: "Jewelry"
+      };
+      return map[norm] || undefined;
+    })();
+
+    const res = await runMeilisearchProductSearch(filters.search || "", {
+      brandId: filters.brandId?.[0],
+      department: filters.department?.[0],
+      gender: filters.gender?.[0],
+      topCategory: options.topCategory,
+      juniorCategory: options.juniorCategory,
+      productType: options.productType,
+      subCategory: meiliSubCategory || filters.subcategory?.[0] || filters.category?.[0],
+      size: filters.sizes?.[0],
+      color: filters.colors?.[0],
+      minPrice: filters.minPrice,
+      maxPrice: filters.maxPrice,
       limit: skipValue + takeValue,
     });
 
-    if (!ids.length) {
+    if (!res.ids.length) {
       return [];
     }
 
     const items = await prisma.product.findMany({
       where: {
-        id: { in: ids },
+        id: { in: res.ids },
         approvalStatus: "APPROVED",
         isActive: true,
         deletedAt: null,
@@ -560,7 +511,7 @@ export async function listProducts(options: Record<string, any>) {
     });
 
     const byId = new Map(items.map((item) => [item.id, item]));
-    let ordered = ids.map((id) => byId.get(id)).filter(Boolean) as typeof items;
+    let ordered = res.ids.map((id: string) => byId.get(id)).filter(Boolean) as typeof items;
 
     if (sort === "price-asc") {
       ordered = [...ordered].sort((a, b) => a.pricePkr - b.pricePkr);
@@ -577,79 +528,15 @@ export async function listProducts(options: Record<string, any>) {
     return ordered.slice(skipValue, skipValue + takeValue);
   }
 
-  const where: any = {
-    approvalStatus: "APPROVED",
-    isActive: true,
-    deletedAt: null,
-  };
-  const andConditions: any[] = [];
-
-  if (effectiveBrandIds.length === 1) {
-    where.brandId = effectiveBrandIds[0];
-  } else if (effectiveBrandIds.length > 1) {
-    where.brandId = { in: effectiveBrandIds };
+  const where = buildWhereClause(filters);
+  
+  if (filters.search) {
+    const tokens = tokenizeSearchQuery(filters.search);
+    if (tokens.length) {
+      where.AND = tokens.map(buildSearchTokenCondition);
+    }
   }
 
-  if (effectiveGenderValues.length) {
-    andConditions.push({ gender: { in: effectiveGenderValues } });
-  }
-
-  if (effectiveDivisionValues.length === 1) {
-    andConditions.push({ division: { equals: effectiveDivisionValues[0], mode: "insensitive" } });
-  } else if (effectiveDivisionValues.length > 1) {
-    andConditions.push({ division: { in: effectiveDivisionValues } });
-  }
-
-  if (effectiveCategoryValues.length === 1) {
-    andConditions.push({ category: { equals: effectiveCategoryValues[0], mode: "insensitive" } });
-  } else if (effectiveCategoryValues.length > 1) {
-    andConditions.push({ category: { in: effectiveCategoryValues } });
-  }
-
-  if (effectiveSubTypeValues.length === 1) {
-    andConditions.push({ subType: { equals: effectiveSubTypeValues[0], mode: "insensitive" } });
-  } else if (effectiveSubTypeValues.length > 1) {
-    andConditions.push({ subType: { in: effectiveSubTypeValues } });
-  }
-
-  if (effectiveType) {
-    andConditions.push({ type: { equals: effectiveType, mode: "insensitive" } });
-  }
-
-  if (effectiveSubCategory) {
-    andConditions.push({ subCategory: { equals: effectiveSubCategory, mode: "insensitive" } });
-  }
-
-  if (effectiveSize) {
-    andConditions.push({ sizes: { has: effectiveSize } });
-  }
-
-  if (effectiveColor) {
-    andConditions.push({ color: { contains: effectiveColor, mode: "insensitive" } });
-  }
-  if (effectiveColorValues.length) {
-    andConditions.push({
-      variants: {
-        some: {
-          deletedAt: null,
-          color: { in: effectiveColorValues },
-        },
-      },
-    });
-  }
-
-  if (Number.isFinite(minPriceValue)) {
-    andConditions.push({ pricePkr: { gte: minPriceValue } });
-  }
-  if (Number.isFinite(maxPriceValue)) {
-    andConditions.push({ pricePkr: { lte: maxPriceValue } });
-  }
-
-  for (const token of effectiveSearchTokens) {
-    andConditions.push(buildSearchTokenCondition(token));
-  }
-
-  // Determine sort order
   const orderBy: any = {};
   if (sort === "latest") {
     orderBy.createdAt = "desc";
@@ -666,9 +553,6 @@ export async function listProducts(options: Record<string, any>) {
   } else if (sort === "featured") {
     orderBy.discountPercentage = "desc";
   }
-
-  // Compose final where clause from AND / OR pieces
-  if (andConditions.length) where.AND = andConditions;
 
   return prisma.product.findMany({
     where,

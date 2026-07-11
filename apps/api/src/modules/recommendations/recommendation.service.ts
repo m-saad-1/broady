@@ -1,4 +1,4 @@
-import { Prisma, UserActivityEventType } from "@prisma/client";
+import { Prisma, UserActivityEventType, ProductCategory, ProductGender } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
 import { getRedisClient } from "../../config/redis.js";
 
@@ -243,6 +243,30 @@ function normalizeComparison(value?: string | null) {
   return (value || "").normalize("NFKC").trim().toLowerCase();
 }
 
+function mapStringToCategory(value: string | null | undefined): ProductCategory | null {
+  if (!value) return null;
+  const normalized = value.trim().toUpperCase().replace(/[\s-]/g, "_");
+  if (normalized === "TSHIRT" || normalized === "T_SHIRT") return ProductCategory.T_SHIRTS;
+  const validCategories = Object.values(ProductCategory);
+  if (validCategories.includes(normalized as ProductCategory)) {
+    return normalized as ProductCategory;
+  }
+  const found = validCategories.find((c) => normalized.includes(c) || c.includes(normalized));
+  if (found) return found as ProductCategory;
+  return null;
+}
+
+function mapStringToGender(value: string | null | undefined): ProductGender | null {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized.includes("women")) return ProductGender.WOMEN;
+  if (normalized.includes("men")) return ProductGender.MEN;
+  if (normalized.includes("girl")) return ProductGender.GIRLS;
+  if (normalized.includes("boy")) return ProductGender.BOYS;
+  if (normalized.includes("unisex")) return ProductGender.UNISEX;
+  return null;
+}
+
 export function sanitizeRecommendationSessionId(value?: string | null) {
   const normalized = normalizeWhitespace(value);
   if (!normalized) return undefined;
@@ -474,14 +498,15 @@ async function buildAndStoreUserRecommendationProfile(userId: string, lastAnonym
         select: {
           brandId: true,
           gender: true,
-          color: true,
+          colors: true,
+          primaryColor: true,
           sizes: true,
           fit: true,
           season: true,
           tags: true,
           pricePkr: true,
-          topCategory: true,
-          subCategory: true,
+          category: true,
+          subcategory: true,
           detail: {
             select: {
               fabricComposition: true,
@@ -509,7 +534,13 @@ async function buildAndStoreUserRecommendationProfile(userId: string, lastAnonym
     const score = activity.weight * activityRecencyMultiplier(activity.createdAt);
     const metadata = activity.metadata;
     const filters = activity.filters;
-    const product = activity.product;
+    const rawProduct = activity.product;
+    const product = rawProduct ? {
+      ...rawProduct,
+      color: rawProduct.primaryColor || rawProduct.colors?.[0] || "",
+      topCategory: rawProduct.category,
+      subCategory: rawProduct.subcategory || "",
+    } : null;
 
     addScore(genderScores, normalizeGenderValue(activity.gender || product?.gender || activity.topCategory || product?.topCategory), score);
     addScore(categoryScores, normalizeTopCategoryValue(activity.topCategory || product?.topCategory), score);
@@ -720,7 +751,7 @@ export async function trackUserActivity(input: TrackUserActivityInput) {
     return { tracked: false, reason: "missing-actor" };
   }
 
-  const product = input.productId
+  const rawProduct = input.productId
     ? await prisma.product.findFirst({
         where: {
           id: input.productId,
@@ -729,16 +760,26 @@ export async function trackUserActivity(input: TrackUserActivityInput) {
         select: {
           id: true,
           brandId: true,
-          topCategory: true,
-          subCategory: true,
+          category: true,
+          subcategory: true,
           gender: true,
-          color: true,
+          colors: true,
+          primaryColor: true,
           sizes: true,
           fit: true,
           tags: true,
           pricePkr: true,
         },
       })
+    : null;
+
+  const product = rawProduct
+    ? {
+        ...rawProduct,
+        color: rawProduct.primaryColor || rawProduct.colors?.[0] || "",
+        topCategory: rawProduct.category,
+        subCategory: rawProduct.subcategory || "",
+      }
     : null;
 
   if (PRODUCT_REQUIRED_EVENTS.has(input.eventType) && !product) {
@@ -1188,8 +1229,8 @@ async function retrieveCandidateProducts(profile: PreferenceProfile, actor: Reco
   });
 
   const seedBrandIds = Array.from(new Set([...seedProducts.map((item) => item.brandId), ...profile.rankedBrandIds])).slice(0, 10);
-  const seedTopCategories = Array.from(new Set(seedProducts.map((item) => item.topCategory))).slice(0, 8);
-  const seedSubCategories = Array.from(new Set(seedProducts.map((item) => item.subCategory))).slice(0, 12);
+  const seedTopCategories = Array.from(new Set(seedProducts.map((item) => item.gender))).slice(0, 8);
+  const seedSubCategories = Array.from(new Set(seedProducts.map((item) => item.category))).slice(0, 12);
   const seedPrices = seedProducts.map((item) => item.pricePkr);
   const medianSeedPrice = calculateMedian(seedPrices);
   const productById = new Map<string, RecommendationProduct>();
@@ -1202,7 +1243,7 @@ async function retrieveCandidateProducts(profile: PreferenceProfile, actor: Reco
       prisma.product.findMany({
         where: {
           ...ACTIVE_PRODUCT_WHERE,
-          subCategory: { in: seedSubCategories },
+          category: { in: seedSubCategories },
         },
         include: productInclude,
         orderBy: [{ createdAt: "desc" }],
@@ -1211,12 +1252,13 @@ async function retrieveCandidateProducts(profile: PreferenceProfile, actor: Reco
     );
   }
 
-  if (profile.rankedSubCategories.length) {
+  const mappedSubCategories = profile.rankedSubCategories.map(mapStringToCategory).filter((x): x is ProductCategory => x !== null);
+  if (mappedSubCategories.length) {
     sourceQueries.push(
       prisma.product.findMany({
         where: {
           ...ACTIVE_PRODUCT_WHERE,
-          subCategory: { in: profile.rankedSubCategories },
+          category: { in: mappedSubCategories },
         },
         include: productInclude,
         take: 140,
@@ -1224,12 +1266,16 @@ async function retrieveCandidateProducts(profile: PreferenceProfile, actor: Reco
     );
   }
 
-  if (seedTopCategories.length || profile.rankedTopCategories.length) {
+  const mappedTopCategories = Array.from(new Set([
+    ...seedTopCategories,
+    ...profile.rankedTopCategories.map(mapStringToGender).filter((x): x is ProductGender => x !== null)
+  ]));
+  if (mappedTopCategories.length) {
     sourceQueries.push(
       prisma.product.findMany({
         where: {
           ...ACTIVE_PRODUCT_WHERE,
-          topCategory: { in: Array.from(new Set([...seedTopCategories, ...profile.rankedTopCategories])) },
+          gender: { in: mappedTopCategories },
         },
         include: productInclude,
         orderBy: [{ createdAt: "desc" }],
@@ -1268,12 +1314,13 @@ async function retrieveCandidateProducts(profile: PreferenceProfile, actor: Reco
     );
   }
 
-  if (profile.priceRange && profile.rankedTopCategories.length) {
+  const priceRangeCategories = profile.rankedTopCategories.map(mapStringToGender).filter((x): x is ProductGender => x !== null);
+  if (profile.priceRange && priceRangeCategories.length) {
     sourceQueries.push(
       prisma.product.findMany({
         where: {
           ...ACTIVE_PRODUCT_WHERE,
-          topCategory: { in: profile.rankedTopCategories },
+          gender: { in: priceRangeCategories },
           pricePkr: {
             gte: Math.max(0, Math.floor(profile.priceRange.min * 0.75)),
             lte: Math.ceil(profile.priceRange.max * 1.25),
@@ -1328,6 +1375,38 @@ async function retrieveCandidateProducts(profile: PreferenceProfile, actor: Reco
   };
 }
 
+function genderToLegacyTopCategory(gender: ProductGender): string {
+  if (gender === ProductGender.MEN) return "Men";
+  if (gender === ProductGender.WOMEN) return "Women";
+  if (gender === ProductGender.BOYS) return "Junior Boys";
+  if (gender === ProductGender.GIRLS) return "Junior Girls";
+  return "Unisex";
+}
+
+function getGenderInterest(profile: PreferenceProfile, gender: ProductGender): number {
+  const legacyTop = genderToLegacyTopCategory(gender).toLowerCase();
+  let score = 0;
+  for (const [key, val] of profile.topCategoryScores.entries()) {
+    const normKey = (key || "").toLowerCase().trim();
+    if (normKey === legacyTop || normKey.includes(legacyTop) || legacyTop.includes(normKey)) {
+      score += val;
+    }
+  }
+  return score;
+}
+
+function getCategoryInterest(profile: PreferenceProfile, category: ProductCategory): number {
+  const normalizedCat = category.toLowerCase().replace(/_/g, " ");
+  let score = 0;
+  for (const [key, val] of profile.subCategoryScores.entries()) {
+    const normKey = (key || "").toLowerCase().replace(/[_-]+/g, " ").trim();
+    if (normKey === normalizedCat) {
+      score += val;
+    }
+  }
+  return score;
+}
+
 function scoreAndDiversifyCandidates(input: {
   profile: PreferenceProfile;
   retrieval: CandidateRetrieval;
@@ -1337,10 +1416,10 @@ function scoreAndDiversifyCandidates(input: {
 }) {
   const seedProductIds = new Set(input.profile.rankedSeedProductIds);
   const excluded = new Set(input.excludeProductIds || []);
-  const seedSubCategorySet = new Set(input.retrieval.seedProducts.map((item) => item.subCategory));
-  const seedTopCategorySet = new Set(input.retrieval.seedProducts.map((item) => item.topCategory));
+  const seedSubCategorySet = new Set(input.retrieval.seedProducts.map((item) => item.category));
+  const seedTopCategorySet = new Set(input.retrieval.seedProducts.map((item) => item.gender));
   const seedBrandSet = new Set(input.retrieval.seedProducts.map((item) => item.brandId));
-  const seedColorSet = new Set(input.retrieval.seedProducts.map((item) => normalizeComparison(item.color)).filter(Boolean));
+  const seedColorSet = new Set(input.retrieval.seedProducts.map((item) => normalizeComparison(item.primaryColor || item.colors?.[0] || "")).filter(Boolean));
   const now = Date.now();
 
   const scoredCandidates = input.retrieval.candidates
@@ -1348,15 +1427,17 @@ function scoreAndDiversifyCandidates(input: {
     .map((candidate) => {
       let score = input.retrieval.sourceScores.get(candidate.id) || 0;
 
-      if (seedSubCategorySet.has(candidate.subCategory)) score += 2.2;
-      if (seedTopCategorySet.has(candidate.topCategory)) score += 1.1;
-      if (seedBrandSet.has(candidate.brandId)) score += 1.4;
-      if (seedColorSet.has(normalizeComparison(candidate.color))) score += 0.5;
+      const candidateColor = candidate.primaryColor || candidate.colors?.[0] || "";
 
-      const topCategoryInterest = input.profile.topCategoryScores.get(candidate.topCategory) || 0;
-      const subCategoryInterest = input.profile.subCategoryScores.get(candidate.subCategory) || 0;
+      if (seedSubCategorySet.has(candidate.category)) score += 2.2;
+      if (seedTopCategorySet.has(candidate.gender)) score += 1.1;
+      if (seedBrandSet.has(candidate.brandId)) score += 1.4;
+      if (seedColorSet.has(normalizeComparison(candidateColor))) score += 0.5;
+
+      const topCategoryInterest = getGenderInterest(input.profile, candidate.gender);
+      const subCategoryInterest = getCategoryInterest(input.profile, candidate.category);
       const brandInterest = input.profile.brandScores.get(candidate.brandId) || 0;
-      const colorInterest = input.profile.colorScores.get(normalizeColorValue(candidate.color) || "") || 0;
+      const colorInterest = input.profile.colorScores.get(normalizeColorValue(candidateColor) || "") || 0;
       const fitInterest = input.profile.fitScores.get(normalizeTokenValue(candidate.fit) || "") || 0;
       score += topCategoryInterest * 0.35 + subCategoryInterest * 0.45;
       score += brandInterest * 0.28 + colorInterest * 0.2 + fitInterest * 0.18;
@@ -1366,7 +1447,7 @@ function scoreAndDiversifyCandidates(input: {
       }
 
       const candidateSearchText = normalizeComparison(
-        `${candidate.name} ${candidate.subCategory} ${candidate.topCategory} ${candidate.fit || ""} ${candidate.season || ""} ${(candidate.tags || []).join(" ")} ${candidate.detail?.fabricComposition || ""} ${candidate.detail?.materialDetails || ""} ${candidate.searchDocument || ""}`,
+        `${candidate.name} ${candidate.subcategory || ""} ${candidate.category} ${candidate.gender} ${candidate.fit || ""} ${candidate.season || ""} ${(candidate.tags || []).join(" ")} ${candidate.detail?.fabricComposition || ""} ${candidate.detail?.materialDetails || ""} ${candidate.searchDocument || ""}`,
       );
       for (const term of [...input.profile.rankedSearchTerms, ...input.profile.rankedStyleTags]) {
         if (candidateSearchText.includes(term)) {
@@ -1393,7 +1474,7 @@ function scoreAndDiversifyCandidates(input: {
 
       if (candidate.stock > 0) score += 0.35;
       if (candidate.discountPercentage && candidate.discountPercentage > 0) score += 0.18;
-      if (input.profile.preferredGender && candidate.topCategory !== input.profile.preferredGender && candidate.gender !== input.profile.preferredGender) {
+      if (input.profile.preferredGender && candidate.gender !== input.profile.preferredGender) {
         score -= 1.2;
       }
 
@@ -1418,7 +1499,7 @@ function diversifyProducts(scoredCandidates: ScoredProduct[], limit: number) {
   const maxPerBrand = Math.max(3, Math.ceil(limit / 3));
 
   for (const entry of scoredCandidates) {
-    const subCategoryTotal = subCategoryCount.get(entry.product.subCategory) || 0;
+    const subCategoryTotal = subCategoryCount.get(entry.product.category) || 0;
     const brandTotal = brandCount.get(entry.product.brandId) || 0;
     if (subCategoryTotal >= maxPerSubCategory || brandTotal >= maxPerBrand) {
       overflow.push(entry);
@@ -1426,7 +1507,7 @@ function diversifyProducts(scoredCandidates: ScoredProduct[], limit: number) {
     }
 
     diversified.push(entry);
-    subCategoryCount.set(entry.product.subCategory, subCategoryTotal + 1);
+    subCategoryCount.set(entry.product.category, subCategoryTotal + 1);
     brandCount.set(entry.product.brandId, brandTotal + 1);
     if (diversified.length >= limit) break;
   }
@@ -1457,11 +1538,14 @@ async function getTrendingProducts(options: {
     return allowFallback ? getFallbackProducts(options.limit, excludeProductIds) : [];
   }
 
+  const genderQuery = topCategory ? mapStringToGender(topCategory) : undefined;
+  const categoryQuery = subCategory ? mapStringToCategory(subCategory) : undefined;
+
   const candidateProducts = await prisma.product.findMany({
     where: {
       ...ACTIVE_PRODUCT_WHERE,
-      ...(topCategory ? { topCategory } : {}),
-      ...(subCategory ? { subCategory } : {}),
+      ...(genderQuery ? { gender: genderQuery } : {}),
+      ...(categoryQuery ? { category: categoryQuery } : {}),
       ...(excludeProductIds.length ? { id: { notIn: excludeProductIds } } : {}),
     },
     include: productInclude,
@@ -1706,7 +1790,7 @@ export async function getSimilarItemRecommendations(actor: RecommendationActor, 
       where: {
         ...ACTIVE_PRODUCT_WHERE,
         id: { not: seed.id },
-        subCategory: seed.subCategory,
+        subcategory: seed.subcategory,
       },
       include: productInclude,
       take: 100,
@@ -1724,7 +1808,7 @@ export async function getSimilarItemRecommendations(actor: RecommendationActor, 
       where: {
         ...ACTIVE_PRODUCT_WHERE,
         id: { not: seed.id },
-        topCategory: seed.topCategory,
+        category: seed.category,
         pricePkr: {
           gte: minPrice,
           lte: maxPrice,
@@ -1749,7 +1833,7 @@ export async function getSimilarItemRecommendations(actor: RecommendationActor, 
           where: {
             ...ACTIVE_PRODUCT_WHERE,
             id: { not: seed.id },
-            topCategory: seed.topCategory,
+            category: seed.category,
             OR: fitSeasonFilters,
           },
           include: productInclude,
@@ -1781,8 +1865,8 @@ export async function getSimilarItemRecommendations(actor: RecommendationActor, 
   if (productById.size < limit * 2) {
     const categoryPopular = await getTrendingProducts({
       limit: limit * 2,
-      topCategory: seed.topCategory,
-      subCategory: seed.subCategory,
+      topCategory: genderToLegacyTopCategory(seed.gender),
+      subCategory: seed.category,
       excludeProductIds: [seed.id],
     });
     addSourceProducts(productById, sourceScores, categoryPopular, 0.9);
@@ -1792,17 +1876,19 @@ export async function getSimilarItemRecommendations(actor: RecommendationActor, 
   const { popularityByProductId, popularityBaseline } = await getPopularityMaps(candidates.map((item) => item.id));
   const now = Date.now();
   const seedTagSet = new Set(seed.tags.map((tag) => normalizeComparison(tag)));
-  const seedColor = normalizeComparison(seed.color);
+  const seedColorVal = seed.primaryColor || seed.colors?.[0] || "";
+  const seedColor = normalizeComparison(seedColorVal);
   const seedSizeSet = new Set(seed.sizes.map((size) => normalizeTokenValue(size)).filter(Boolean));
 
   const scored = candidates
     .filter((candidate) => candidate.id !== seed.id)
     .map((candidate) => {
       let score = sourceScores.get(candidate.id) || 0;
-      if (candidate.subCategory === seed.subCategory) score += 2.4;
-      if (candidate.topCategory === seed.topCategory) score += 1.1;
+      const candidateColorVal = candidate.primaryColor || candidate.colors?.[0] || "";
+      if (candidate.subcategory && candidate.subcategory === seed.subcategory) score += 2.4;
+      if (candidate.category === seed.category) score += 1.1;
       if (candidate.brandId === seed.brandId) score += 1.4;
-      if (seedColor && normalizeComparison(candidate.color) === seedColor) score += 0.45;
+      if (seedColor && normalizeComparison(candidateColorVal) === seedColor) score += 0.45;
       if (seedFit && normalizeTokenValue(candidate.fit) === seedFit) score += 0.45;
       if (seed.season && candidate.season === seed.season) score += 0.25;
       const sizeOverlap = (candidate.sizes || []).filter((size) => seedSizeSet.has(normalizeTokenValue(size) || "")).length;
@@ -1829,8 +1915,8 @@ export async function getSimilarItemRecommendations(actor: RecommendationActor, 
   if (selected.length < limit) {
     const strictSubCategoryFallback = await getTrendingProducts({
       limit: limit - selected.length,
-      topCategory: seed.topCategory,
-      subCategory: seed.subCategory,
+      topCategory: genderToLegacyTopCategory(seed.gender),
+      subCategory: seed.category,
       excludeProductIds: [seed.id, ...selected.map((item) => item.id)],
       allowFallback: false,
     });
@@ -1840,7 +1926,7 @@ export async function getSimilarItemRecommendations(actor: RecommendationActor, 
   if (selected.length < limit) {
     const strictCategoryFallback = await getTrendingProducts({
       limit: limit - selected.length,
-      topCategory: seed.topCategory,
+      topCategory: genderToLegacyTopCategory(seed.gender),
       excludeProductIds: [seed.id, ...selected.map((item) => item.id)],
       allowFallback: false,
     });
@@ -1855,8 +1941,8 @@ export async function getSimilarItemRecommendations(actor: RecommendationActor, 
     reason: "content-similarity",
     context: {
       seedProductId: seed.id,
-      topCategory: seed.topCategory,
-      subCategory: seed.subCategory,
+      topCategory: genderToLegacyTopCategory(seed.gender),
+      subCategory: seed.category,
       brandId: seed.brandId,
       pricePkr: seed.pricePkr,
     },
@@ -1983,8 +2069,8 @@ export async function getRecommendationQualityMetrics(days = 30) {
         select: {
           id: true,
           brandId: true,
-          topCategory: true,
-          subCategory: true,
+          category: true,
+          subcategory: true,
           stock: true,
           isActive: true,
           approvalStatus: true,
@@ -2008,8 +2094,8 @@ export async function getRecommendationQualityMetrics(days = 30) {
     }
 
     uniqueBrandIds.add(product.brandId);
-    if (product.topCategory) uniqueTopCategories.add(product.topCategory);
-    if (product.subCategory) uniqueSubCategories.add(product.subCategory);
+    if (product.category) uniqueTopCategories.add(product.category);
+    if (product.subcategory) uniqueSubCategories.add(product.subcategory);
     if (product.createdAt >= newProductSince) newProductExposures += 1;
   }
 

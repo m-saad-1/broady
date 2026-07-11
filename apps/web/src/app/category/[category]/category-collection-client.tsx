@@ -56,6 +56,8 @@ function slugToLabel(slug: string) {
   const normalized = normalizeCategorySlug(slug);
   if (normalized === "men") return "Men";
   if (normalized === "women") return "Women";
+  if (normalized === "boys") return "Boys";
+  if (normalized === "girls") return "Girls";
   if (normalized === "juniors" || normalized === "kids") return "Juniors";
   if (normalized === "junior-boys" || normalized === "junior boys") return "Junior Boys";
   if (normalized === "toddler-boys" || normalized === "toddler boys") return "Toddler Boys";
@@ -370,7 +372,7 @@ export function CategoryCollectionClient({ products, categorySlug }: Props) {
   return (
     <section className="border border-zinc-300 p-8 text-center">
       <p className="font-heading text-3xl uppercase">Category not found</p>
-      <p className="mt-2 text-sm text-zinc-600">Try Men, Women, Juniors, or junior subgroup pages.</p>
+      <p className="mt-2 text-sm text-zinc-600">Try Men, Women, Boys, Girls, or subgroup pages.</p>
     </section>
   );
 }

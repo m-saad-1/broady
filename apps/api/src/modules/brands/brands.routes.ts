@@ -197,6 +197,10 @@ router.post("/", requireAuth, requireAdmin, async (req, res) => {
       return res.status(typedError.status).json({ message: typedError.message });
     }
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      const target = (error.meta?.target as string[]) || [];
+      if (target.includes("email")) {
+        return res.status(409).json({ message: "Contact email is already used by another account" });
+      }
       return res.status(409).json({ message: "Brand name or slug already exists" });
     }
     throw error;

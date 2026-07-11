@@ -261,7 +261,7 @@ function inferTopCategory(source: Record<string, unknown>): string {
   if (/\bwomen\b/.test(vendor)) return "Women";
   if (/\bmen\b/.test(vendor)) return "Men";
   if (/\bjunior\b|\bkid\b|\btoddler\b/.test(vendor)) return "Juniors";
-  return "Women";
+  return "Unisex";
 }
 
 function inferGender(source: Record<string, unknown>, topCategory: string): string {
@@ -269,7 +269,7 @@ function inferGender(source: Record<string, unknown>, topCategory: string): stri
   if (direct) return direct;
   if (topCategory === "Men") return "Men";
   if (topCategory === "Juniors") return "Juniors";
-  return "Women";
+  return "Unisex";
 }
 
 function extractVariants(source: Record<string, unknown>) {

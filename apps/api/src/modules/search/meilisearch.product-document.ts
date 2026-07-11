@@ -30,11 +30,12 @@ export function mapProductToMeiliDocument(product: ProductWithBrandAndReviews): 
     salePrice: product.salePrice,
     discountPercentage: product.discountPercentage,
     gender: normalized.gender,
-    division: product.division,
+
+    division: product.department,
     category: product.category,
-    subType: product.subType,
+    subType: product.subcategory,
     juniorsGroup: normalized.juniorsGroup,
-    color: product.color,
+    color: product.primaryColor || (product.colors && product.colors[0]) || "",
     productType: normalized.productType,
     topCategory: normalized.topCategory,
     subCategory: normalized.subCategory,
@@ -146,8 +147,8 @@ function inferProductTypeFromSubCategory(value: string) {
 }
 
 export function normalizeProductTaxonomy(product: ProductWithBrandAndReviews) {
-  const origTop = (product.topCategory || '').trim();
-  const origSub = (product.subCategory || '').trim();
+  const origTop = (product.brandCategoryRaw || '').trim();
+  const origSub = (product.brandSubcategoryRaw || '').trim();
   const rawProductType =
     (product as ProductWithBrandAndReviews & { type?: string; productType?: string }).type ??
     (product as ProductWithBrandAndReviews & { productType?: string }).productType ??

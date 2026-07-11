@@ -15,6 +15,7 @@ const productTypeSubcategories: Record<string, string[]> = {
 export type MeilisearchProductSearchFilters = {
   brandId?: string;
   brandSlug?: string;
+  department?: string;
   gender?: string;
   topCategory?: string;
   juniorCategory?: string;
@@ -85,9 +86,14 @@ function buildMeilisearchFilters(filters: MeilisearchProductSearchFilters): stri
     parts.push(`brandSlug = "${meiliQuote(filters.brandSlug)}"`);
   }
 
+  if (filters.department) {
+    parts.push(`division = "${meiliQuote(filters.department)}"`);
+  }
+
   const topVals = expandCatalogTopCategory(filters.topCategory, filters.juniorCategory);
   if (filters.gender) {
-    parts.push(`gender = "${meiliQuote(filters.gender)}"`);
+    const formattedGender = filters.gender.charAt(0).toUpperCase() + filters.gender.slice(1).toLowerCase();
+    parts.push(`gender = "${meiliQuote(formattedGender)}"`);
   }
   if (filters.juniorCategory) {
     parts.push(`juniorsGroup = "${meiliQuote(filters.juniorCategory)}"`);
@@ -130,7 +136,7 @@ function buildMeilisearchFilters(filters: MeilisearchProductSearchFilters): stri
   return parts;
 }
 
-export async function runMeilisearchProductSearch(q: string, filters: MeilisearchProductSearchFilters): Promise<string[]> {
+export async function runMeilisearchProductSearch(q: string, filters: MeilisearchProductSearchFilters): Promise<{ ids: string[]; totalCount: number }> {
   const client = createSearchClient();
   const index = client.index(PRODUCTS_INDEX_UID);
   const filterParts = buildMeilisearchFilters(filters);
@@ -142,7 +148,7 @@ export async function runMeilisearchProductSearch(q: string, filters: Meilisearc
   });
 
   const ids = res.hits.map((hit) => (hit as { id?: string }).id).filter((id): id is string => Boolean(id));
-  return ids;
+  return { ids, totalCount: res.estimatedTotalHits || res.hits.length };
 }
 
 export async function runMeilisearchProductSuggest(

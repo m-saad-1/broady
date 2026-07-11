@@ -2,6 +2,9 @@ type NotificationTargetInput = {
   type: string;
   orderId?: string;
   subOrderId?: string;
+  returnRequestId?: string;
+  refundRequestId?: string;
+  requestType?: "RETURN" | "EXCHANGE";
   message?: string;
   title?: string;
   role?: string;
@@ -35,6 +38,24 @@ function extractSubOrderId(input: NotificationTargetInput) {
 
 export function resolveNotificationTargetPath(input: NotificationTargetInput): string {
   const subOrderId = extractSubOrderId(input);
+
+  if (input.returnRequestId) {
+    if (isAdminRole(input.role)) {
+      return `/admin/operations/returns/${input.returnRequestId}`;
+    }
+    if (input.isBrandContext || isBrandRole(input.role)) {
+      return `/brand/operations/returns/${input.returnRequestId}`;
+    }
+    if (input.orderId && subOrderId) {
+      return input.requestType === "EXCHANGE"
+        ? `/account/orders/${input.orderId}/groups/${encodeURIComponent(subOrderId)}/exchange/${input.returnRequestId}`
+        : `/account/orders/${input.orderId}/groups/${encodeURIComponent(subOrderId)}/return/${input.returnRequestId}`;
+    }
+  }
+
+  if (input.refundRequestId && isAdminRole(input.role)) {
+    return `/admin/operations/refunds/${input.refundRequestId}`;
+  }
 
   if (isAdminRole(input.role)) {
     if (input.orderId && subOrderId) return `/admin/orders/${input.orderId}?subOrderId=${encodeURIComponent(subOrderId)}`;

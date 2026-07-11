@@ -7,9 +7,17 @@ import { formatPkr } from "@/lib/utils";
 import { getOrderStatusLabel, getOrderStatusTone } from "@/lib/order-status";
 import { getCancelledOrderItemIds } from "@/lib/order-cancellation";
 import { resolveMediaUrl } from "@/lib/media-url";
+import {
+  formatOperatorReturnStatus,
+  getDisplayReturnStatus,
+  getReturnRequestDetailPath,
+  getReturnRequestItemIds,
+  getReturnRequestType,
+} from "@/lib/return-workflow";
 import type { NotificationItem, ProductReview, UserOrder } from "@/types/marketplace";
 import { NotificationsLoadMore } from "./notifications-load-more";
 import { GroupActions } from "./group-actions";
+import { CancelItemButton } from "./cancel-item-button";
 
 type VendorGroupDetailPageProps = {
   params: Promise<{ id: string; groupId: string }>;
@@ -92,6 +100,36 @@ const SHIPMENT_TIMELINE: Array<{ key: "CONFIRMED" | "PROCESSING" | "PACKED" | "R
   { key: "DELIVERED", label: "Delivered" },
 ];
 
+function getLatestItemRequest(
+  orderId: string,
+  groupId: string,
+  requests: NonNullable<UserOrder["subOrders"][number]["returnRequests"]> | undefined,
+  itemIds: string[],
+  itemId: string,
+) {
+  const matched = (requests || [])
+    .filter((request) => getReturnRequestItemIds(request, itemIds).includes(itemId))
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime())[0];
+
+  if (!matched) return null;
+
+  const requestType = getReturnRequestType(matched);
+  const displayStatus = getDisplayReturnStatus(matched);
+
+  return {
+    label: requestType === "EXCHANGE" ? "Exchange Requested for this Product" : "Return Requested for this Product",
+    requestType,
+    path: getReturnRequestDetailPath({
+      role: "CUSTOMER",
+      orderId,
+      subOrderId: groupId,
+      requestId: matched.id,
+      requestType: matched.requestType,
+      preferredResolution: matched.preferredResolution,
+    }),
+  };
+}
+
 export default async function VendorGroupDetailPage({ params }: VendorGroupDetailPageProps) {
   const token = (await cookies()).get("broady_token")?.value;
   if (!token) redirect("/login?next=/account/orders");
@@ -115,7 +153,7 @@ export default async function VendorGroupDetailPage({ params }: VendorGroupDetai
     return brandName ? message.includes(brandName) || title.includes(brandName) : true;
   });
   const canWriteReview = group.status === "DELIVERED";
-  const canCancelGroup = ["PENDING", "CONFIRMED", "PROCESSING", "PACKED", "READY_FOR_PICKUP"].includes(group.status);
+  const canCancelGroup = false;
   const cancellationRequiresReview = ["PACKED", "READY_FOR_PICKUP"].includes(group.status);
   const deliveredAt = getDeliveredAt(group.statusLogs);
   const minReturnWindowDays = group.items
@@ -135,6 +173,7 @@ export default async function VendorGroupDetailPage({ params }: VendorGroupDetai
   const cancelledItemIds = getCancelledOrderItemIds(group.statusLogs);
   const timelineStatuses = new Set(group.statusLogs.map((log) => log.status));
   const trackingUrl = group.trackingId && group.courierName ? getTrackingUrl(group.courierName, group.trackingId) : null;
+  const groupItemIds = group.items.map((item) => item.id);
 
   return (
     <main className="mx-auto w-full max-w-5xl space-y-8 px-4 py-10 lg:px-10">
@@ -205,7 +244,7 @@ export default async function VendorGroupDetailPage({ params }: VendorGroupDetai
             canRetryPayment={canRetryPayment}
             currentDeliveryAddress={order.deliveryAddress}
           />
-          {!canCancelGroup && ["SHIPPED", "OUT_FOR_DELIVERY", "DELIVERY_FAILED", "ADDRESS_CORRECTION_REQUIRED", "READY_FOR_REDELIVERY", "SHIPMENT_RETURNED"].includes(group.status) ? (
+          {["SHIPPED", "OUT_FOR_DELIVERY", "DELIVERY_FAILED", "ADDRESS_CORRECTION_REQUIRED", "READY_FOR_REDELIVERY", "SHIPMENT_RETURNED"].includes(group.status) ? (
             <button type="button" disabled className="mt-3 inline-flex h-10 items-center justify-center border border-zinc-300 px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
               Cancellation Unavailable
             </button>
@@ -248,6 +287,8 @@ export default async function VendorGroupDetailPage({ params }: VendorGroupDetai
         <div className="space-y-3">
           {group.items.map((item) => {
             const isCancelled = group.status === "CANCELED" || cancelledItemIds.has(item.id);
+            const itemRequest = getLatestItemRequest(order.id, group.id, group.returnRequests, groupItemIds, item.id);
+            const cancelRequest = group.cancellationRequests?.find((req) => (!req.orderItemIds?.length || req.orderItemIds.includes(item.id)) && req.status !== "CANCELLED_BY_USER");
             return (
             <article key={item.id} className={`grid gap-3 border-b py-3 md:grid-cols-[72px_1fr_auto] md:items-center ${isCancelled ? "border-red-100 bg-red-50 px-2" : "border-zinc-200"}`}>
               <div className="relative h-14 w-14 overflow-hidden border border-zinc-200">
@@ -273,6 +314,42 @@ export default async function VendorGroupDetailPage({ params }: VendorGroupDetai
                   <p className="font-semibold">Quantity: {item.quantity}</p>
                   <p className="font-semibold">Price: {formatPkr(item.unitPricePkr)}</p>
                   {isCancelled ? <p className="font-semibold uppercase tracking-[0.12em] text-red-700">Cancelled</p> : null}
+                  {itemRequest ? (
+                    <Link
+                      href={itemRequest.path}
+                      className={`inline-flex border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                        itemRequest.requestType === "EXCHANGE"
+                          ? "border-amber-300 bg-amber-100 text-amber-800"
+                          : "border-sky-300 bg-sky-100 text-sky-800"
+                      }`}
+                    >
+                      {itemRequest.label}
+                    </Link>
+                  ) : null}
+                  {cancelRequest ? (
+                    <div className="flex flex-col gap-1 items-start">
+                      <span className={`text-[10px] font-semibold uppercase tracking-wider ${
+                        cancelRequest.status === "REJECTED" ? "text-red-600" : "text-amber-700"
+                      }`}>
+                        {cancelRequest.status === "REJECTED" ? "Cancellation Rejected" : "Cancellation Requested"}
+                      </span>
+                      <Link
+                        href={`/account/orders/${order.id}/groups/${group.id}/cancellation`}
+                        className="inline-flex border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] border-zinc-300 text-zinc-700 hover:border-black hover:text-black"
+                      >
+                        Track Cancellation
+                      </Link>
+                    </div>
+                  ) : null}
+                  {!isCancelled && !itemRequest && !cancelRequest && ["PENDING", "CONFIRMED", "PROCESSING", "PACKED", "READY_FOR_PICKUP"].includes(group.status) ? (
+                    <CancelItemButton
+                      orderId={order.id}
+                      subOrderId={group.id}
+                      itemId={item.id}
+                      brandName={group.brand?.name || "Brand"}
+                      cancellationRequiresReview={cancellationRequiresReview}
+                    />
+                  ) : null}
                 </div>
               </div>
 

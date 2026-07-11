@@ -27,6 +27,7 @@ type DispatchInput = {
   userId?: string;
   brandId?: string;
   orderId?: string;
+  targetPath?: string;
   emailRecipient?: string | null;
   whatsappRecipient?: string | null;
   emailSubject?: string;
@@ -439,7 +440,7 @@ export async function createNotificationWithChannels(input: DispatchInput) {
   }
 
   const notification = input.userId
-    ? await input.prismaClient.notification.create({
+      ? await input.prismaClient.notification.create({
         data: {
           type: input.type,
           title: input.title,
@@ -447,6 +448,7 @@ export async function createNotificationWithChannels(input: DispatchInput) {
           userId,
           brandId: input.brandId ?? null,
           orderId: input.orderId ?? null,
+          targetPath: input.targetPath ?? null,
         },
       })
     : await input.prismaClient.notification.create({
@@ -457,6 +459,7 @@ export async function createNotificationWithChannels(input: DispatchInput) {
           userId,
           brandId: input.brandId ?? null,
           orderId: input.orderId ?? null,
+          targetPath: input.targetPath ?? null,
         },
       });
 
@@ -654,6 +657,9 @@ export async function emitNotificationEvent(
       type,
       orderId: event.orderId,
       subOrderId: "subOrderId" in event ? event.subOrderId : undefined,
+      returnRequestId: "returnRequestId" in event ? event.returnRequestId : undefined,
+      refundRequestId: "refundRequestId" in event ? event.refundRequestId : undefined,
+      requestType: "requestType" in event ? event.requestType : undefined,
       title: template.title,
       message: template.message,
       role:
@@ -673,6 +679,7 @@ export async function emitNotificationEvent(
       userId: recipient.userId,
       brandId: recipient.brandId,
       orderId: event.orderId,
+      targetPath,
       emailRecipient: emailAllowed ? recipient.email : undefined,
       whatsappRecipient: recipient.channels.includes("WHATSAPP") ? recipient.whatsapp : undefined,
       emailSubject: `[Broady] ${template.title}`,

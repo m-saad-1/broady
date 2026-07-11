@@ -7,6 +7,7 @@ import {
   formatOperatorReturnStatus,
   formatReturnReasonLabel,
   formatReturnStatus,
+  formatTimelineStatusForOperator,
   getDisplayReturnStatus,
   getFinalRequestLabel,
   getReturnRequestItems,
@@ -132,6 +133,14 @@ export default function AdminReturnDetailPage({ params }: PageProps) {
       {convertedToRefund ? (
         <section className="border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
           This exchange has been converted to a refund flow.
+        </section>
+      ) : null}
+
+      {(request.adminDecision || request.adminDecisionNote || request.adminRejectedReason) ? (
+        <section className={`border p-5 text-sm ${request.adminDecision === "REJECTED" ? "border-red-200 bg-red-50 text-red-800" : "border-blue-200 bg-blue-50 text-blue-900"}`}>
+          <p className="font-semibold uppercase tracking-[0.12em]">Admin Decision</p>
+          <p className="mt-2">Decision: {request.adminDecision || "Reviewed"}</p>
+          <p className="mt-2">Reason: {request.adminRejectedReason || request.adminDecisionNote || "No admin note added."}</p>
         </section>
       ) : null}
 
@@ -272,6 +281,9 @@ export default function AdminReturnDetailPage({ params }: PageProps) {
                 <p><span className="font-semibold text-zinc-800">Brand Reject Reason:</span> <span className="font-medium text-red-700">{request.brandRejectReason}</span></p>
               ) : null}
               <p><span className="font-semibold text-zinc-800">Brand Notes:</span> {request.brandRecommendationNote || <span className="italic text-zinc-400">No recommendation notes</span>}</p>
+              {request.brandEvidenceUrls?.length ? (
+                <EvidenceLinks title="Brand Rejection Evidence" urls={request.brandEvidenceUrls} />
+              ) : null}
               {isExchange ? (
                 <p><span className="font-semibold text-zinc-800">Can Fulfill Replacement:</span> {request.canFulfillReplacement === true ? "Yes" : request.canFulfillReplacement === false ? "No" : "N/A"}</p>
               ) : null}
@@ -337,7 +349,7 @@ export default function AdminReturnDetailPage({ params }: PageProps) {
             {(request.statusLogs || []).map((log) => (
               <div key={log.id} className="border border-zinc-200 p-3 text-sm">
                 <p className="font-semibold uppercase tracking-[0.08em] flex flex-wrap items-center gap-2">
-                  <span>{formatReturnStatus(log.status)}</span>
+                  <span>{formatTimelineStatusForOperator(log.status)}</span>
                   {log.updatedBy ? (
                     <span className="text-[10px] font-normal lowercase tracking-wider text-zinc-500 bg-zinc-100 border border-zinc-200 px-1.5 py-0.5 first-letter:uppercase">
                       by {log.updatedBy.toLowerCase()}

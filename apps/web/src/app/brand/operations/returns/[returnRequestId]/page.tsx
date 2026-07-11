@@ -7,6 +7,7 @@ import {
   formatOperatorReturnStatus,
   formatReturnReasonLabel,
   formatReturnStatus,
+  formatTimelineStatusForOperator,
   getDisplayReturnStatus,
   getFinalRequestLabel,
   isExchangeRequest,
@@ -152,7 +153,7 @@ export default function BrandReturnDetailPage({ params }: PageProps) {
           <p className="mt-2 text-sm text-zinc-600">Current stage: {formatOperatorReturnStatus(displayStatus, requestType)}</p>
           {(request.adminDecision || request.adminDecisionNote || request.adminRejectedReason) ? (
             <p className="mt-2 text-sm text-zinc-600">
-              Admin review: {request.adminDecision === "APPROVED" ? "Overruled Rejection (Customer Approved)" : request.adminDecision === "REJECTED" ? "Confirmed Rejection (Customer Rejected)" : "Reviewed"}{request.adminRejectedReason || request.adminDecisionNote ? ` - ${request.adminRejectedReason || request.adminDecisionNote}` : ""}
+              Admin review: {request.adminDecision || "Reviewed"}{request.adminRejectedReason || request.adminDecisionNote ? ` - ${request.adminRejectedReason || request.adminDecisionNote}` : ""}
             </p>
           ) : null}
           <p className="mt-2 text-xs text-zinc-500">Last updated: {formatDateTime(request.updatedAt)}</p>
@@ -253,19 +254,10 @@ export default function BrandReturnDetailPage({ params }: PageProps) {
           )}
         </div>
         {(request.adminDecision || request.adminDecisionNote || request.adminRejectedReason) ? (
-          <section className={`border p-4 text-sm ${request.adminDecision === "REJECTED" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-red-200 bg-red-50 text-red-800"}`}>
-            <p className="font-semibold uppercase tracking-[0.12em]">Admin Review Decision</p>
-            <p className="mt-2 font-semibold text-base">
-              {request.adminDecision === "REJECTED"
-                ? "Confirmed Brand Rejection (Customer Request Rejected)"
-                : request.adminDecision === "APPROVED"
-                  ? "Overruled Brand Rejection (Customer Request Approved)"
-                  : "Reviewed"}
-            </p>
-            <p className="mt-2">
-              <span className="font-semibold text-zinc-700">Reason / Note: </span>
-              {request.adminRejectedReason || request.adminDecisionNote || "No admin note added."}
-            </p>
+          <section className={`border p-4 text-sm ${request.adminDecision === "REJECTED" ? "border-red-200 bg-red-50 text-red-800" : "border-blue-200 bg-blue-50 text-blue-900"}`}>
+            <p className="font-semibold uppercase tracking-[0.12em]">Admin review</p>
+            <p className="mt-2">Decision: {request.adminDecision || "Reviewed"}</p>
+            <p className="mt-2">Reason: {request.adminRejectedReason || request.adminDecisionNote || "No admin note added."}</p>
           </section>
         ) : null}
       </section>
@@ -277,7 +269,7 @@ export default function BrandReturnDetailPage({ params }: PageProps) {
         <div className="space-y-3">
           {(request.statusLogs || []).map((log) => (
             <div key={log.id} className="border border-zinc-200 p-3 text-sm">
-              <p className="font-semibold uppercase tracking-[0.08em]">{formatReturnStatus(log.status)}</p>
+              <p className="font-semibold uppercase tracking-[0.08em]">{formatTimelineStatusForOperator(log.status)}</p>
               <p className="text-zinc-500">{formatDateTime(log.createdAt)}</p>
               {log.note ? <p className="mt-1 text-zinc-700">{log.note}</p> : null}
             </div>

@@ -432,6 +432,17 @@ router.get("/orders", async (req, res) => {
           updatedAt: true,
         },
       },
+      cancellationRequests: {
+        select: {
+          id: true,
+          status: true,
+          reasonCode: true,
+          reasonText: true,
+          requestedByRole: true,
+          createdAt: true,
+        },
+        where: { status: "REQUESTED" },
+      },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -524,6 +535,7 @@ router.patch("/cancellation-requests/:requestId/respond", async (req, res) => {
 
   const request = await prisma.cancellationRequest.findFirst({
     where: { id: String(req.params.requestId), brandId: access.brandId },
+    include: { subOrder: true },
   });
 
   if (!request) return res.status(404).json({ message: "Cancellation request not found" });
@@ -532,6 +544,8 @@ router.patch("/cancellation-requests/:requestId/respond", async (req, res) => {
   }
 
   const updated = await prisma.$transaction(async (tx) => {
+    const isAutoApprove = payload.data.responseCode === "STILL_CANCELLABLE";
+
     const next = await tx.cancellationRequest.update({
       where: { id: request.id },
       data: {
@@ -540,18 +554,119 @@ router.patch("/cancellation-requests/:requestId/respond", async (req, res) => {
         trackingEvidence: payload.data.trackingEvidence?.trim() || null,
         evidenceUrl: payload.data.evidenceUrl?.trim() || null,
         respondedAt: new Date(),
+        ...(isAutoApprove ? { status: "APPROVED", decidedAt: new Date(), decisionNote: "Auto-approved by brand" } : {}),
+      },
+      include: {
+        order: true,
+        subOrder: {
+          include: {
+            items: true,
+          },
+        },
       },
     });
 
     await tx.cancellationHistory.create({
       data: {
         cancellationRequestId: request.id,
-        action: "BRAND_RESPONDED",
+        action: isAutoApprove ? "APPROVED" : "BRAND_RESPONDED",
         performedByRole: "BRAND",
         performedById: req.auth!.userId,
         note: payload.data.note?.trim() || payload.data.responseCode,
       },
     });
+
+    if (isAutoApprove) {
+      const isPartial = request.orderItemIds && request.orderItemIds.length > 0 && request.orderItemIds.length < next.subOrder.items.length;
+      const cancelledItemIds = isPartial ? request.orderItemIds : next.subOrder.items.map((i: any) => i.id);
+      const itemsToCancel = next.subOrder.items.filter((i: any) => cancelledItemIds!.includes(i.id));
+
+      if (!isPartial) {
+        await tx.subOrder.update({
+          where: { id: request.subOrderId },
+          data: { status: "CANCELED" },
+        });
+      }
+
+      await Promise.all(
+        itemsToCancel.map((item: any) =>
+          tx.product.update({
+            where: { id: item.productId },
+            data: { stock: { increment: item.quantity } },
+          })
+        )
+      );
+
+      await tx.subOrderStatusLog.create({
+        data: {
+          subOrderId: request.subOrderId,
+          status: isPartial ? next.subOrder.status : "CANCELED",
+          updatedBy: "BRAND",
+          updatedById: req.auth!.userId,
+          note: isPartial
+            ? `CANCELLED_ITEMS:${cancelledItemIds!.join(",")} | Partial item cancellation approved by brand.`
+            : "Cancellation approved by brand.",
+        },
+      });
+
+      if (!isPartial) {
+        await writeStatusHistory(tx, {
+          subOrderId: request.subOrderId,
+          oldStatus: request.subOrder.status,
+          newStatus: "CANCELED",
+          changedByRole: "BRAND",
+          changedById: req.auth!.userId,
+          reason: request.reasonCode,
+          note: "Cancellation approved by brand.",
+        });
+      }
+
+      if (shouldCreateRefundForPayment(next.order.paymentMethod) && next.order.paymentStatus === "COMPLETED") {
+        const existingRefund = await tx.refundRequest.findFirst({
+          where: { subOrderId: request.subOrderId, status: { in: ["PENDING", "APPROVED", "PROCESSING"] } },
+          select: { id: true },
+        });
+
+        if (!existingRefund) {
+          const refund = calculateRefundItems(itemsToCancel as any);
+          if (refund.amountPkr > 0) {
+            await createRefundRecord(tx, {
+              orderId: request.orderId,
+              subOrderId: request.subOrderId,
+              requestedByRole: "BRAND",
+              requestedById: req.auth!.userId,
+              reasonCode: "BRAND_CANCELLATION",
+              reasonText: request.reasonText,
+              method: getRefundMethodForPayment(next.order.paymentMethod),
+              amountPkr: refund.amountPkr,
+              items: refund.refundItems,
+              note: "Created after brand cancellation approval.",
+            });
+          }
+        }
+      }
+
+      const refreshedSubOrders = await tx.subOrder.findMany({
+        where: { orderId: request.orderId },
+        select: { status: true },
+      });
+      const nextParentStatus = deriveLifecycleParentOrderStatus(refreshedSubOrders.map((entry: any) => entry.status));
+
+      await tx.order.update({
+        where: { id: request.orderId },
+        data: { status: nextParentStatus },
+      });
+
+      await tx.orderStatusLog.create({
+        data: {
+          orderId: request.orderId,
+          status: nextParentStatus,
+          updatedBy: "BRAND",
+          updatedById: req.auth!.userId,
+          note: "Cancellation approved by brand.",
+        },
+      });
+    }
 
     return next;
   });

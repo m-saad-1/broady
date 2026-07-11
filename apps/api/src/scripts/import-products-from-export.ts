@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { prisma } from "../config/prisma.js";
-import { normalizeProductTaxonomy } from "../modules/search/meilisearch.product-document.js";
+import { classifyProduct, generateSearchKeywords } from "../modules/products/classification.service.js";
+import { ProductAvailability } from "@prisma/client";
 
 type ExportedProduct = {
   id: string;
@@ -71,26 +72,16 @@ async function main() {
   }
 
   for (const exported of exportedProducts) {
-    const normalized = normalizeProductTaxonomy({
-      id: exported.id,
-      brandId: exported.brandId,
-      name: exported.name,
-      slug: exported.slug,
+    const classification = await classifyProduct({
+      title: exported.name,
       description: exported.description,
-      searchDocument: exported.searchDocument,
-      pricePkr: exported.pricePkr,
-      topCategory: exported.topCategory,
-      subCategory: exported.subCategory,
-      sizes: exported.sizes,
-      imageUrl: exported.imageUrl,
-      stock: exported.stock,
-      isActive: exported.isActive,
-      approvalStatus: exported.approvalStatus as never,
-      createdAt: toDate(exported.createdAt),
-      updatedAt: toDate(exported.updatedAt),
-      reviewAggregate: null,
-      brand: {} as never,
-    } as never);
+      brandCategory: exported.topCategory,
+      brandSubcategory: exported.subCategory,
+      gender: undefined,
+      tags: [],
+    });
+
+    const searchKeywords = generateSearchKeywords(classification, exported.name);
 
     const data = {
       brandId: exported.brandId,
@@ -100,8 +91,17 @@ async function main() {
       searchDocument: exported.searchDocument,
       pricePkr: exported.pricePkr,
       actualPrice: exported.pricePkr,
-      topCategory: normalized.topCategory,
-      subCategory: normalized.subCategory,
+      gender: classification.gender,
+      productType: classification.productType,
+      department: classification.department,
+      category: classification.category,
+      subcategory: classification.subcategory,
+      brandCategoryRaw: exported.topCategory || null,
+      brandSubcategoryRaw: exported.subCategory || null,
+      colors: [],
+      searchKeywords,
+      availabilityStatus: exported.stock > 0 ? ProductAvailability.IN_STOCK : ProductAvailability.OUT_OF_STOCK,
+      classificationConfidence: classification.confidence,
       sizes: exported.sizes,
       imageUrl: exported.imageUrl,
       stock: exported.stock,

@@ -115,6 +115,72 @@ export async function upsertNormalizedProduct(brandId: string, importJobId: stri
     include: { variants: true },
   });
 
+  const genderMap: Record<string, string> = { men: "MEN", women: "WOMEN", boys: "BOYS", girls: "GIRLS", unisex: "UNISEX" };
+  const mappedGender = (genderMap[product.gender?.toLowerCase()] || "UNISEX") as any;
+
+  const deptMap: Record<string, string> = { top: "CLOTHING", bottom: "CLOTHING", footwear: "FOOTWEAR", accessory: "ACCESSORIES" };
+  const mappedDept = (deptMap[product.division?.toLowerCase()] || "CLOTHING") as any;
+
+  const typeMap: Record<string, string> = { top: "TOP", bottom: "BOTTOM", footwear: "FOOTWEAR", accessory: "ACCESSORY" };
+  const mappedType = (typeMap[product.division?.toLowerCase()] || "TOP") as any;
+
+  const rawCat = product.category ? product.category.toUpperCase().replace(/[\s-]+/g, "_") : "SHIRTS";
+  const catPlurals: Record<string, string> = {
+    "SHIRT": "SHIRTS",
+    "T_SHIRT": "T_SHIRTS",
+    "POLO": "POLOS",
+    "JEAN": "JEANS",
+    "TROUSER": "TROUSERS",
+    "SHORT": "SHORTS",
+    "HOODIE": "HOODIES",
+    "JACKET": "JACKETS",
+    "SNEAKER": "SNEAKERS",
+    "LOAFER": "LOAFERS",
+    "SANDAL": "SANDALS",
+    "CAP": "CAPS",
+    "BAG": "BAGS",
+    "BELT": "BELTS",
+    "SOCK": "SOCKS",
+    "SWEATSHIRT": "SWEATSHIRTS",
+    "JOGGER": "JOGGERS",
+    "CARGO": "CARGO_PANTS",
+    "CARGO_PANT": "CARGO_PANTS",
+    "FORMAL_PANT": "FORMAL_PANTS",
+    "CHINO": "CHINOS",
+    "PANT": "TROUSERS",
+    "KURTA": "KURTAS",
+    "WAISTCOAT": "WAISTCOATS",
+    "BLAZER": "BLAZERS",
+    "COAT": "COATS",
+    "SWEATER": "SWEATERS",
+    "CARDIGAN": "CARDIGANS",
+    "VEST": "VESTS",
+    "TANK_TOP": "TANK_TOPS",
+    "DRESS": "DRESSES",
+    "SKIRT": "SKIRTS",
+    "LEGGING": "LEGGINGS",
+    "BOOT": "BOOTS",
+    "FLAT": "FLATS",
+    "HEEL": "HEELS",
+    "SLIPPER": "SLIPPERS",
+    "WATCH": "WATCHES",
+    "SUNGLASSE": "SUNGLASSES",
+    "WALLET": "WALLETS",
+    "SCARF": "SCARVES",
+    "TIE": "TIES",
+    "TOP": "SHIRTS",
+    "BOTTOM": "TROUSERS",
+    "FOOTWEAR": "SNEAKERS",
+    "ACCESSORY": "BAGS",
+    "CLOSED_SHOE": "SNEAKERS"
+  };
+  const mappedCategory = (catPlurals[rawCat] || rawCat) as any;
+  const mappedSubcategory = null as any; // Ignore invalid subcategories for now rather than crashing
+
+  const colors = product.colors || (product.color ? [product.color] : []);
+  const primaryColor = product.color || colors[0] || null;
+  const classificationConfidence = product.subTypeConfidence === "explicit" ? 1.0 : 0.7;
+
   const persisted = existing
     ? await prisma.product.update({
         where: { id: existing.id },
@@ -122,24 +188,23 @@ export async function upsertNormalizedProduct(brandId: string, importJobId: stri
           name: product.name,
           shortDescription: product.shortDescription,
           description: product.description,
-          gender: product.gender,
-          division: product.division,
-          category: product.category,
-          subType: product.subType,
-          subTypeConfidence: product.subTypeConfidence,
-          mappingStatus: product.mappingStatus,
-          resolutionSource: product.resolutionSource,
+          gender: mappedGender,
+          productType: mappedType,
+          department: mappedDept,
+          category: mappedCategory,
+          subcategory: mappedSubcategory,
+          brandCategoryRaw: product.topCategory || product.category || null,
+          brandSubcategoryRaw: product.subCategory || product.subType || null,
+          colors,
+          primaryColor,
+          classificationConfidence,
           pageContext: product.pageContext as any,
-          color: product.color,
-          type: product.type,
           fit: product.fit,
           season: product.season,
           collection: product.collection,
           productUrl: product.productUrl,
           visibility: product.visibility || "hidden",
           source: product.source || "json_import",
-          topCategory: product.topCategory,
-          subCategory: product.subCategory,
           actualPrice: product.actualPrice,
           salePrice: product.salePrice,
           discountPercentage: product.discountPercentage,
@@ -170,24 +235,23 @@ export async function upsertNormalizedProduct(brandId: string, importJobId: stri
           slug: product.slug,
           shortDescription: product.shortDescription,
           description: product.description,
-          gender: product.gender,
-          division: product.division,
-          category: product.category,
-          subType: product.subType,
-          subTypeConfidence: product.subTypeConfidence,
-          mappingStatus: product.mappingStatus,
-          resolutionSource: product.resolutionSource,
+          gender: mappedGender,
+          productType: mappedType,
+          department: mappedDept,
+          category: mappedCategory,
+          subcategory: mappedSubcategory,
+          brandCategoryRaw: product.topCategory || product.category || null,
+          brandSubcategoryRaw: product.subCategory || product.subType || null,
+          colors,
+          primaryColor,
+          classificationConfidence,
           pageContext: product.pageContext as any,
-          color: product.color,
-          type: product.type,
           fit: product.fit,
           season: product.season,
           collection: product.collection,
           productUrl: product.productUrl,
           visibility: product.visibility || "hidden",
           source: product.source || "json_import",
-          topCategory: product.topCategory,
-          subCategory: product.subCategory,
           actualPrice: product.actualPrice,
           salePrice: product.salePrice,
           discountPercentage: product.discountPercentage,
@@ -307,14 +371,14 @@ export async function upsertNormalizedProduct(brandId: string, importJobId: stri
 export async function setApprovalState(productId: string, reviewerId: string, status: ProductApprovalState, rejectionReason?: string) {
   const current = await prisma.product.findUnique({
     where: { id: productId },
-    select: { mappingStatus: true },
+    select: { classificationConfidence: true },
   });
 
   if (!current) {
     throw new Error("Product not found");
   }
 
-  if (status === "APPROVED" && current.mappingStatus === "unresolved") {
+  if (status === "APPROVED" && current.classificationConfidence !== null && current.classificationConfidence < 0.5) {
     throw new Error("Unresolved taxonomy must be fixed before approval");
   }
 

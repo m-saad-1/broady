@@ -7,6 +7,7 @@ import { prisma } from "../../config/prisma.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { createUserAndIpRateLimiters } from "../../middleware/rate-limit.js";
 import { addCartItem, getCart, getCartScopeFromUser, syncCheckoutCart } from "../carts/cart.service.js";
+import { incrementProductPurchaseAnalytics } from "../products/analytics.service.js";
 import { notificationEventNames } from "../notifications/notification.events.js";
 import { queueNotificationEvent } from "../notifications/notification.service.js";
 import {
@@ -38,6 +39,7 @@ import {
   normalizeReturnRequestForApi,
 } from "./return-workflow.js";
 import { trackUserActivity } from "../recommendations/recommendation.service.js";
+import { creditWallet } from "../users/wallet.service.js";
 
 const router = Router();
 const [orderPlacementIpLimit, orderPlacementUserLimit] = createUserAndIpRateLimiters("orders-create", 60_000, 10, 30);
@@ -1080,8 +1082,8 @@ router.post("/", requireAuth, orderPlacementIpLimit, orderPlacementUserLimit, as
         eventType: UserActivityEventType.PRODUCT_PURCHASED,
         productId: product.id,
         brandId: product.brandId,
-        topCategory: product.topCategory,
-        subCategory: product.subCategory,
+        topCategory: product.category,
+        subCategory: product.subcategory || undefined,
         sourcePage: "checkout",
         gender: product.gender,
         metadata: {
@@ -1092,6 +1094,14 @@ router.post("/", requireAuth, orderPlacementIpLimit, orderPlacementUserLimit, as
           unitPricePkr: product.pricePkr,
         },
       });
+      
+      if (product.category) {
+        await incrementProductPurchaseAnalytics(
+          product.category as any, 
+          product.subcategory as any, 
+          product.pricePkr * item.quantity
+        ).catch(() => {});
+      }
     }),
   );
 
@@ -1752,8 +1762,8 @@ router.post("/me/:orderId/cancel", requireAuth, async (req, res) => {
         eventType: UserActivityEventType.PRODUCT_CANCELLED,
         productId: item.productId,
         brandId: item.product.brandId,
-        topCategory: item.product.topCategory,
-        subCategory: item.product.subCategory,
+        topCategory: item.product.category,
+        subCategory: item.product.subcategory || undefined,
         sourcePage: "order-cancel",
         gender: item.product.gender,
         metadata: {
@@ -1774,6 +1784,7 @@ router.post("/me/:orderId/sub-orders/:subOrderId/cancel", requireAuth, async (re
       reasonCode: cancelReasonCodeSchema.optional(),
       customReason: z.string().trim().max(240).optional(),
       note: z.string().trim().max(240).optional(),
+      orderItemIds: z.array(z.string()).optional(),
     })
     .safeParse(req.body || {});
 
@@ -1824,6 +1835,7 @@ router.post("/me/:orderId/sub-orders/:subOrderId/cancel", requireAuth, async (re
     return res.status(409).json({ message: "This vendor group is already cancelled." });
   }
 
+  // All item-level cancellations from customer are treated as requests
   if (cancellationMode === "REQUEST") {
     const request = await prisma.$transaction(async (tx) => {
       const existing = await tx.cancellationRequest.findFirst({
@@ -1846,6 +1858,7 @@ router.post("/me/:orderId/sub-orders/:subOrderId/cancel", requireAuth, async (re
           requestedById: req.auth!.userId,
           reasonCode: mapCustomerCancellationReasonCode(payload.data.reasonCode),
           reasonText: cancellationReason || null,
+          orderItemIds: payload.data.orderItemIds,
           expiresAt: deadlines.expiresAt,
           autoApproveAt: deadlines.autoApproveAt,
         },
@@ -1884,40 +1897,50 @@ router.post("/me/:orderId/sub-orders/:subOrderId/cancel", requireAuth, async (re
 
   const canceled = await prisma.$transaction(async (tx) => {
     if (targetSubOrder.status !== OrderStatus.CANCELED) {
-      await tx.subOrder.update({
-        where: { id: targetSubOrder.id },
-        data: { status: OrderStatus.CANCELED },
-      });
+      const isPartial = payload.data.orderItemIds && payload.data.orderItemIds.length > 0 && payload.data.orderItemIds.length < targetSubOrder.items.length;
+      const cancelledItemIds = isPartial ? payload.data.orderItemIds : targetSubOrder.items.map((i: any) => i.id);
+      const itemsToCancel = targetSubOrder.items.filter((i: any) => cancelledItemIds!.includes(i.id));
+
+      if (!isPartial) {
+        await tx.subOrder.update({
+          where: { id: targetSubOrder.id },
+          data: { status: OrderStatus.CANCELED },
+        });
+      }
 
       await restockOrderItems(
         tx,
-        targetSubOrder.items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+        itemsToCancel.map((item: any) => ({ productId: item.productId, quantity: item.quantity })),
       );
 
       await tx.subOrderStatusLog.create({
         data: {
           subOrderId: targetSubOrder.id,
-          status: OrderStatus.CANCELED,
+          status: isPartial ? targetSubOrder.status : OrderStatus.CANCELED,
           updatedBy: "USER",
           updatedById: req.auth!.userId,
-          note: composeStatusNote(cancellationReason || "Vendor group cancelled by customer"),
+          note: isPartial
+            ? `CANCELLED_ITEMS:${cancelledItemIds!.join(",")} | Partial item cancellation by customer: ${cancellationReason || "Customer cancelled specific items"}`
+            : composeStatusNote(cancellationReason || "Vendor group cancelled by customer"),
         },
       });
 
-      await writeStatusHistory(tx, {
-        subOrderId: targetSubOrder.id,
-        oldStatus: targetSubOrder.status,
-        newStatus: OrderStatus.CANCELED,
-        changedByRole: "USER",
-        changedById: req.auth!.userId,
-        reason: mapCustomerCancellationReasonCode(payload.data.reasonCode),
-        note: cancellationReason || "Vendor group cancelled by customer",
-      });
+      if (!isPartial) {
+        await writeStatusHistory(tx, {
+          subOrderId: targetSubOrder.id,
+          oldStatus: targetSubOrder.status,
+          newStatus: OrderStatus.CANCELED,
+          changedByRole: "USER",
+          changedById: req.auth!.userId,
+          reason: mapCustomerCancellationReasonCode(payload.data.reasonCode),
+          note: cancellationReason || "Vendor group cancelled by customer",
+        });
+      }
 
       if (shouldCreateRefundForPayment(order.paymentMethod)) {
-        const refund = calculateRefundItems(targetSubOrder.items);
+        const refund = calculateRefundItems(itemsToCancel as any);
         if (refund.amountPkr > 0) {
-          await createRefundRecord(tx, {
+          const refundRec = await createRefundRecord(tx, {
             orderId: order.id,
             subOrderId: targetSubOrder.id,
             requestedByRole: "USER",
@@ -1927,8 +1950,51 @@ router.post("/me/:orderId/sub-orders/:subOrderId/cancel", requireAuth, async (re
             method: getRefundMethodForPayment(order.paymentMethod),
             amountPkr: refund.amountPkr,
             items: refund.refundItems,
-            note: "Auto-created after customer cancellation.",
+            note: "Auto-approved customer cancellation refund.",
           });
+
+          if (refundRec && order.paymentStatus === "COMPLETED") {
+            await tx.refundRequest.update({
+              where: { id: refundRec.id },
+              data: {
+                status: "COMPLETED",
+                completedAt: new Date(),
+              },
+            });
+
+            await tx.refundStatusLog.create({
+              data: {
+                refundRequestId: refundRec.id,
+                status: "COMPLETED",
+                updatedBy: "SYSTEM",
+                note: "Auto-approved customer cancellation refund.",
+              },
+            });
+
+            await tx.refundHistory.create({
+              data: {
+                refundRequestId: refundRec.id,
+                oldStatus: "PENDING",
+                newStatus: "COMPLETED",
+                performedByRole: "SYSTEM",
+                note: "Auto-approved customer cancellation refund.",
+              },
+            });
+
+            await tx.subOrder.update({
+              where: { id: targetSubOrder.id },
+              data: { refundProcessedAt: new Date() },
+            });
+
+            await creditWallet(tx, {
+              userId: order.userId,
+              amountPkr: refund.amountPkr,
+              sourceType: "REFUND",
+              note: "Auto-approved customer cancellation refund.",
+              orderId: order.id,
+              refundRequestId: refundRec.id,
+            });
+          }
         }
       }
     }
@@ -2005,8 +2071,8 @@ router.post("/me/:orderId/sub-orders/:subOrderId/cancel", requireAuth, async (re
           eventType: UserActivityEventType.PRODUCT_CANCELLED,
           productId: item.productId,
           brandId: item.product.brandId,
-          topCategory: item.product.topCategory,
-          subCategory: item.product.subCategory,
+          topCategory: item.product.category,
+          subCategory: item.product.subcategory || undefined,
           sourcePage: "order-cancel",
           gender: item.product.gender,
           metadata: {
@@ -2247,8 +2313,8 @@ router.post("/me/:orderId/sub-orders/:subOrderId/return", requireAuth, async (re
         eventType: UserActivityEventType.PRODUCT_RETURNED,
         productId: item.productId,
         brandId: item.product.brandId,
-        topCategory: item.product.topCategory,
-        subCategory: item.product.subCategory,
+        topCategory: item.product.category,
+        subCategory: item.product.subcategory || undefined,
         sourcePage: "order-return",
         gender: item.product.gender,
         metadata: {
@@ -2724,6 +2790,7 @@ router.get("/me", requireAuth, async (req, res) => {
             },
             orderBy: { createdAt: "desc" },
           },
+          cancellationRequests: true,
         },
         orderBy: { createdAt: "asc" },
       },
@@ -2777,6 +2844,7 @@ router.get("/me/:orderId", requireAuth, async (req, res) => {
             },
             orderBy: { createdAt: "desc" },
           },
+          cancellationRequests: true,
         },
         orderBy: { createdAt: "asc" },
       },

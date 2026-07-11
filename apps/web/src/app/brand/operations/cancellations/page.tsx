@@ -64,15 +64,24 @@ export default function BrandCancellationInboxPage() {
       <section className="space-y-3">
         {!filtered.length ? <p className="border border-zinc-300 p-5 text-sm text-zinc-700">No requests in this view.</p> : filtered.map((request) => {
           const urgent = request.expiresAt && new Date(request.expiresAt).getTime() - Date.now() <= 60 * 60 * 1000;
-          const autoApproved = request.history?.some((entry) => entry.action === "AUTO_APPROVED");
+          const isBrandApproved = request.brandResponseCode === "APPROVED_STILL_CANCELLABLE" || request.history?.some((entry: any) => entry.action === "AUTO_APPROVED" || entry.action === "APPROVED");
           const responseLabel = request.brandResponseCode ? cancellationResponseLabels[request.brandResponseCode] || request.brandResponseCode : null;
+          const cardTone = isBrandApproved ? "border-emerald-300 bg-emerald-50/60" : urgent ? "border-orange-300 bg-orange-50" : "border-zinc-300";
+
           return (
-            <article key={request.id} className={`border p-4 ${urgent ? "border-orange-300 bg-orange-50" : "border-zinc-300"}`}>
+            <article key={request.id} className={`border p-4 ${cardTone}`}>
               <div className="grid gap-3 md:grid-cols-[1.2fr_1fr_1fr_auto]">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">User request</p>
-                  <p className="text-sm font-semibold">{request.subOrderId}</p>
-                  <p className="mt-1 text-sm text-zinc-600">{(request.subOrder?.items || []).map((item) => `${item.product?.name || "Product"} x${item.quantity}`).join(", ")}</p>
+                  <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Request {request.id}</p>
+                  <Link href={`/brand/orders/${request.orderId}?subOrderId=${request.subOrderId}`} className="text-sm font-semibold underline decoration-zinc-400 underline-offset-2">
+                    {request.subOrderId}
+                  </Link>
+                  <p className="mt-1 text-sm text-zinc-600">
+                    {(request.subOrder?.items || [])
+                      .filter((item: any) => !request.orderItemIds?.length || request.orderItemIds.includes(item.id))
+                      .map((item: any) => `${item.product?.name || "Product"} x${item.quantity}`)
+                      .join(", ")}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Customer reason</p>
@@ -82,7 +91,7 @@ export default function BrandCancellationInboxPage() {
                 <div>
                   <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Window</p>
                   <p className="text-sm text-zinc-700">{countdown(request.expiresAt)} remaining</p>
-                  <p className="text-xs text-zinc-500">{autoApproved ? "Auto-approved" : request.status}</p>
+                  <p className="text-xs font-semibold text-zinc-800">{isBrandApproved ? "Brand Approved" : request.status}</p>
                   {responseLabel ? <p className="mt-1 text-sm text-zinc-800"><span className="font-semibold">Brand response:</span> {responseLabel}</p> : null}
                   {request.brandResponseNote ? <p className="mt-1 text-sm text-zinc-600">{request.brandResponseNote}</p> : null}
                 </div>

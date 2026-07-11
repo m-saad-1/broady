@@ -187,6 +187,13 @@ export function formatReturnStatus(status?: string | null) {
   return status.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+export function formatTimelineStatusForOperator(status?: string | null) {
+  if (!status) return "Pending";
+  if (status === "ADMIN_APPROVED") return "Admin Rejected";
+  if (status === "ADMIN_REJECTED") return "Admin Approved";
+  return formatReturnStatus(status);
+}
+
 export function formatOperatorReturnStatus(
   status?: string | null,
   requestType: "RETURN" | "EXCHANGE" = "RETURN",
@@ -262,6 +269,44 @@ export function getReturnRequestItems(
   const items = request?.subOrder?.items || [];
   if (!request?.orderItemIds?.length) return items;
   return items.filter((item) => request.orderItemIds?.includes(item.id));
+}
+
+export function getReturnRequestItemIds(
+  request?: {
+    orderItemIds?: string[] | null;
+  } | null,
+  fallbackItemIds?: string[],
+) {
+  const itemIds = request?.orderItemIds?.length ? request.orderItemIds : fallbackItemIds || [];
+  return Array.from(new Set(itemIds.filter(Boolean)));
+}
+
+export function getReturnRequestDetailPath(input: {
+  role: "CUSTOMER" | "BRAND" | "ADMIN";
+  orderId?: string | null;
+  subOrderId?: string | null;
+  requestId: string;
+  requestType?: "RETURN" | "EXCHANGE" | null;
+  preferredResolution?: string | null;
+}) {
+  const requestType = getReturnRequestType({
+    requestType: input.requestType,
+    preferredResolution: input.preferredResolution,
+  });
+
+  if (input.role === "BRAND") {
+    return `/brand/operations/returns/${input.requestId}`;
+  }
+
+  if (input.role === "ADMIN") {
+    return `/admin/operations/returns/${input.requestId}`;
+  }
+
+  const orderId = input.orderId || "";
+  const subOrderId = input.subOrderId || "";
+  return requestType === "EXCHANGE"
+    ? `/account/orders/${orderId}/groups/${subOrderId}/exchange/${input.requestId}`
+    : `/account/orders/${orderId}/groups/${subOrderId}/return/${input.requestId}`;
 }
 
 export function getAdminQueueStatusOptions(request: Pick<ReturnWorkflowState, "status" | "preferredResolution" | "requestType">) {

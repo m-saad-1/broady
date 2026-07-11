@@ -93,16 +93,17 @@ export type IngestionQueueStats = {
 export type IngestionQueueMetrics = Record<string, IngestionQueueStats>;
 
 export type CatalogFilterOptions = {
-  brands: Array<Pick<Brand, "id" | "name" | "slug">>;
-  divisions: string[];
-  categories: string[];
-  subTypes: string[];
-  sizes: string[];
-  colors: string[];
-  priceRange: {
-    min: number;
-    max: number;
-  };
+  availableGenders: Array<{ value: string; label: string; count: number }>;
+  availableDepartments: Array<{ value: string; label: string; count: number }>;
+  availableCategories: Array<{ value: string; label: string; count: number }>;
+  availableSubcategories: Array<{ value: string; label: string; count: number }>;
+  availableBrands: Array<{ id: string; name: string; slug: string; count: number }>;
+  availableSizes: Array<{ value: string; count: number }>;
+  availableColors: Array<{ value: string; count: number }>;
+  availableFits?: Array<{ value: string; count: number }>;
+  availableMaterials?: Array<{ value: string; count: number }>;
+  priceRange: { min: number; max: number };
+  totalCount: number;
 };
 
 export type ProductContentTemplate = {

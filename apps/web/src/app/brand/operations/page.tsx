@@ -31,34 +31,6 @@ export default async function BrandOperationsPage({ searchParams }: BrandOperati
           <Link href="/brand/orders" className="inline-flex h-10 items-center border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white">
             View Orders
           </Link>
-          <Link
-            href="/brand/operations"
-            aria-current={activeTab === "overview" ? "page" : undefined}
-            className={`${tabLinkClass} ${activeTab === "overview" ? "border-black bg-black text-white" : "border-zinc-300"}`}
-          >
-            Overview
-          </Link>
-          <Link
-            href="/brand/operations?tab=cancellations"
-            aria-current={activeTab === "cancellations" ? "page" : undefined}
-            className={`${tabLinkClass} ${activeTab === "cancellations" ? "border-black bg-black text-white" : "border-zinc-300"}`}
-          >
-            Cancellation Requests
-          </Link>
-          <Link
-            href="/brand/operations?tab=returns"
-            aria-current={activeTab === "returns" ? "page" : undefined}
-            className={`${tabLinkClass} ${activeTab === "returns" ? "border-black bg-black text-white" : "border-zinc-300"}`}
-          >
-            Return / Exchange Requests
-          </Link>
-          <Link
-            href="/brand/operations?tab=refunds"
-            aria-current={activeTab === "refunds" ? "page" : undefined}
-            className={`${tabLinkClass} ${activeTab === "refunds" ? "border-black bg-black text-white" : "border-zinc-300"}`}
-          >
-            Refund Requests
-          </Link>
         </div>
       </header>
 

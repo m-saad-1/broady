@@ -13,6 +13,8 @@ import {
   formatOperatorReturnStatus,
   formatReturnReasonLabel,
   getDisplayReturnStatus,
+  getReturnRequestDetailPath,
+  getReturnRequestItemIds,
   getReturnRequestItems,
   getReturnRequestType,
 } from "@/lib/return-workflow";
@@ -30,6 +32,36 @@ type RequestListItem = NonNullable<UserOrder["subOrders"][number]["returnRequest
   order: UserOrder;
   subOrder: UserOrder["subOrders"][number];
 };
+
+function getLatestItemRequest(
+  orderId: string,
+  subOrder: UserOrder["subOrders"][number],
+  itemId: string,
+) {
+  const matched = (subOrder.returnRequests || [])
+    .filter((request) => getReturnRequestItemIds(request, subOrder.items.map((item) => item.id)).includes(itemId))
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime())[0];
+
+  if (!matched) return null;
+
+  const requestType = getReturnRequestType(matched);
+  const displayStatus = getDisplayReturnStatus(matched);
+
+  return {
+    id: matched.id,
+    requestType,
+    displayStatus,
+    label: requestType === "EXCHANGE" ? "Exchange Requested for this Product" : "Return Requested for this Product",
+    path: getReturnRequestDetailPath({
+      role: "CUSTOMER",
+      orderId,
+      subOrderId: subOrder.id,
+      requestId: matched.id,
+      requestType: matched.requestType,
+      preferredResolution: matched.preferredResolution,
+    }),
+  };
+}
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("en-PK", {
@@ -77,28 +109,60 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
   }, []);
 
   const displayedOrders = useMemo(() => {
+    const getRequestedItemIds = (group: UserOrder["subOrders"][number]) => {
+      const ids = new Set<string>();
+      for (const request of group.returnRequests || []) {
+        for (const itemId of getReturnRequestItemIds(request, group.items.map((item) => item.id))) {
+          ids.add(itemId);
+        }
+      }
+      return ids;
+    };
+
     const getVisibleItems = (group: UserOrder["subOrders"][number]) => {
       const cancelledIds = getCancelledOrderItemIds(group.statusLogs);
-      if (group.status === "CANCELED") return activeTab === "CANCELED" ? group.items : [];
-      if (activeTab === "CANCELED") return group.items.filter((item) => cancelledIds.has(item.id));
+      
+      const sortItems = (items: typeof group.items) => {
+        return [...items].sort((a, b) => {
+          const aCancelledOrRequested = cancelledIds.has(a.id) || group.cancellationRequests?.some(req => req.orderItemIds?.includes(a.id) && req.status !== "CANCELLED_BY_USER");
+          const bCancelledOrRequested = cancelledIds.has(b.id) || group.cancellationRequests?.some(req => req.orderItemIds?.includes(b.id) && req.status !== "CANCELLED_BY_USER");
+          if (aCancelledOrRequested && !bCancelledOrRequested) return 1;
+          if (!aCancelledOrRequested && bCancelledOrRequested) return -1;
+          return 0;
+        });
+      };
+
+      if (group.status === "CANCELED") return activeTab === "CANCELED" ? sortItems(group.items) : [];
+      if (activeTab === "CANCELED") {
+        return sortItems(group.items.filter((item) => cancelledIds.has(item.id) || group.cancellationRequests?.some(req => req.orderItemIds?.includes(item.id) && req.status !== "CANCELLED_BY_USER")));
+      }
       if (activeTab === "OPEN") {
         if (["DELIVERED", "CANCELED", "RETURNED", "SHIPMENT_RETURNED"].includes(group.status)) return [];
-        return group.items.filter((item) => !cancelledIds.has(item.id));
+        return sortItems(group.items);
       }
       if (activeTab === "DELIVERED") {
-        return group.status === "DELIVERED" ? group.items.filter((item) => !cancelledIds.has(item.id)) : [];
+        return group.status === "DELIVERED" ? sortItems(group.items) : [];
       }
       return [];
     };
 
     const matchesTab = (group: UserOrder["subOrders"][number]) => {
       if (activeTab === "CANCELED") {
-        return group.status === "CANCELED" || getCancelledOrderItemIds(group.statusLogs).size > 0;
+        return group.status === "CANCELED" || getCancelledOrderItemIds(group.statusLogs).size > 0 || (group.cancellationRequests?.some(req => req.status !== "CANCELLED_BY_USER") ?? false);
       }
       if (activeTab === "OPEN") {
-        return !["DELIVERED", "CANCELED", "RETURNED", "SHIPMENT_RETURNED"].includes(group.status) && getVisibleItems(group).length > 0;
+        const cancelledIds = getCancelledOrderItemIds(group.statusLogs);
+        const hasActiveItems = group.items.some(item => !cancelledIds.has(item.id));
+        return !["DELIVERED", "CANCELED", "RETURNED", "SHIPMENT_RETURNED"].includes(group.status) && hasActiveItems;
       }
-      if (activeTab === "DELIVERED") return group.status === "DELIVERED";
+      if (activeTab === "DELIVERED") {
+        if (group.status !== "DELIVERED") return false;
+        const cancelledIds = getCancelledOrderItemIds(group.statusLogs);
+        const visibleItemIds = group.items.filter((item) => !cancelledIds.has(item.id)).map((item) => item.id);
+        if (!visibleItemIds.length) return false;
+        const requestedItemIds = getRequestedItemIds(group);
+        return visibleItemIds.some((itemId) => !requestedItemIds.has(itemId));
+      }
       return false;
     };
 
@@ -361,6 +425,10 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
                     <div className="space-y-2">
                       {subOrder.visibleItems.map((item) => {
                         const isCancelled = subOrder.status === "CANCELED" || subOrder.cancelledItemIds.has(item.id);
+                        const itemRequest = getLatestItemRequest(subOrder.orderId, subOrder, item.id);
+                        const cancelRequest = subOrder.cancellationRequests?.find(
+                          (req: any) => (!req.orderItemIds?.length || req.orderItemIds.includes(item.id)) && req.status !== "CANCELLED_BY_USER"
+                        );
                         return (
                           <div key={item.id} className={`flex items-center gap-3 border p-2 ${isCancelled ? "border-red-100 bg-red-50" : "border-zinc-100"}`}>
                             <div className="relative h-14 w-12 flex-none overflow-hidden border border-zinc-200 bg-zinc-50">
@@ -377,6 +445,33 @@ export function OrderTrackerClient({ compact = false }: OrderTrackerClientProps)
                               <p className="mt-1 text-[11px] text-zinc-600">
                                 Color: {item.selectedColor || "N/A"} | Size: {item.selectedSize || "N/A"}
                               </p>
+                              {itemRequest ? (
+                                <Link
+                                  href={itemRequest.path}
+                                  className={`mt-2 inline-flex border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                                    itemRequest.requestType === "EXCHANGE"
+                                      ? "border-amber-300 bg-amber-100 text-amber-800"
+                                      : "border-sky-300 bg-sky-100 text-sky-800"
+                                  }`}
+                                >
+                                  {itemRequest.label}
+                                </Link>
+                              ) : null}
+                              {cancelRequest ? (
+                                <div className="mt-2 flex flex-col gap-1 items-start">
+                                  <span className={`text-[10px] font-semibold uppercase tracking-wider ${
+                                    cancelRequest.status === "REJECTED" ? "text-red-600" : "text-amber-700"
+                                  }`}>
+                                    {cancelRequest.status === "REJECTED" ? "Cancellation Rejected" : "Cancellation Requested"}
+                                  </span>
+                                  <Link
+                                    href={`/account/orders/${order.id}/groups/${subOrder.id}/cancellation`}
+                                    className="inline-flex border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] border-zinc-300 text-zinc-700 hover:border-black hover:text-black"
+                                  >
+                                    Track Cancellation
+                                  </Link>
+                                </div>
+                              ) : null}
                             </div>
                             {isCancelled ? <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-red-700">Cancelled</span> : null}
                             <p className="text-xs font-semibold">{formatPkr(item.unitPricePkr)}</p>

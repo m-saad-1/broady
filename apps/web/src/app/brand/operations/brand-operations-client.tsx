@@ -198,7 +198,7 @@ export function BrandOperationsClient({ activeTab }: BrandOperationsClientProps)
         evidenceUrl: draft.evidenceUrl.trim() || undefined,
       });
       setPendingCancellationResponseId(null);
-      pushToast("Cancellation response submitted for review.", "success");
+      pushToast(draft.responseCode === "STILL_CANCELLABLE" ? "Cancellation Approved." : "Cancellation response submitted for review.", "success");
       await loadData();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to submit cancellation response";
@@ -255,6 +255,23 @@ export function BrandOperationsClient({ activeTab }: BrandOperationsClientProps)
     }
   };
 
+  const getUnviewedCount = (tabKey: string, items: Array<{ updatedAt?: string; createdAt?: string }>) => {
+    if (typeof window === "undefined") return 0;
+    const lastViewed = parseInt(window.localStorage.getItem(`brand_ops_viewed_${tabKey}`) || "0", 10);
+    return items.filter(item => new Date(item.updatedAt || item.createdAt || 0).getTime() > lastViewed).length;
+  };
+
+  const markTabAsViewed = (tabKey: string) => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(`brand_ops_viewed_${tabKey}`, Date.now().toString());
+  };
+
+  useEffect(() => {
+    if (!loading && activeTab !== "overview") {
+      markTabAsViewed(activeTab);
+    }
+  }, [loading, activeTab]);
+
   if (loading) {
     return <p className="text-sm text-zinc-600">Loading brand operations...</p>;
   }
@@ -267,8 +284,44 @@ export function BrandOperationsClient({ activeTab }: BrandOperationsClientProps)
     : null;
   const pendingCancellationDraft = pendingCancellationResponseId ? cancellationDrafts[pendingCancellationResponseId] : null;
 
+  const cancellationUnviewed = activeTab === "cancellations" ? 0 : getUnviewedCount("cancellations", cancellationRequests);
+  const returnsUnviewed = activeTab === "returns" ? 0 : getUnviewedCount("returns", returnRequests);
+  const refundsUnviewed = activeTab === "refunds" ? 0 : getUnviewedCount("refunds", refundRequests);
+
+  const tabLinkClass = "relative inline-flex h-10 items-center border px-4 text-xs font-semibold uppercase tracking-[0.12em]";
+
   return (
     <div className="space-y-8">
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href="/brand/operations"
+          className={`${tabLinkClass} ${activeTab === "overview" ? "border-black bg-black text-white" : "border-zinc-300 bg-white"}`}
+        >
+          Overview
+        </Link>
+        <Link
+          href="/brand/operations?tab=cancellations"
+          className={`${tabLinkClass} ${activeTab === "cancellations" ? "border-black bg-black text-white" : "border-zinc-300 bg-white"}`}
+        >
+          Cancellation Requests
+          {cancellationUnviewed > 0 && <span className="ml-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-[10px] text-white">{cancellationUnviewed}</span>}
+        </Link>
+        <Link
+          href="/brand/operations?tab=returns"
+          className={`${tabLinkClass} ${activeTab === "returns" ? "border-black bg-black text-white" : "border-zinc-300 bg-white"}`}
+        >
+          Return / Exchange Requests
+          {returnsUnviewed > 0 && <span className="ml-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-[10px] text-white">{returnsUnviewed}</span>}
+        </Link>
+        <Link
+          href="/brand/operations?tab=refunds"
+          className={`${tabLinkClass} ${activeTab === "refunds" ? "border-black bg-black text-white" : "border-zinc-300 bg-white"}`}
+        >
+          Refund Requests
+          {refundsUnviewed > 0 && <span className="ml-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-[10px] text-white">{refundsUnviewed}</span>}
+        </Link>
+      </div>
+
       {showCancellationSection ? (
         <section className="space-y-3 border border-zinc-300 p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -283,154 +336,168 @@ export function BrandOperationsClient({ activeTab }: BrandOperationsClientProps)
           {cancellationRequests.length ? (
             <div className="space-y-3">
               {cancellationRequests.map((request) => {
-              const draft = cancellationDrafts[request.id] || {
-                responseCode: "STILL_CANCELLABLE",
-                note: "",
-                trackingEvidence: "",
-                evidenceUrl: "",
-              };
-              const hasResponse = Boolean(request.brandResponseCode || request.respondedAt);
-              const responseLabel = getCancellationResponseLabel(request.brandResponseCode);
-              const evidenceMissing = draft.responseCode !== "STILL_CANCELLABLE" && !hasCancellationEvidence(draft.trackingEvidence, draft.evidenceUrl);
-              const cardTone = hasResponse ? "border-emerald-200 bg-emerald-50/60" : "border-zinc-200 bg-white";
+                const draft = cancellationDrafts[request.id] || {
+                  responseCode: "STILL_CANCELLABLE",
+                  note: "",
+                  trackingEvidence: "",
+                  evidenceUrl: "",
+                };
+                const hasResponse = Boolean(request.brandResponseCode || request.respondedAt);
+                const isBrandApproved = request.brandResponseCode === "STILL_CANCELLABLE" || request.history?.some((entry: any) => entry.action === "AUTO_APPROVED" || entry.action === "APPROVED");
+                const responseLabel = getCancellationResponseLabel(request.brandResponseCode);
+                const evidenceMissing = draft.responseCode !== "STILL_CANCELLABLE" && !hasCancellationEvidence(draft.trackingEvidence, draft.evidenceUrl);
+                const cardTone = isBrandApproved ? "border-emerald-300 bg-emerald-50/60" : request.status === "APPROVED" ? "border-red-500 bg-red-50/80" : request.status === "REJECTED" ? "border-emerald-200 bg-emerald-50/60" : "border-zinc-200 bg-white";
 
-              return (
-                <article key={request.id} className={`space-y-4 border p-4 ${cardTone}`}>
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="space-y-1">
-                      <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">User request</p>
-                      <Link href={`/brand/orders/${request.subOrderId}`} className="text-sm font-semibold underline decoration-zinc-400 underline-offset-2">
-                        {request.orderId}
-                      </Link>
-                      <p className="text-sm text-zinc-700">{productSummary(request.subOrder?.items)}</p>
+                return (
+                  <article key={request.id} className={`space-y-4 border p-4 ${cardTone}`}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Request {request.id}</p>
+                        <Link href={`/brand/orders/${request.orderId}?subOrderId=${request.subOrderId}`} className="text-sm font-semibold underline decoration-zinc-400 underline-offset-2">
+                          {request.subOrderId}
+                        </Link>
+                        <p className="text-sm text-zinc-700">{productSummary(request.subOrder?.items?.filter(i => !request.orderItemIds?.length || request.orderItemIds.includes(i.id)))}</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <p className="rounded-full border border-zinc-300 bg-white px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-700">
+                          {isBrandApproved ? "Brand Approved" : request.status === "APPROVED" ? "Rejected" : request.status === "REJECTED" ? "Approved" : request.status}
+                        </p>
+                        {hasResponse && !isBrandApproved ? (
+                          <span className="rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-800">
+                            Response submitted for review
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <p className="rounded-full border border-zinc-300 bg-white px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-700">
-                        {request.status}
+
+                    <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr]">
+                      <div className="space-y-1">
+                        <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Order status</p>
+                        <p className="text-sm text-zinc-800">{request.subOrder?.status ? getOrderStatusLabel(request.subOrder.status) : "SubOrder"}</p>
+                        <p className="text-xs text-zinc-500">Expires: {formatDateTime(request.expiresAt)}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Customer reason</p>
+                        <p className="text-sm text-zinc-600">{request.reasonText}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">
+                          <span className="font-semibold text-zinc-900">Brand response:</span>
+                        </p>
+                        <p className="text-sm font-semibold text-zinc-900">{responseLabel}</p>
+                        {request.brandResponseNote ? <p className="text-sm text-zinc-600">{request.brandResponseNote}</p> : null}
+                      </div>
+                    </div>
+
+                    {!isBrandApproved && (request.status === "APPROVED" || request.status === "REJECTED") ? (
+                      <div className={`border p-3 text-sm ${request.status === "APPROVED" ? "border-red-200 bg-red-100 text-red-900" : "border-emerald-200 bg-emerald-100 text-emerald-900"}`}>
+                        <p><span className="font-semibold">Admin decision:</span> {request.status === "APPROVED" ? "Rejected" : "Approved"}</p>
+                        <p><span className="font-semibold">Admin reason:</span> {request.decisionNote || "No reason provided"}</p>
+                      </div>
+                    ) : null}
+
+                    {request.status !== "REJECTED" && request.status !== "APPROVED" && request.status !== "CANCELLED_BY_USER" ? (
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <label className="block space-y-2 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500 md:col-span-2">
+                          Response Reason
+                          <select
+                            className="h-10 w-full border border-zinc-300 px-3 text-sm font-normal text-zinc-900"
+                            value={draft.responseCode}
+                            onChange={(event) =>
+                              setCancellationDrafts((current) => ({
+                                ...current,
+                                [request.id]: { ...draft, responseCode: event.target.value },
+                              }))
+                            }
+                          >
+                            {cancellationResponseOptions.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        {draft.responseCode !== "STILL_CANCELLABLE" ? (
+                          <>
+                            <label className="block space-y-2 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
+                              Operational Note
+                              <input
+                                className="h-10 w-full border border-zinc-300 px-3 text-sm font-normal text-zinc-900"
+                                placeholder="Add review note"
+                                value={draft.note}
+                                onChange={(event) =>
+                                  setCancellationDrafts((current) => ({
+                                    ...current,
+                                    [request.id]: { ...draft, note: event.target.value },
+                                  }))
+                                }
+                              />
+                            </label>
+                            <label className="block space-y-2 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
+                              Tracking / Pickup Evidence
+                              <input
+                                className="h-10 w-full border border-zinc-300 px-3 text-sm font-normal text-zinc-900"
+                                placeholder="Tracking ID, pickup note, or courier evidence"
+                                value={draft.trackingEvidence}
+                                onChange={(event) =>
+                                  setCancellationDrafts((current) => ({
+                                    ...current,
+                                    [request.id]: { ...draft, trackingEvidence: event.target.value },
+                                  }))
+                                }
+                              />
+                            </label>
+                            <label className="block space-y-2 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
+                              Evidence URL
+                              <input
+                                className="h-10 w-full border border-zinc-300 px-3 text-sm font-normal text-zinc-900"
+                                placeholder="Optional URL"
+                                value={draft.evidenceUrl}
+                                onChange={(event) =>
+                                  setCancellationDrafts((current) => ({
+                                    ...current,
+                                    [request.id]: { ...draft, evidenceUrl: event.target.value },
+                                  }))
+                                }
+                              />
+                            </label>
+                          </>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {request.status !== "REJECTED" && request.status !== "APPROVED" && request.status !== "CANCELLED_BY_USER" && draft.responseCode !== "STILL_CANCELLABLE" ? (
+                      <p className={`text-xs ${evidenceMissing ? "font-semibold text-red-700" : "text-zinc-500"}`}>
+                        Evidence is required when the response is not Still cancellable.
                       </p>
+                    ) : null}
+
+                    <div className="flex flex-wrap items-center gap-3">
                       {hasResponse ? (
-                        <span className="rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-800">
+                        <span className="inline-flex h-10 items-center border border-emerald-300 bg-emerald-100 px-4 text-xs font-semibold uppercase tracking-[0.12em] text-emerald-800">
                           Response submitted for review
                         </span>
-                      ) : null}
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={savingId === request.id}
+                          onClick={() => {
+                            const validationMessage = validateCancellationDraft(draft);
+                            if (validationMessage) {
+                              pushToast(validationMessage, "error");
+                              return;
+                            }
+                            setPendingCancellationResponseId(request.id);
+                          }}
+                          className="h-10 border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-50"
+                        >
+                          Review & Submit Response
+                        </button>
+                      )}
+                      {request.respondedAt ? <p className="text-xs text-zinc-500">Responded {formatDateTime(request.respondedAt)}</p> : null}
                     </div>
-                  </div>
-
-                  <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr]">
-                    <div className="space-y-1">
-                      <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Order status</p>
-                      <p className="text-sm text-zinc-800">{request.subOrder?.status ? getOrderStatusLabel(request.subOrder.status) : "SubOrder"}</p>
-                      <p className="text-xs text-zinc-500">Expires: {formatDateTime(request.expiresAt)}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Customer reason</p>
-                      <p className="text-sm text-zinc-600">{request.reasonText}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">
-                        <span className="font-semibold text-zinc-900">Brand response:</span>
-                      </p>
-                      <p className="text-sm font-semibold text-zinc-900">{responseLabel}</p>
-                      {request.brandResponseNote ? <p className="text-sm text-zinc-600">{request.brandResponseNote}</p> : null}
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <label className="block space-y-2 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
-                      Response Reason
-                      <select
-                        className="h-10 w-full border border-zinc-300 px-3 text-sm font-normal text-zinc-900"
-                        value={draft.responseCode}
-                        onChange={(event) =>
-                          setCancellationDrafts((current) => ({
-                            ...current,
-                            [request.id]: { ...draft, responseCode: event.target.value },
-                          }))
-                        }
-                      >
-                        {cancellationResponseOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="block space-y-2 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
-                      Operational Note
-                      <input
-                        className="h-10 w-full border border-zinc-300 px-3 text-sm font-normal text-zinc-900"
-                        placeholder="Add review note"
-                        value={draft.note}
-                        onChange={(event) =>
-                          setCancellationDrafts((current) => ({
-                            ...current,
-                            [request.id]: { ...draft, note: event.target.value },
-                          }))
-                        }
-                      />
-                    </label>
-                    <label className="block space-y-2 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
-                      Tracking / Pickup Evidence
-                      <input
-                        className="h-10 w-full border border-zinc-300 px-3 text-sm font-normal text-zinc-900"
-                        placeholder="Tracking ID, pickup note, or courier evidence"
-                        value={draft.trackingEvidence}
-                        onChange={(event) =>
-                          setCancellationDrafts((current) => ({
-                            ...current,
-                            [request.id]: { ...draft, trackingEvidence: event.target.value },
-                          }))
-                        }
-                      />
-                    </label>
-                    <label className="block space-y-2 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
-                      Evidence URL
-                      <input
-                        className="h-10 w-full border border-zinc-300 px-3 text-sm font-normal text-zinc-900"
-                        placeholder="Optional image or evidence link"
-                        value={draft.evidenceUrl}
-                        onChange={(event) =>
-                          setCancellationDrafts((current) => ({
-                            ...current,
-                            [request.id]: { ...draft, evidenceUrl: event.target.value },
-                          }))
-                        }
-                      />
-                    </label>
-                  </div>
-
-                  {draft.responseCode !== "STILL_CANCELLABLE" ? (
-                    <p className={`text-xs ${evidenceMissing ? "font-semibold text-red-700" : "text-zinc-500"}`}>
-                      Evidence is required when the response is not Still cancellable.
-                    </p>
-                  ) : null}
-
-                  <div className="flex flex-wrap items-center gap-3">
-                    {hasResponse ? (
-                      <span className="inline-flex h-10 items-center border border-emerald-300 bg-emerald-100 px-4 text-xs font-semibold uppercase tracking-[0.12em] text-emerald-800">
-                        Response submitted for review
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={savingId === request.id}
-                        onClick={() => {
-                          const validationMessage = validateCancellationDraft(draft);
-                          if (validationMessage) {
-                            pushToast(validationMessage, "error");
-                            return;
-                          }
-                          setPendingCancellationResponseId(request.id);
-                        }}
-                        className="h-10 border border-black bg-black px-4 text-xs font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-50"
-                      >
-                        Review & Submit Response
-                      </button>
-                    )}
-                    {request.respondedAt ? <p className="text-xs text-zinc-500">Responded {formatDateTime(request.respondedAt)}</p> : null}
-                  </div>
-                </article>
-              );
+                  </article>
+                );
               })}
             </div>
           ) : (
@@ -453,52 +520,58 @@ export function BrandOperationsClient({ activeTab }: BrandOperationsClientProps)
           {returnRequests.length ? (
             <div className="space-y-3">
               {returnRequests.map((request) => {
-              const requestType = getReturnRequestType(request);
-              const displayStatus = getDisplayReturnStatus(request);
-              const requestItems = getReturnRequestItems(request);
-              const leadItem = requestItems[0];
-              return (
-                <article key={request.id} className="space-y-3 border border-zinc-200 p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Request ID</p>
-                      <p className="text-sm font-semibold">{request.id}</p>
-                      <p className="text-sm text-zinc-600">{formatOperatorReturnStatus(displayStatus, requestType)}</p>
+                const requestType = getReturnRequestType(request);
+                const displayStatus = getDisplayReturnStatus(request);
+                const requestItems = getReturnRequestItems(request);
+                const leadItem = requestItems[0];
+                return (
+                  <article key={request.id} className="space-y-3 border border-zinc-200 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Request ID</p>
+                        <p className="text-sm font-semibold">{request.id}</p>
+                        <p className="text-sm text-zinc-600">{formatOperatorReturnStatus(displayStatus, requestType)}</p>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <Link href={`/brand/operations/returns/${request.id}`} className="inline-flex h-9 items-center border border-black bg-black px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
+                          Open Details
+                        </Link>
+                        <div className="flex flex-col items-end gap-2">
+                          <span className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${requestType === "EXCHANGE"
+                              ? "border-amber-300 bg-amber-100 text-amber-800"
+                              : "border-sky-300 bg-sky-100 text-sky-800"
+                            }`}>
+                            {requestType}
+                          </span>
+                          <p className="text-xs text-zinc-500">{formatDateTime(request.createdAt)}</p>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <span className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
-                        requestType === "EXCHANGE"
-                          ? "border-amber-300 bg-amber-100 text-amber-800"
-                          : "border-sky-300 bg-sky-100 text-sky-800"
-                      }`}>
-                        {requestType}
-                      </span>
-                      <p className="text-xs text-zinc-500">{formatDateTime(request.createdAt)}</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Order / Product</p>
+                        <p className="text-sm font-semibold">{request.orderId}</p>
+                        <p className="text-sm text-zinc-700">
+                          {leadItem ? `${leadItem.product?.name || "Product"} (${leadItem.product?.id || leadItem.id})` : productSummary(requestItems)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Basic Details</p>
+                        <p className="text-sm text-zinc-600">{formatReturnReasonLabel(request.reasonCode, request.reasonText)}</p>
+                        <p className="text-sm text-zinc-600">{request.evidenceImageUrls?.length || 0} customer evidence file(s)</p>
+                        {leadItem ? <p className="text-xs text-zinc-500">{leadItem.selectedColor || "No color"} / {leadItem.selectedSize || "No size"}</p> : null}
+                      </div>
                     </div>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Order / Product</p>
-                      <p className="text-sm font-semibold">{request.orderId}</p>
-                      <p className="text-sm text-zinc-700">
-                        {leadItem ? `${leadItem.product?.name || "Product"} (${leadItem.product?.id || leadItem.id})` : productSummary(requestItems)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Basic Details</p>
-                      <p className="text-sm text-zinc-600">{formatReturnReasonLabel(request.reasonCode, request.reasonText)}</p>
-                      <p className="text-sm text-zinc-600">{request.evidenceImageUrls?.length || 0} customer evidence file(s)</p>
-                      {leadItem ? <p className="text-xs text-zinc-500">{leadItem.selectedColor || "No color"} / {leadItem.selectedSize || "No size"}</p> : null}
-                    </div>
-                  </div>
-                  <div className="flex justify-end">
-                    <Link href={`/brand/operations/returns/${request.id}`} className="inline-flex h-9 items-center border border-black bg-black px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
-                      Open Details
-                    </Link>
-                  </div>
-                </article>
-              );
-            })}
+                    {(request.adminDecision || request.adminDecisionNote || request.adminRejectedReason) ? (
+                      <div className="grid gap-2 border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700">
+                        <p><span className="font-semibold">Admin decision:</span> {request.adminDecision || "Reviewed"}</p>
+                        <p><span className="font-semibold">Admin reason:</span> {request.adminRejectedReason || request.adminDecisionNote || "No reason added"}</p>
+                      </div>
+                    ) : null}
+
+                  </article>
+                );
+              })}
             </div>
           ) : (
             <p className="text-sm text-zinc-600">No return requests need attention.</p>
@@ -530,13 +603,12 @@ export function BrandOperationsClient({ activeTab }: BrandOperationsClientProps)
                       <p className="text-sm text-zinc-600">{request.items?.length || 0} refunded line item(s)</p>
                     </div>
                     <div className="flex flex-col items-end gap-2">
-                      <p className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
-                        request.status === "COMPLETED"
+                      <p className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${request.status === "COMPLETED"
                           ? "border-emerald-300 bg-emerald-100 text-emerald-800"
                           : request.status === "REJECTED" || request.status === "FAILED"
                             ? "border-red-300 bg-red-100 text-red-800"
                             : "border-zinc-300 bg-white text-zinc-700"
-                      }`}>
+                        }`}>
                         {request.status}
                       </p>
                       {request.returnRequest?.brandRecommendation ? (

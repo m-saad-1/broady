@@ -36,9 +36,13 @@ export function AdminReturnDetailActions({ request }: AdminReturnDetailActionsPr
   }
 
   const targetStatus = getTargetStatus(reviewAction);
+  const isConfirmingBrandRejection = status === "BRAND_REJECTED" && reviewAction === "APPROVE";
+  const isOverrulingBrandRejection = status === "BRAND_REJECTED" && reviewAction === "REJECT";
+  const requiresRejectedReason = (targetStatus === "ADMIN_REJECTED" && !isConfirmingBrandRejection) || isOverrulingBrandRejection;
+
   const canSubmitReview =
     note.trim().length > 0 &&
-    (targetStatus !== "ADMIN_REJECTED" || rejectedReason.trim().length > 0);
+    (!requiresRejectedReason || rejectedReason.trim().length > 0);
 
   async function submitStatus(nextStatus: string) {
     setSaving(true);
@@ -84,26 +88,40 @@ export function AdminReturnDetailActions({ request }: AdminReturnDetailActionsPr
               {status === "RETURN_CONDITION_DISPUTED"
                 ? "Approve refund/exchange anyway"
                 : status === "BRAND_REJECTED"
-                  ? "Approve brand decision (Confirm Rejection)"
+                  ? "Approve Brand Decision (Confirm Rejection)"
                   : "Approve customer request"}
             </option>
             <option value="REJECT">
               {status === "RETURN_CONDITION_DISPUTED"
                 ? "Reject refund/exchange"
                 : status === "BRAND_REJECTED"
-                  ? "Overrule brand rejection (Approve Customer Request)"
+                  ? "Overrule Brand Rejection (Approve Customer Request)"
                   : "Confirm brand rejection"}
             </option>
             <option value="NEED_MORE_EVIDENCE">Request More Evidence</option>
           </select>
+          {status === "BRAND_REJECTED" ? (
+            <div className="border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-700">
+              {reviewAction === "APPROVE"
+                ? "Decision: APPROVED. Admin is approving the brand's rejection, so the customer's request stays rejected."
+                : reviewAction === "REJECT"
+                  ? "Decision: REJECTED. Admin is rejecting the brand's rejection, so the customer's request is approved and returns to the brand workflow."
+                  : "Request more evidence before making a final brand-rejection decision."}
+            </div>
+          ) : null}
           <textarea
             className="min-h-24 w-full border border-zinc-300 p-3 text-sm"
             placeholder={reviewAction === "NEED_MORE_EVIDENCE" ? "Evidence request note" : "Decision note"}
             value={note}
             onChange={(event) => setNote(event.target.value)}
           />
-          {targetStatus === "ADMIN_REJECTED" ? (
-            <input className="h-10 w-full border border-zinc-300 px-3 text-sm" placeholder="Rejected reason" value={rejectedReason} onChange={(event) => setRejectedReason(event.target.value)} />
+          {requiresRejectedReason ? (
+            <input
+              className="h-10 w-full border border-zinc-300 px-3 text-sm"
+              placeholder={isOverrulingBrandRejection ? "Reason for overruling the brand rejection" : "Rejected reason"}
+              value={rejectedReason}
+              onChange={(event) => setRejectedReason(event.target.value)}
+            />
           ) : null}
           <button
             type="button"
@@ -117,8 +135,8 @@ export function AdminReturnDetailActions({ request }: AdminReturnDetailActionsPr
                 ? "Request Evidence"
                 : status === "BRAND_REJECTED"
                   ? reviewAction === "APPROVE"
-                    ? "Confirm Rejection"
-                    : "Overrule & Approve"
+                    ? "Approve Brand Decision"
+                    : "Overrule Brand Rejection"
                   : reviewAction === "APPROVE"
                     ? "Approve Request"
                     : "Reject Request"}

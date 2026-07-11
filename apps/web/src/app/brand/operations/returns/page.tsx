@@ -92,13 +92,18 @@ export default function BrandReturnInboxPage() {
                     <p className="text-sm font-semibold">{request.id}</p>
                     <p className="text-sm text-zinc-600">{formatOperatorReturnStatus(displayStatus, requestType)}</p>
                   </div>
-                  <span className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
-                    requestType === "EXCHANGE"
-                      ? "border-amber-300 bg-amber-100 text-amber-800"
-                      : "border-sky-300 bg-sky-100 text-sky-800"
-                  }`}>
-                    {requestType}
-                  </span>
+                  <div className="flex items-start gap-3">
+                    <Link href={`/brand/operations/returns/${request.id}`} className="inline-flex h-9 items-center border border-black bg-black px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
+                      Open Details
+                    </Link>
+                    <span className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                      requestType === "EXCHANGE"
+                        ? "border-amber-300 bg-amber-100 text-amber-800"
+                        : "border-sky-300 bg-sky-100 text-sky-800"
+                    }`}>
+                      {requestType}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -117,23 +122,12 @@ export default function BrandReturnInboxPage() {
 
                 {(request.adminDecision || request.adminDecisionNote || request.adminRejectedReason) ? (
                   <div className="grid gap-2 border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700">
-                    <p>
-                      <span className="font-semibold">Admin decision:</span>{" "}
-                      {request.adminDecision === "APPROVED"
-                        ? "Overruled Brand Rejection (Customer Approved)"
-                        : request.adminDecision === "REJECTED"
-                          ? "Confirmed Brand Rejection (Customer Rejected)"
-                          : "Reviewed"}
-                    </p>
+                    <p><span className="font-semibold">Admin decision:</span> {request.adminDecision || "Reviewed"}</p>
                     <p><span className="font-semibold">Admin reason:</span> {request.adminRejectedReason || request.adminDecisionNote || "No reason added"}</p>
                   </div>
                 ) : null}
 
-                <div className="flex justify-end">
-                  <Link href={`/brand/operations/returns/${request.id}`} className="inline-flex h-9 items-center border border-black bg-black px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
-                    Open Details
-                  </Link>
-                </div>
+
               </article>
             );
           })

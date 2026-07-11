@@ -23,6 +23,7 @@ import {
 } from "./products.meilisearch-search.js";
 import { productBaseSchema } from "./product.validation.js";
 import { z } from "zod";
+import { incrementProductViewAnalytics } from "./analytics.service.js";
 
 const router = Router();
 
@@ -356,6 +357,7 @@ router.get("/:id", async (req, res, next) => {
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
+    if (product.category) incrementProductViewAnalytics(product.category as any, product.subcategory as any).catch(() => {});
     res.json({ data: product });
   } catch (error) {
     next(error);

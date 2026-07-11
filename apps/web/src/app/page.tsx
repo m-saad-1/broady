@@ -52,11 +52,13 @@ export default async function Home() {
   const trending = products.slice(0, 16);
   const menProducts = products.filter((product) => product.topCategory === "Men").slice(0, 16);
   const womenProducts = products.filter((product) => product.topCategory === "Women").slice(0, 16);
-  const juniorsProducts = products.filter((product) => ["Junior Boys", "Toddler Boys", "Junior Girls", "Toddler Girls"].includes(product.topCategory)).slice(0, 16);
+  const boysProducts = products.filter((product) => ["Junior Boys", "Toddler Boys"].includes(product.topCategory)).slice(0, 16);
+  const girlsProducts = products.filter((product) => ["Junior Girls", "Toddler Girls"].includes(product.topCategory)).slice(0, 16);
   const categoryHighlights = [
     { name: "Men", image: "https://images.unsplash.com/photo-1516826957135-700dedea698c?w=1200", href: "/category/Men" },
     { name: "Women", image: "https://images.unsplash.com/photo-1485968579580-b6d095142e6e?w=1200", href: "/category/Women" },
-    { name: "Juniors", image: "https://images.unsplash.com/photo-1471286174890-9c112ffca5b4?w=1200", href: "/category/Juniors" },
+    { name: "Boys", image: "https://images.unsplash.com/photo-1519238263530-99bdd11df2ea?w=1200", href: "/category/Boys" },
+    { name: "Girls", image: "https://images.unsplash.com/photo-1489424731084-a5d8b219a5bb?w=1200", href: "/category/Girls" },
   ];
 
   return (
@@ -86,7 +88,7 @@ export default async function Home() {
       </section>
 
       <GridSection title="Featured Collection" eyebrow="Curated first-look edit" href="/catalog" ctaLabel="Explore Catalog">
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {categoryHighlights.map((collection) => (
             <Link key={collection.name} href={collection.href} className="group relative aspect-[4/5] overflow-hidden border border-zinc-300">
               <Image
@@ -120,9 +122,15 @@ export default async function Home() {
         </div>
       </GridSection>
 
-      <GridSection title="Juniors" eyebrow="Category spotlight" href="/category/Juniors" ctaLabel="View Juniors">
+      <GridSection title="Boys" eyebrow="Category spotlight" href="/category/Boys" ctaLabel="View Boys">
         <div className="min-w-0 overflow-x-hidden">
-          <RecommendedProductCarouselRow products={juniorsProducts} label="Juniors" topCategory="Juniors" source="home-juniors" />
+          <RecommendedProductCarouselRow products={boysProducts} label="Boys" topCategory="Junior Boys" source="home-boys" />
+        </div>
+      </GridSection>
+
+      <GridSection title="Girls" eyebrow="Category spotlight" href="/category/Girls" ctaLabel="View Girls">
+        <div className="min-w-0 overflow-x-hidden">
+          <RecommendedProductCarouselRow products={girlsProducts} label="Girls" topCategory="Junior Girls" source="home-girls" />
         </div>
       </GridSection>
 

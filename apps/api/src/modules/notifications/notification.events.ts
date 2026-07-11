@@ -83,11 +83,17 @@ export type NotificationEvent =
       orderId: string;
       paymentMethod?: "COD" | "JAZZCASH" | "EASYPAISA";
       reason?: string;
+      returnRequestId?: string;
+      refundRequestId?: string;
+      requestType?: "RETURN" | "EXCHANGE";
+      subOrderId?: string;
     })
   | (BaseEvent & {
       name: typeof notificationEventNames.returnStateUpdated;
       orderId: string;
       subOrderId?: string;
+      returnRequestId?: string;
+      requestType?: "RETURN" | "EXCHANGE";
       note?: string;
       brandName?: string;
       changedByRole?: "SYSTEM" | "ADMIN" | "BRAND" | "USER";

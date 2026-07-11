@@ -141,7 +141,11 @@ const CATEGORY_ALIAS_MAP: Record<string, BroadyCategory> = {
   sunglasses: "sunglasses",
   jewelry: "jewellery",
   jewellery: "jewellery",
-  accessories: "bag",
+  underwear: "underwear",
+  boxer: "underwear",
+  boxers: "underwear",
+  brief: "underwear",
+  briefs: "underwear",
 };
 
 const SUB_TYPE_ALIAS_MAP: Record<string, BroadySubType> = {
@@ -175,6 +179,10 @@ const SUB_TYPE_ALIAS_MAP: Record<string, BroadySubType> = {
   bomber: "bomber",
   windbreaker: "windbreaker",
   quilted: "quilted",
+  boxer: "boxer",
+  boxers: "boxer",
+  brief: "brief",
+  briefs: "brief",
 };
 
 const DIVISION_TO_LEGACY_TYPE: Record<BroadyDivision, "Top" | "Bottom" | "Footwear" | "Accessories"> = {
@@ -222,6 +230,7 @@ const CATEGORY_TO_LEGACY_SUBCATEGORY: Partial<Record<BroadyCategory, string>> = 
   scarf: "Scarves",
   sunglasses: "Sunglasses",
   jewellery: "Jewellery",
+  underwear: "Underwear",
 };
 
 function normalizeToken(value?: string | null) {
@@ -261,7 +270,7 @@ function normalizeGender(rawValue?: string | null, urlSegments: string[] = [], b
     if (/\bwomen\b|\bwoman\b|\bfemale\b/.test(normalized)) return "women";
     if (/\bboys\b|\bboy\b|\bjunior boys\b|\btoddler boys\b/.test(normalized)) return "boys";
     if (/\bgirls\b|\bgirl\b|\bjunior girls\b|\btoddler girls\b/.test(normalized)) return "girls";
-    if (/\bunisex\b/.test(normalized)) return "men";
+    if (/\bunisex\b/.test(normalized)) return "unisex";
   }
   return null;
 }
@@ -275,7 +284,8 @@ function normalizeCategory(rawValue?: string | null, title?: string | null): Bro
       return CATEGORY_ALIAS_MAP[normalized];
     }
     for (const [alias, category] of Object.entries(CATEGORY_ALIAS_MAP)) {
-      if (normalized.includes(alias)) {
+      const regex = new RegExp(`\\b${alias}\\b`, 'i');
+      if (regex.test(normalized)) {
         return category;
       }
     }
@@ -290,7 +300,7 @@ function normalizeSubType(rawValue?: string | null, title?: string | null, categ
     if (!normalized) continue;
     const matched =
       SUB_TYPE_ALIAS_MAP[normalized] ||
-      Object.entries(SUB_TYPE_ALIAS_MAP).find(([alias]) => normalized.includes(alias))?.[1];
+      Object.entries(SUB_TYPE_ALIAS_MAP).find(([alias]) => new RegExp(`\\b${alias}\\b`, 'i').test(normalized))?.[1];
     if (!matched) continue;
     if (category) {
       const allowed = BROADY_SUB_TYPES_BY_CATEGORY[category];
@@ -309,7 +319,7 @@ function resolveTopCategory(gender: BroadyGender | null) {
   if (gender === "women") return "Women";
   if (gender === "boys") return "Junior Boys";
   if (gender === "girls") return "Junior Girls";
-  return "Women";
+  return "Unisex";
 }
 
 export function resolveBroadyTaxonomy(input: TaxonomyResolutionInput): ResolvedBroadyTaxonomy {

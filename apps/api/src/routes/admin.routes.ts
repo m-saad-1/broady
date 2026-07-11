@@ -7,6 +7,14 @@ import { queueNotificationEvent } from "../modules/notifications/notification.se
 import { inferReturnRequestType, normalizeReturnRequestForApi } from "../modules/orders/return-workflow.js";
 import { runShippingAutomationSweep } from "../modules/orders/shippingAutomation.service.js";
 import { creditWallet } from "../modules/users/wallet.service.js";
+import {
+  deriveParentOrderStatus,
+  writeStatusHistory,
+  shouldCreateRefundForPayment,
+  calculateRefundItems,
+  createRefundRecord,
+  getRefundMethodForPayment,
+} from "../modules/orders/order-lifecycle.service.js";
 
 const router = Router();
 const OPEN_ORDER_STATUSES = new Set(["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "OUT_FOR_DELIVERY", "DELIVERY_FAILED"]);
@@ -112,7 +120,8 @@ router.get("/operations", async (req, res) => {
       where: { status: query.data.refundStatus },
       include: {
         order: { select: { id: true, userId: true, paymentMethod: true } },
-        subOrder: { select: { id: true, brandId: true, subtotalPkr: true, status: true } },
+        subOrder: { select: { id: true, brandId: true, subtotalPkr: true, status: true, brand: { select: { name: true } } } },
+        items: { include: { orderItem: { include: { product: { select: { id: true, name: true, imageUrl: true } } } } } },
         statusLogs: { orderBy: { createdAt: "desc" } },
       },
       orderBy: { createdAt: "desc" },
@@ -245,7 +254,15 @@ router.patch("/cancellation-requests/:requestId/status", async (req, res) => {
   const db = prisma as any;
   const request = await db.cancellationRequest.findUnique({
     where: { id: String(req.params.requestId) },
-    include: { order: true, subOrder: true },
+    include: {
+      order: true,
+      subOrder: {
+        include: {
+          brand: { select: { id: true, name: true } },
+          items: true,
+        },
+      },
+    },
   });
 
   if (!request) return res.status(404).json({ message: "Cancellation request not found" });
@@ -265,32 +282,158 @@ router.patch("/cancellation-requests/:requestId/status", async (req, res) => {
     if (payload.data.status === "APPROVED") {
       await dbTx.subOrder.update({
         where: { id: request.subOrderId },
-        data: { status: "CANCELLED" },
+        data: { status: "CANCELED" },
       });
 
-      if (request.order.paymentStatus === "PAID" || request.order.paymentMethod !== "COD") {
-        await dbTx.refundRequest.create({
-          data: {
-            orderId: request.orderId,
-            subOrderId: request.subOrderId,
-            cancellationRequestId: request.id,
-            requestedByRole: "ADMIN",
-            requestedById: req.auth!.userId,
-            reasonCode: "ORDER_CANCELLED",
-            method: payload.data.refundMethod || "ORIGINAL_SOURCE",
-            amountPkr: request.subOrder.subtotalPkr,
-            status: "APPROVED",
-          },
+      await Promise.all(
+        request.subOrder.items.map((item: any) =>
+          dbTx.product.update({
+            where: { id: item.productId },
+            data: { stock: { increment: item.quantity } },
+          })
+        )
+      );
+
+      await dbTx.subOrderStatusLog.create({
+        data: {
+          subOrderId: request.subOrderId,
+          status: "CANCELED",
+          updatedBy: "ADMIN",
+          updatedById: req.auth!.userId,
+          note: payload.data.note || "Cancellation request approved by admin.",
+        },
+      });
+
+      await writeStatusHistory(tx, {
+        subOrderId: request.subOrderId,
+        oldStatus: request.subOrder.status,
+        newStatus: "CANCELED",
+        changedByRole: "ADMIN",
+        changedById: req.auth!.userId,
+        reason: request.reasonCode,
+        note: payload.data.note || "Cancellation request approved by admin.",
+      });
+
+      if (shouldCreateRefundForPayment(request.order.paymentMethod) && request.order.paymentStatus === "COMPLETED") {
+        const existingRefund = await dbTx.refundRequest.findFirst({
+          where: { subOrderId: request.subOrderId, status: { in: ["PENDING", "APPROVED", "PROCESSING"] } },
+          select: { id: true },
         });
+
+        if (!existingRefund) {
+          const refund = calculateRefundItems(request.subOrder.items);
+          if (refund.amountPkr > 0) {
+            await createRefundRecord(tx, {
+              orderId: request.orderId,
+              subOrderId: request.subOrderId,
+              requestedByRole: "ADMIN",
+              requestedById: req.auth!.userId,
+              reasonCode: "CUSTOMER_CANCELLATION",
+              reasonText: request.reasonText,
+              method: payload.data.refundMethod || getRefundMethodForPayment(request.order.paymentMethod),
+              amountPkr: refund.amountPkr,
+              items: refund.refundItems,
+              note: payload.data.note || "Created after admin cancellation approval.",
+            });
+          }
+        }
       }
+
+      const refreshedSubOrders = await dbTx.subOrder.findMany({
+        where: { orderId: request.orderId },
+        select: { status: true },
+      });
+      const nextParentStatus = deriveParentOrderStatus(refreshedSubOrders.map((entry: any) => entry.status));
+
+      await dbTx.order.update({
+        where: { id: request.orderId },
+        data: { status: nextParentStatus },
+      });
+
+      await dbTx.orderStatusLog.create({
+        data: {
+          orderId: request.orderId,
+          status: nextParentStatus,
+          updatedBy: "ADMIN",
+          updatedById: req.auth!.userId,
+          note: payload.data.note || "Cancellation request approved by admin.",
+        },
+      });
+
     } else if (payload.data.status === "REJECTED") {
+      // Restore the original suborder status so fulfillment resumes from the exact stage it stopped
+      const originalStatus = request.subOrder.status;
       await dbTx.subOrder.update({
         where: { id: request.subOrderId },
-        data: { status: "PROCESSING" },
+        data: { status: originalStatus },
+      });
+
+      await dbTx.subOrderStatusLog.create({
+        data: {
+          subOrderId: request.subOrderId,
+          status: originalStatus,
+          updatedBy: "ADMIN",
+          updatedById: req.auth!.userId,
+          note: payload.data.note || "Cancellation request rejected by admin. Fulfillment continues from previous stage.",
+        },
+      });
+
+      await writeStatusHistory(tx, {
+        subOrderId: request.subOrderId,
+        oldStatus: request.subOrder.status,
+        newStatus: originalStatus,
+        changedByRole: "ADMIN",
+        changedById: req.auth!.userId,
+        reason: request.reasonCode,
+        note: payload.data.note || "Cancellation request rejected by admin. Fulfillment continues from previous stage.",
+      });
+
+      const refreshedSubOrders = await dbTx.subOrder.findMany({
+        where: { orderId: request.orderId },
+        select: { status: true },
+      });
+      const nextParentStatus = deriveParentOrderStatus(refreshedSubOrders.map((entry: any) => entry.status));
+
+      await dbTx.order.update({
+        where: { id: request.orderId },
+        data: { status: nextParentStatus },
+      });
+
+      await dbTx.orderStatusLog.create({
+        data: {
+          orderId: request.orderId,
+          status: nextParentStatus,
+          updatedBy: "ADMIN",
+          updatedById: req.auth!.userId,
+          note: payload.data.note || "Cancellation request rejected by admin.",
+        },
       });
     }
 
+    await dbTx.cancellationHistory.create({
+      data: {
+        cancellationRequestId: request.id,
+        action: payload.data.status === "APPROVED" ? "APPROVED" : "REJECTED",
+        performedByRole: "ADMIN",
+        performedById: req.auth!.userId,
+        note: payload.data.note?.trim() || payload.data.status,
+      },
+    });
+
     return next;
+  });
+
+  queueNotificationEvent({
+    name: payload.data.status === "APPROVED"
+      ? notificationEventNames.cancellationRequestApproved
+      : notificationEventNames.cancellationRequestRejected,
+    orderId: request.orderId,
+    subOrderId: request.subOrderId,
+    userId: request.order.userId,
+    brandId: request.brandId,
+    brandName: request.subOrder.brand?.name || undefined,
+    changedByRole: "ADMIN",
+    note: payload.data.note || undefined,
   });
 
   return res.json({ data: updated });
@@ -413,30 +556,46 @@ router.patch("/refund-requests/:refundRequestId/status", async (req, res) => {
     }
 
     if (refundActionPayload.action === "APPROVE_REFUND") {
-      const approvalNote = refundActionPayload.note?.trim() || "Refund approved.";
-      const processingNote = "Refund moved into processing automatically after approval.";
+      const approvalNote = refundActionPayload.note?.trim() || "Admin confirmed and validated refund.";
       await dbTx.refundRequest.update({
         where: { id: refundRequest.id },
         data: {
-          status: "PROCESSING",
-          reviewNote: refundActionPayload.note?.trim() || refundRequest.reviewNote,
+          status: "COMPLETED",
+          reviewNote: approvalNote,
           method: currentMethod,
           adjustedAmountPkr: currentAmount,
-          gatewayRefundId: refundActionPayload.gatewayRefundId?.trim() || refundRequest.gatewayRefundId,
-          completedAt: null,
+          gatewayRefundId: refundActionPayload.gatewayRefundId?.trim() || refundRequest.gatewayRefundId || "AUTO_VALIDATED",
+          completedAt: now,
         },
       });
-      await writeRefundAudit("APPROVED", approvalNote);
-      await writeRefundAudit("PROCESSING", processingNote);
+      await writeRefundAudit("APPROVED", "Admin approved refund.");
+      await writeRefundAudit("COMPLETED", approvalNote);
+
+      await tx.subOrder.update({
+        where: { id: refundRequest.subOrderId },
+        data: { refundProcessedAt: now },
+      });
+
+      await creditWallet(tx, {
+        userId: refundRequest.order.userId,
+        amountPkr: currentAmount,
+        sourceType: "REFUND",
+        note: approvalNote,
+        orderId: refundRequest.orderId,
+        refundRequestId: refundRequest.id,
+      });
+
       if (refundRequest.returnRequestId) {
         await dbTx.returnRequest.update({
           where: { id: refundRequest.returnRequestId },
           data: {
-            status: "REFUND_PROCESSING",
-            refundStatusSnapshot: "PROCESSING",
+            status: "COMPLETED",
+            refundStatusSnapshot: "COMPLETED",
+            completedAt: now,
           },
         });
-        await moveReturnWorkflow("REFUND_PROCESSING", processingNote);
+        await moveReturnWorkflow("REFUND_COMPLETED", approvalNote);
+        await moveReturnWorkflow("COMPLETED", "Return workflow completed after refund settlement.");
       }
     }
 
@@ -461,28 +620,45 @@ router.patch("/refund-requests/:refundRequestId/status", async (req, res) => {
     }
 
     if (refundActionPayload.action === "RETRY_FAILED_REFUND") {
-      const retryNote = refundActionPayload.note?.trim() || "Refund retry started.";
+      const retryNote = refundActionPayload.note?.trim() || "Refund retry validated and completed.";
       await dbTx.refundRequest.update({
         where: { id: refundRequest.id },
         data: {
-          status: "PROCESSING",
+          status: "COMPLETED",
           reviewNote: retryNote,
           method: currentMethod,
           adjustedAmountPkr: currentAmount,
-          gatewayRefundId: refundActionPayload.gatewayRefundId?.trim() || refundRequest.gatewayRefundId,
-          completedAt: null,
+          gatewayRefundId: refundActionPayload.gatewayRefundId?.trim() || refundRequest.gatewayRefundId || "AUTO_VALIDATED_RETRY",
+          completedAt: now,
         },
       });
-      await writeRefundAudit("PROCESSING", retryNote);
+      await writeRefundAudit("COMPLETED", retryNote);
+
+      await tx.subOrder.update({
+        where: { id: refundRequest.subOrderId },
+        data: { refundProcessedAt: now },
+      });
+
+      await creditWallet(tx, {
+        userId: refundRequest.order.userId,
+        amountPkr: currentAmount,
+        sourceType: "REFUND",
+        note: retryNote,
+        orderId: refundRequest.orderId,
+        refundRequestId: refundRequest.id,
+      });
+
       if (refundRequest.returnRequestId) {
         await dbTx.returnRequest.update({
           where: { id: refundRequest.returnRequestId },
           data: {
-            status: "REFUND_PROCESSING",
-            refundStatusSnapshot: "PROCESSING",
+            status: "COMPLETED",
+            refundStatusSnapshot: "COMPLETED",
+            completedAt: now,
           },
         });
-        await moveReturnWorkflow("REFUND_PROCESSING", retryNote);
+        await moveReturnWorkflow("REFUND_COMPLETED", retryNote);
+        await moveReturnWorkflow("COMPLETED", "Return workflow completed after refund settlement.");
       }
     }
 
@@ -526,16 +702,14 @@ router.patch("/refund-requests/:refundRequestId/status", async (req, res) => {
         where: { id: refundRequest.subOrderId },
         data: { refundProcessedAt: now },
       });
-      if (currentMethod === "WALLET_CREDIT") {
-        await creditWallet(tx, {
-          userId: refundRequest.order.userId,
-          amountPkr: currentAmount,
-          sourceType: "REFUND",
-          note: completionNote,
-          orderId: refundRequest.orderId,
-          refundRequestId: refundRequest.id,
-        });
-      }
+      await creditWallet(tx, {
+        userId: refundRequest.order.userId,
+        amountPkr: currentAmount,
+        sourceType: "REFUND",
+        note: completionNote,
+        orderId: refundRequest.orderId,
+        refundRequestId: refundRequest.id,
+      });
       if (refundRequest.returnRequestId) {
         await dbTx.returnRequest.update({
           where: { id: refundRequest.returnRequestId },
@@ -605,6 +779,9 @@ router.patch("/refund-requests/:refundRequestId/status", async (req, res) => {
     queueNotificationEvent({
       name: notificationEventNames.refundStateUpdated,
       orderId: refundRequest.orderId,
+      subOrderId: refundRequest.subOrderId,
+      returnRequestId: refundRequest.returnRequestId || undefined,
+      requestType: refundRequest.returnRequest ? inferReturnRequestType(refundRequest.returnRequest) : undefined,
       userId: refundRequest.order.userId,
       brandId: refundRequest.subOrder.brandId,
       paymentMethod: refundRequest.order.paymentMethod,
@@ -616,6 +793,9 @@ router.patch("/refund-requests/:refundRequestId/status", async (req, res) => {
     queueNotificationEvent({
       name: notificationEventNames.refundProcessed,
       orderId: refundRequest.orderId,
+      subOrderId: refundRequest.subOrderId,
+      returnRequestId: refundRequest.returnRequestId || undefined,
+      requestType: refundRequest.returnRequest ? inferReturnRequestType(refundRequest.returnRequest) : undefined,
       userId: refundRequest.order.userId,
       paymentMethod: refundRequest.order.paymentMethod,
       reason: updated.reviewNote || undefined,
@@ -750,10 +930,6 @@ router.patch("/return-requests/:returnRequestId/status", async (req, res) => {
     return res.status(400).json({ message: "These operational return statuses are managed by the brand, not admin." });
   }
 
-  if (payload.data.status === "ADMIN_REJECTED" && !payload.data.rejectedReason?.trim() && !payload.data.note?.trim()) {
-    return res.status(400).json({ message: "Rejected requests require a rejected reason or admin note." });
-  }
-
   const db = prisma as any;
   const returnRequest = await db.returnRequest.findUnique({
     where: { id: String(req.params.returnRequestId) },
@@ -765,10 +941,20 @@ router.patch("/return-requests/:returnRequestId/status", async (req, res) => {
   });
   if (!returnRequest) return res.status(404).json({ message: "Return request not found" });
 
+  const currentStatus = returnRequest.status as string;
+
+  if (
+    payload.data.status === "ADMIN_REJECTED" &&
+    currentStatus !== "BRAND_REJECTED" &&
+    !payload.data.rejectedReason?.trim() &&
+    !payload.data.note?.trim()
+  ) {
+    return res.status(400).json({ message: "Rejected requests require a rejected reason or admin note." });
+  }
+
   const requestType = inferReturnRequestType(returnRequest);
   const note = payload.data.note?.trim();
   const rejectedReason = payload.data.rejectedReason?.trim();
-  const currentStatus = returnRequest.status as string;
   const resolvedAdminStatus =
     payload.data.status === "ADMIN_APPROVED" && currentStatus === "RETURN_CONDITION_DISPUTED"
       ? requestType === "EXCHANGE"
@@ -785,11 +971,15 @@ router.patch("/return-requests/:returnRequestId/status", async (req, res) => {
         requestType,
         reviewNote: note || returnRequest.reviewNote,
         adminDecision:
-          payload.data.status === "ADMIN_APPROVED"
-            ? "APPROVED"
-            : payload.data.status === "ADMIN_REJECTED"
+          currentStatus === "BRAND_REJECTED"
+            ? payload.data.status === "ADMIN_APPROVED"
               ? "REJECTED"
-              : returnRequest.adminDecision,
+              : "APPROVED"
+            : payload.data.status === "ADMIN_APPROVED"
+              ? "APPROVED"
+              : payload.data.status === "ADMIN_REJECTED"
+                ? "REJECTED"
+                : returnRequest.adminDecision,
         adminDecisionNote: note || returnRequest.adminDecisionNote,
         adminRejectedReason: rejectedReason || returnRequest.adminRejectedReason,
         pickupTracking: payload.data.pickupTracking?.trim() || returnRequest.pickupTracking,
@@ -797,6 +987,10 @@ router.patch("/return-requests/:returnRequestId/status", async (req, res) => {
         pickupDate: payload.data.pickupDate || returnRequest.pickupDate,
         pickupAddress: payload.data.pickupAddress?.trim() || returnRequest.pickupAddress,
         returnTrackingNumber: payload.data.returnTrackingNumber?.trim() || payload.data.pickupTracking?.trim() || returnRequest.returnTrackingNumber,
+        replacementUnavailable:
+          payload.data.status === "ADMIN_APPROVED" && currentStatus === "BRAND_REJECTED"
+            ? false
+            : returnRequest.replacementUnavailable,
         refundStatusSnapshot:
           resolvedAdminStatus === "REFUND_INITIATED"
             ? "INITIATED"
@@ -870,13 +1064,21 @@ router.patch("/return-requests/:returnRequestId/status", async (req, res) => {
       },
     });
 
+    const isOverruling = resolvedAdminStatus === "ADMIN_APPROVED" && currentStatus === "BRAND_REJECTED";
+    const isConfirmingBrandRejection = resolvedAdminStatus === "ADMIN_REJECTED" && currentStatus === "BRAND_REJECTED";
+    const timelineNote = isOverruling
+      ? `Decision: REJECTED. Admin overruled brand rejection and approved the customer request${note ? `: ${note}` : ""}`
+      : isConfirmingBrandRejection
+        ? `Decision: APPROVED. Admin confirmed brand rejection and finalized the customer request as rejected${note ? `: ${note}` : ""}`
+        : note || rejectedReason || undefined;
+
     await dbTx.returnStatusLog.create({
       data: {
         returnRequestId: returnRequest.id,
         status: resolvedAdminStatus,
         updatedBy: "ADMIN",
         updatedById: req.auth!.userId,
-        note: note || rejectedReason || undefined,
+        note: timelineNote,
       },
     });
 
@@ -887,7 +1089,7 @@ router.patch("/return-requests/:returnRequestId/status", async (req, res) => {
         newStatus: resolvedAdminStatus,
         performedByRole: "ADMIN",
         performedById: req.auth!.userId,
-        note: note || rejectedReason || undefined,
+        note: timelineNote,
       },
     });
 
@@ -932,9 +1134,16 @@ router.patch("/return-requests/:returnRequestId/status", async (req, res) => {
     name: notificationEventNames.returnStateUpdated,
     orderId: returnRequest.orderId,
     subOrderId: returnRequest.subOrderId,
+    returnRequestId: returnRequest.id,
+    requestType,
     userId: returnRequest.order.userId,
     brandId: returnRequest.subOrder.brandId,
-    note: `Return request is now ${resolvedAdminStatus}${note ? `: ${note}` : ""}`,
+    note:
+      resolvedAdminStatus === "ADMIN_APPROVED" && currentStatus === "BRAND_REJECTED"
+        ? `Decision: REJECTED. Admin overruled brand rejection and approved the customer request${note ? `: ${note}` : ""}`
+        : resolvedAdminStatus === "ADMIN_REJECTED" && currentStatus === "BRAND_REJECTED"
+          ? `Decision: APPROVED. Admin confirmed brand rejection${note ? `: ${note}` : ""}`
+          : `Return request is now ${resolvedAdminStatus}${note ? `: ${note}` : ""}`,
     changedByRole: "ADMIN",
     notifyAdmin: true,
   });
@@ -1083,6 +1292,8 @@ router.patch("/return-requests/:returnRequestId/convert-to-refund", async (req, 
     name: notificationEventNames.returnStateUpdated,
     orderId: returnRequest.orderId,
     subOrderId: returnRequest.subOrderId,
+    returnRequestId: returnRequest.id,
+    requestType: "EXCHANGE",
     userId: returnRequest.order.userId,
     brandId: returnRequest.subOrder.brandId,
     note: `Exchange converted to refund: ${payload.data.note}`,

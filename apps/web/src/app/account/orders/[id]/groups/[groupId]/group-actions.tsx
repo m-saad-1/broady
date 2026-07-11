@@ -142,6 +142,32 @@ export function GroupActions({
   const returnSubmitLabel = isExchangeRequest ? "Submit Exchange Request" : "Submit Return Request";
   const selectedReasonLabel = formatReturnReasonLabel(returnReasonCode, returnReasonText);
   const selectedItems = items.filter((item) => selectedItemIds.includes(item.id));
+
+  function getCurrentVariantLabel(item: GroupActionsProps["items"][number]) {
+    return preferredResolution === "EXCHANGE_COLOR" ? item.selectedColor || "" : item.selectedSize || "";
+  }
+
+  function getExchangeOptions(item: GroupActionsProps["items"][number]) {
+    const currentVariant = getCurrentVariantLabel(item);
+    const baseOptions = preferredResolution === "EXCHANGE_COLOR" ? item.availableColors : item.availableSizes;
+    return Array.from(
+      new Set(
+        baseOptions
+          .map((option) => option.trim())
+          .filter(Boolean),
+      ),
+    ).filter((option) => option !== currentVariant);
+  }
+
+  const unavailableExchangeItems =
+    requiresVariantSelection
+      ? selectedItems.filter((item) => {
+          const options = getExchangeOptions(item);
+          const nextVariant = exchangeVariantByItemId[item.id];
+          return options.length === 0 || !nextVariant || !options.includes(nextVariant);
+        })
+      : [];
+
   const submitDisabled =
     busy !== null ||
     selectedItemIds.length === 0 ||
@@ -149,12 +175,7 @@ export function GroupActions({
     (!parsedEvidenceUrls.length && evidenceRequiredReasons.has(returnReasonCode)) ||
     (returnReasonCode === "OTHER" && !returnReasonText.trim()) ||
     parsedEvidenceUrls.length > 5 ||
-    (requiresVariantSelection &&
-      selectedItems.some((item) => {
-        const nextVariant = exchangeVariantByItemId[item.id];
-        if (!nextVariant) return true;
-        return nextVariant === getCurrentVariantLabel(item);
-      }));
+    unavailableExchangeItems.length > 0;
 
   const startReturnRequest = (mode: "RETURN" | "EXCHANGE") => {
     setReturnMode(mode);
@@ -168,14 +189,6 @@ export function GroupActions({
     }
   }, [returnMode, returnReasonCode]);
 
-  function getCurrentVariantLabel(item: GroupActionsProps["items"][number]) {
-    return preferredResolution === "EXCHANGE_COLOR" ? item.selectedColor || "" : item.selectedSize || "";
-  }
-
-  function getExchangeOptions(item: GroupActionsProps["items"][number]) {
-    return preferredResolution === "EXCHANGE_COLOR" ? item.availableColors : item.availableSizes;
-  }
-
   useEffect(() => {
     if (!openReturn) return;
     setSelectedItemIds((current) => (current.length ? current : items.map((item) => item.id)));
@@ -185,8 +198,8 @@ export function GroupActions({
     setExchangeVariantByItemId((current) => {
       const next: Record<string, string> = {};
       for (const item of selectedItems) {
-        const currentVariant = getCurrentVariantLabel(item);
-        next[item.id] = current[item.id] || currentVariant;
+        const options = getExchangeOptions(item);
+        next[item.id] = current[item.id] && options.includes(current[item.id]) ? current[item.id] : options[0] || "";
       }
       return next;
     });
@@ -251,12 +264,6 @@ export function GroupActions({
   };
 
   const doReturnRequest = async () => {
-    const hasExchangeConflict =
-      requiresVariantSelection &&
-      selectedItems.some((item) => {
-        const nextVariant = exchangeVariantByItemId[item.id];
-        return !nextVariant || nextVariant === getCurrentVariantLabel(item);
-      });
     if (returnReasonText.length > 500) {
       pushToast("Comment cannot exceed 500 characters.", "error");
       return;
@@ -277,8 +284,8 @@ export function GroupActions({
       pushToast("Select at least one product to continue.", "error");
       return;
     }
-    if (hasExchangeConflict) {
-      pushToast("You already have this variant.", "error");
+    if (unavailableExchangeItems.length > 0) {
+      pushToast("This variant is not available.", "error");
       return;
     }
 
@@ -621,8 +628,8 @@ export function GroupActions({
                   {selectedItems.map((item) => {
                     const options = getExchangeOptions(item);
                     const originalVariant = getCurrentVariantLabel(item);
-                    const selectedVariant = exchangeVariantByItemId[item.id] || originalVariant;
-                    const hasConflict = selectedVariant === originalVariant;
+                    const selectedVariant = exchangeVariantByItemId[item.id] || "";
+                    const isUnavailable = options.length === 0 || !selectedVariant || !options.includes(selectedVariant);
                     return (
                       <div key={item.id} className="border border-zinc-200 p-3">
                         <p className="text-sm font-semibold text-zinc-900">{item.name}</p>
@@ -635,9 +642,12 @@ export function GroupActions({
                           onChange={(event) =>
                             setExchangeVariantByItemId((current) => ({ ...current, [item.id]: event.target.value }))
                           }
+                          disabled={!options.length}
                         >
-                          <option value={originalVariant || ""} disabled>
-                            Choose a new {preferredResolution === "EXCHANGE_COLOR" ? "color" : "size"}
+                          <option value="" disabled>
+                            {options.length
+                              ? `Choose a new ${preferredResolution === "EXCHANGE_COLOR" ? "color" : "size"}`
+                              : `No ${preferredResolution === "EXCHANGE_COLOR" ? "color" : "size"} variants available`}
                           </option>
                           {options.map((option) => (
                             <option key={option} value={option}>
@@ -645,8 +655,8 @@ export function GroupActions({
                             </option>
                           ))}
                         </select>
-                        {hasConflict ? (
-                          <p className="mt-2 text-xs font-semibold uppercase tracking-[0.12em] text-red-700">You already have this variant</p>
+                        {isUnavailable ? (
+                          <p className="mt-2 text-xs font-semibold uppercase tracking-[0.12em] text-red-700">This variant is not available.</p>
                         ) : null}
                       </div>
                     );

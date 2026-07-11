@@ -92,12 +92,13 @@ export function BrandReturnDetailActions({ request, onUpdated }: BrandReturnDeta
   const [decision, setDecision] = useState<"APPROVE" | "REJECT" | "NEED_MORE_EVIDENCE">("APPROVE");
   const [decisionNote, setDecisionNote] = useState(request.brandRecommendationNote || "");
   const [rejectReason, setRejectReason] = useState(request.brandRejectReason || "");
+  const [rejectEvidenceUrls, setRejectEvidenceUrls] = useState("");
 
   const [returnCourier, setReturnCourier] = useState(request.pickupCourier || "");
   const [returnTrackingNumber, setReturnTrackingNumber] = useState(request.returnTrackingNumber || request.pickupTracking || "");
   const [returnInstructions, setReturnInstructions] = useState(request.pickupAddress || "");
   const [expectedReturnDate, setExpectedReturnDate] = useState(request.pickupDate?.slice(0, 10) || "");
-  const [returnNote, setReturnNote] = useState(request.reviewNote || "");
+  const [returnNote, setReturnNote] = useState(request.pickupNote || "");
 
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [receiptOutcome, setReceiptOutcome] = useState<"APPROVED" | "DISPUTED">("APPROVED");
@@ -140,9 +141,14 @@ export function BrandReturnDetailActions({ request, onUpdated }: BrandReturnDeta
   const isApprove = decision === "APPROVE";
   const isReject = decision === "REJECT";
   const isNeedMoreEvidence = decision === "NEED_MORE_EVIDENCE";
+  const parsedRejectEvidenceUrls = rejectEvidenceUrls
+    .split(/\r?\n|,/)
+    .map((v) => v.trim())
+    .filter(Boolean);
+
   const canSubmitDecision =
     decisionNote.trim().length > 0 &&
-    (isNeedMoreEvidence || (isReject && rejectReason.trim().length > 0) || isApprove);
+    (isNeedMoreEvidence || (isReject && rejectReason.trim().length > 0 && parsedRejectEvidenceUrls.length > 0 && parsedRejectEvidenceUrls.length <= 5) || isApprove);
   const showReplacementShipmentSection =
     requestType === "EXCHANGE" &&
     ["RETURN_RECEIVED", "RETURN_CONDITION_APPROVED", "REPLACEMENT_PROCESSING", "REPLACEMENT_PACKED", "REPLACEMENT_READY_FOR_PICKUP", "REPLACEMENT_SHIPPED", "REPLACEMENT_OUT_FOR_DELIVERY", "REPLACEMENT_DELIVERY_FAILED", "REPLACEMENT_ADDRESS_CORRECTION_REQUIRED", "REPLACEMENT_READY_FOR_REDELIVERY", "REPLACEMENT_SHIPMENT_RETURNED"].includes(status || "");
@@ -195,24 +201,36 @@ export function BrandReturnDetailActions({ request, onUpdated }: BrandReturnDeta
             </div>
 
             {isReject ? (
-              requestType === "EXCHANGE" ? (
-                <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
+              <div className="grid gap-3 md:grid-cols-2">
+                {requestType === "EXCHANGE" ? (
+                  <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
+                      Reject reason
+                    <select className="h-10 w-full border border-zinc-300 px-3 text-sm text-zinc-900" value={rejectReason} onChange={(event) => setRejectReason(event.target.value)}>
+                      <option value="">Select reject reason</option>
+                      {rejectReasonOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
                     Reject reason
-                  <select className="h-10 w-full border border-zinc-300 px-3 text-sm text-zinc-900" value={rejectReason} onChange={(event) => setRejectReason(event.target.value)}>
-                    <option value="">Select reject reason</option>
-                    {rejectReasonOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : (
+                    <input className="h-10 w-full border border-zinc-300 px-3 text-sm text-zinc-900" placeholder="Reason for rejection" value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} />
+                  </label>
+                )}
                 <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
-                  Reject reason
-                  <input className="h-10 w-full border border-zinc-300 px-3 text-sm text-zinc-900" placeholder="Reason for rejection" value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} />
+                  Supporting Evidence Image URLs
+                  <textarea
+                    className="min-h-10 w-full border border-zinc-300 p-2 text-sm text-zinc-900"
+                    placeholder="Provide image URLs (1 per line) as proof of rejection."
+                    value={rejectEvidenceUrls}
+                    onChange={(event) => setRejectEvidenceUrls(event.target.value)}
+                  />
+                  <p className="text-[10px] text-zinc-400">At least 1 required. Max 5.</p>
                 </label>
-              )
+              </div>
             ) : null}
 
             <button
@@ -225,6 +243,7 @@ export function BrandReturnDetailActions({ request, onUpdated }: BrandReturnDeta
                     recommendation: decision,
                     recommendationNote: decisionNote.trim() || undefined,
                     rejectReason: rejectReason.trim() || undefined,
+                    brandEvidenceUrls: isReject && parsedRejectEvidenceUrls.length ? parsedRejectEvidenceUrls : undefined,
                   });
                   onUpdated(updated);
                   pushToast("Request decision saved.", "success");
@@ -268,6 +287,9 @@ export function BrandReturnDetailActions({ request, onUpdated }: BrandReturnDeta
 
         {status === "BRAND_APPROVED" || status === "ADMIN_APPROVED" ? (
           <div className="space-y-4 border border-zinc-200 bg-zinc-50 p-4">
+            {status === "ADMIN_APPROVED" && request.brandRecommendation === "REJECT" ? (
+              <p className="text-sm font-semibold text-amber-700">Your rejection was overruled by Broady. The customer's request has been approved. Admin note: {request.adminDecisionNote}</p>
+            ) : null}
             <p className="text-sm text-zinc-700">Request approved. Arrange the return pickup or return route with your courier details.</p>
             <div className="grid gap-3 md:grid-cols-2">
               <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
@@ -587,7 +609,9 @@ export function BrandReturnDetailActions({ request, onUpdated }: BrandReturnDeta
         {status === "BRAND_REJECTED" || status === "RETURN_CONDITION_DISPUTED" || status === "ADMIN_REJECTED" ? (
           <div className="border border-red-200 bg-red-50 p-4 text-sm text-red-800">
             {status === "ADMIN_REJECTED"
-              ? `Rejected by Broady. ${request.adminDecisionNote || request.adminRejectedReason || "No further brand actions are available."}`
+              ? request.brandRecommendation === "REJECT"
+                ? `Your rejection was approved by Broady. The customer's request has been finalized as rejected. ${request.adminDecisionNote || ""}`
+                : `Rejected by Broady. ${request.adminDecisionNote || request.adminRejectedReason || "No further brand actions are available."}`
               : availabilityRejected
                 ? `Exchange rejected. ${request.replacementUnavailableReason || request.brandRecommendationNote || "Replacement is unavailable."}`
                 : "This request is waiting for Broady admin review."}

@@ -1915,3 +1915,45 @@ export async function moderateReview(
   });
   return response.data;
 }
+
+export type PagedProductResponse = {
+  products: Product[];
+  meta: {
+    totalCount: number;
+    page: number;
+    totalPages: number;
+  };
+};
+
+export async function getPagedProducts(params?: Record<string, string>): Promise<PagedProductResponse> {
+  const query = params ? `?${new URLSearchParams(params).toString()}` : "";
+  
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const response = await fetch(`${API_BASE}/products${query}`, {
+      cache: "no-store",
+      next: { revalidate: 0 },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    
+    if (!response.ok) throw new Error("API failed");
+    
+    const json = (await response.json()) as { data: Product[], meta: any };
+    return {
+      products: json.data.map(normalizeProduct),
+      meta: json.meta || { totalCount: 0, page: 1, totalPages: 0 }
+    };
+  } catch {
+    const fallbackProductsNormalized = fallbackProducts.map(normalizeProduct);
+    return {
+      products: fallbackProductsNormalized,
+      meta: {
+        totalCount: fallbackProductsNormalized.length,
+        page: 1,
+        totalPages: 1
+      }
+    };
+  }
+}
